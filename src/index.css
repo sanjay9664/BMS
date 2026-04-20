@@ -1,0 +1,193 @@
+:root {
+  --scada-bg: #0f172a;
+  --scada-sidebar: #1e293b;
+  --scada-card: #1e293b;
+  --scada-header: #0f172a;
+  --scada-border: #334155;
+  --scada-text: #f8fafc;
+  --scada-text-muted: #94a3b8;
+  --scada-accent: #38bdf8;
+  
+  --status-running: #22c55e;
+  --status-fault: #ef4444;
+  --status-warning: #f59e0b;
+  --status-stopped: #94a3b8;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--scada-bg);
+  color: var(--scada-text);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  overflow-x: hidden;
+}
+
+/* Force Light Text on common elements */
+h1, h2, h3, h4, h5, h6, p, span, div, label {
+  color: var(--scada-text);
+}
+
+.card, .card-body, .card-header, .card-footer {
+  color: var(--scada-text) !important;
+}
+
+.accordion-button, .accordion-item {
+  color: var(--scada-text) !important;
+}
+
+.form-control, .form-select, .form-label, .form-check-label {
+  color: var(--scada-text) !important;
+}
+
+.input-group-text {
+  color: var(--scada-text-muted) !important;
+}
+
+.scada-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.scada-main-content {
+  flex-grow: 1;
+  padding: 1.5rem;
+  margin-top: 60px;
+  transition: margin-left 0.3s ease;
+}
+
+/* Sidebar Styles */
+.scada-sidebar {
+  width: 280px;
+  background-color: var(--scada-sidebar);
+  border-right: 1px solid var(--scada-border);
+  height: 100vh;
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  transition: all 0.3s ease;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scada-border) transparent;
+}
+
+.scada-sidebar.collapsed {
+  width: 80px;
+}
+
+/* Header Styles */
+.scada-header {
+  height: 60px;
+  background-color: var(--scada-header);
+  border-bottom: 1px solid var(--scada-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.5rem;
+  position: fixed;
+  top: 0;
+  right: 0;
+  left: 280px;
+  z-index: 999;
+  transition: left 0.3s ease;
+  backdrop-filter: blur(8px);
+  background-color: rgba(15, 23, 42, 0.8);
+}
+
+.scada-header.collapsed {
+  left: 80px;
+}
+
+/* Page Header */
+.page-header {
+  margin-bottom: 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Card Styling */
+.scada-card {
+  background-color: var(--scada-card);
+  border: 1px solid var(--scada-border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.scada-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  border-color: var(--scada-accent);
+}
+
+/* Status Indicators */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.status-running { background-color: rgba(34, 197, 94, 0.1); color: var(--status-running); border: 1px solid rgba(34, 197, 94, 0.2); }
+.status-fault { background-color: rgba(239, 68, 68, 0.1); color: var(--status-fault); border: 1px solid rgba(239, 68, 68, 0.2); }
+.status-warning { background-color: rgba(245, 158, 11, 0.1); color: var(--status-warning); border: 1px solid rgba(245, 158, 11, 0.2); }
+
+/* Table Styles */
+.scada-table {
+  color: var(--scada-text);
+  border-color: var(--scada-border);
+}
+
+.scada-table thead th {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: var(--scada-text-muted);
+  border-bottom: 2px solid var(--scada-border);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+.scada-table tbody td {
+  border-bottom: 1px solid var(--scada-border);
+  vertical-align: middle;
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Utility */
+.text-muted { color: var(--scada-text-muted) !important; }
+.text-white { color: var(--scada-text) !important; }
+.accent-glow { text-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+
+/* Bootstrap Override */
+.accordion-button:not(.collapsed) {
+  background-color: rgba(56, 189, 248, 0.1) !important;
+  color: var(--scada-accent) !important;
+}
+
+.accordion-button::after {
+  filter: invert(1);
+}
+
+.form-control:focus, .form-select:focus {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  color: white !important;
+  border-color: var(--scada-accent) !important;
+  box-shadow: 0 0 0 0.25rem rgba(56, 189, 248, 0.25) !important;
+}
