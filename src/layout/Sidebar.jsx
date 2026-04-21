@@ -41,10 +41,7 @@ const Sidebar = ({ collapsed }) => {
       subItems: [
         { title: "Overview", path: "/water-management/overview" },
         { title: "AG TANK", path: "/water-management/ag-pump" },
-        { title: "UG TANK", path: "/water-management/ug-pump" },
-        { title: "Domestic / Flushing", path: "/water-management/domestic" },
-        { title: "OHT / UG Level", path: "/water-management/level" },
-        { title: "PDF Report", path: "/water-management/report" }
+        { title: "UG TANK", path: "/water-management/ug-pump" }
       ]
     },
     {
@@ -67,10 +64,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Overview", path: "/dg-set/overview" },
         { title: "DG Set-1", path: "/dg-set/dg1" },
         { title: "DG Set-2", path: "/dg-set/dg2" },
-        { title: "DG Set-3", path: "/dg-set/dg3" },
-        { title: "Fuel Level", path: "/dg-set/fuel" },
-        { title: "Runtime / Diesel", path: "/dg-set/runtime" },
-        { title: "PDF Report", path: "/dg-set/report" }
+        { title: "DG Set-3", path: "/dg-set/dg3" }
       ]
     },
     {
