@@ -118,10 +118,10 @@ const AgTank = () => {
   });
 
   const getTankColor = (type, level, status, valveStatus) => {
-    if (valveStatus === 'CLOSE') return '#71717a'; // Brighter visible gray when supply is closed
+    if (valveStatus === 'CLOSE') return '#71717a'; // Gray inside when closed
     if (status === 'Fault') return '#ef4444';
     if (level < 20) return '#f59e0b';
-    return type === 'DOMESTIC' ? '#38bdf8' : '#10b981';
+    return '#38bdf8'; // Constant Blue inside when open
   };
 
   const handleTankClick = (tank) => {
@@ -215,7 +215,7 @@ const AgTank = () => {
                 <div className="tank-assembly-anchor mx-auto position-relative" style={{ width: isFullscreen ? '48px' : '36px' }}>
                   <div 
                     className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''} ${tank.valveStatus === 'CLOSE' ? 'vessel-closed-state' : ''} ${tank.status === 'Stopped' ? 'vessel-stopped' : ''}`}
-                    style={{ borderColor: tank.valveStatus === 'OPEN' ? (tank.type === 'DOMESTIC' ? '#38bdf8' : '#10b981') : '#475569' }}
+                    style={{ borderColor: '#475569' }}
                   >
                     <div className="tank-fill" style={{ height: `${tank.level}%`, backgroundColor: getTankColor(tank.type, tank.level, tank.status, tank.valveStatus) }}>
                       <div className="tank-water-wave"></div>
@@ -223,11 +223,12 @@ const AgTank = () => {
                   </div>
                   <div className="valve-connector-pipe"></div>
                   <div className={`industrial-valve-node ${tank.valveStatus === 'OPEN' ? 'valve-open' : 'valve-closed'}`}>
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ filter: tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 8px rgba(34, 197, 94, 0.8))' : 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.8))' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                       <path d="M4 6L20 18V6L4 18V6Z" 
                             fill={tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444'} 
                             stroke={tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444'} 
-                            strokeWidth="1" />
+                            strokeWidth="2"
+                            style={{ transition: 'all 0.3s ease', filter: tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 5px #22c55e)' : 'drop-shadow(0 0 5px #ef4444)' }} />
                       <rect x="11" y="2" width="2" height="6" fill="#94a3b8" />
                       <rect x="9" y="2" width="6" height="1" fill="#94a3b8" />
                     </svg>

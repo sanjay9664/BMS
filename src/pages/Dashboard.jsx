@@ -34,9 +34,9 @@ const Dashboard = () => {
 
   const StatusCard = ({ title, value, unit, icon, color, trend, trendValue, path }) => {
     const handleNavigate = () => {
+      if (!path) return; // Disable navigation if path is null
       const userRole = localStorage.getItem('userRole') || 'user';
       if (path === '/settings' && userRole !== 'admin') {
-        // If they try to go to settings but aren't admin, stay here
         return;
       }
       navigate(path);
@@ -114,38 +114,38 @@ const Dashboard = () => {
       <Row className="g-4 mb-5">
         <Col xl={3} md={6}>
           <StatusCard
-            title="Active Power Load"
-            value="482.5"
-            unit="Kilowatts"
-            icon={<Zap size={20} />}
-            color="warning"
-            trend="down"
-            trendValue="-12%"
-            path="/ticketing"
+            title="PUMP STATUS"
+            value="10"
+            unit="Active"
+            icon={<Activity size={20} />}
+            color="success"
+            trend="up"
+            trendValue="+2"
+            path={null}
           />
         </Col>
         <Col xl={3} md={6}>
           <StatusCard
-            title="DG Fuel Reserves"
-            value="88.2"
-            unit="Percentage"
+            title="TANKS STATUS"
+            value="05"
+            unit="Low Level"
             icon={<Database size={20} />}
+            color="danger"
+            trend="down"
+            trendValue="-1"
+            path={null}
+          />
+        </Col>
+        <Col xl={3} md={6}>
+          <StatusCard
+            title="VALVE STATUS"
+            value="38"
+            unit="Open"
+            icon={<Droplets size={20} />}
             color="info"
             trend="up"
-            trendValue="+5.4%"
-            path="/dg-set/overview"
-          />
-        </Col>
-        <Col xl={3} md={6}>
-          <StatusCard
-            title="Water Inventory"
-            value="84,200"
-            unit="Liters"
-            icon={<Droplets size={20} />}
-            color="primary"
-            trend="up"
-            trendValue="+2.1%"
-            path="/water-management/overview"
+            trendValue="98%"
+            path={null}
           />
         </Col>
         <Col xl={3} md={6}>
@@ -157,7 +157,7 @@ const Dashboard = () => {
             color="danger"
             trend="down"
             trendValue="1 ACK"
-            path="/settings"
+            path={null}
           />
         </Col>
       </Row>
