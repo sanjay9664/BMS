@@ -11,6 +11,7 @@ import TransformerOverview from '../pages/Transformer/Overview';
 import Settings from '../pages/Settings/Settings';
 import AgTank from '../pages/WaterManagement/AgTank';
 import UgTank from '../pages/WaterManagement/UgTank';
+import TicketingSystem from '../pages/Ticketing/Index';
 
 // Fallback for other routes until customized
 const PlaceholderPage = ({ title }) => (
@@ -73,9 +74,9 @@ const AppRoutes = () => {
 
       {/* DG Set */}
       <Route path="/dg-set/overview" element={<DGSetOverview />} />
-      <Route path="/dg-set/dg1" element={<PlaceholderPage title="DG Set-1" />} />
-      <Route path="/dg-set/dg2" element={<PlaceholderPage title="DG Set-2" />} />
-      <Route path="/dg-set/dg3" element={<PlaceholderPage title="DG Set-3" />} />
+      <Route path="/dg-set/dg1" element={<DGSetOverview />} />
+      <Route path="/dg-set/dg2" element={<DGSetOverview />} />
+      <Route path="/dg-set/dg3" element={<DGSetOverview />} />
       <Route path="/dg-set/fuel" element={<PlaceholderPage title="Fuel Level Monitoring" />} />
       <Route path="/dg-set/runtime" element={<PlaceholderPage title="Runtime / Diesel Consumption" />} />
       <Route path="/dg-set/report" element={<PlaceholderPage title="DG Set PDF Reports" />} />
@@ -97,6 +98,9 @@ const AppRoutes = () => {
 
       {/* Settings */}
       <Route path="/settings" element={<Settings />} />
+
+      {/* Ticketing */}
+      <Route path="/ticketing" element={<TicketingSystem />} />
 
       {/* Catch-all */}
       <Route path="*" element={<PlaceholderPage title="Module Under Calibration" />} />

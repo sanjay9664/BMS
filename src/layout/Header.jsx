@@ -41,12 +41,16 @@ const Header = ({ collapsed, toggleSidebar }) => {
         
         <Dropdown align="end">
           <Dropdown.Toggle variant="link" className="d-flex align-items-center text-white text-decoration-none p-0 border-0 custom-toggle">
-            <div className="user-avatar bg-info rounded-circle d-flex align-items-center justify-content-center me-2" style={{ width: '32px', height: '32px' }}>
-              <User size={18} className="text-dark" />
+            <div className="user-avatar bg-info rounded-circle d-flex align-items-center justify-content-center me-2" style={{ width: '24px', height: '24px' }}>
+              <User size={14} className="text-dark" />
             </div>
             <div className="user-info d-none d-sm-block text-start">
-              <p className="mb-0 fs-7 fw-semibold leading-tight">Admin User</p>
-              <p className="mb-0 fs-8 text-muted leading-tight">System Engineer</p>
+              <p className="mb-0 text-white fw-bold" style={{ fontSize: '11px', lineHeight: '1.1' }}>
+                {localStorage.getItem('userRole') === 'admin' ? 'Administrator' : 'Field User'}
+              </p>
+              <p className="mb-0 text-muted uppercase tracking-tighter" style={{ fontSize: '9px', lineHeight: '1.1' }}>
+                {localStorage.getItem('userRole') === 'admin' ? 'System Engineer' : 'Operator'}
+              </p>
             </div>
           </Dropdown.Toggle>
 
@@ -54,7 +58,16 @@ const Header = ({ collapsed, toggleSidebar }) => {
             <Dropdown.Item className="text-white hover-bg-secondary">Profile</Dropdown.Item>
             <Dropdown.Item className="text-white hover-bg-secondary">Logs</Dropdown.Item>
             <Dropdown.Divider className="bg-secondary" />
-            <Dropdown.Item className="text-danger hover-bg-secondary">Sign Out</Dropdown.Item>
+            <Dropdown.Item 
+              className="text-danger hover-bg-secondary fw-bold"
+              onClick={() => {
+                localStorage.removeItem('isAuthenticated');
+                localStorage.removeItem('userRole');
+                window.location.href = '/login';
+              }}
+            >
+              Sign Out
+            </Dropdown.Item>
           </Dropdown.Menu>
         </Dropdown>
       </div>
@@ -69,9 +82,9 @@ const Header = ({ collapsed, toggleSidebar }) => {
           box-shadow: none;
           color: white;
         }
-        .leading-tight { line-height: 1.25; }
-        .fs-8 { font-size: 0.75rem; }
-        .fs-7 { font-size: 0.875rem; }
+        .leading-tight { line-height: 1.1; }
+        .fs-8 { font-size: 0.62rem; }
+        .fs-7 { font-size: 0.72rem; }
         .custom-toggle::after { display: none; }
         .hover-bg-secondary:hover { background-color: rgba(255, 255, 255, 0.1); }
       `}} />

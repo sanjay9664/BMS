@@ -10,11 +10,18 @@ const WaterOverview = () => {
 
   const handleMouseMove = (e, id) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 400; // Map to 0-400 SVG space
+    const x = ((e.clientX - rect.left) / rect.width) * 400; 
     const timeIndex = Math.floor((x / 400) * 24);
-    const timeStr = `${String(timeIndex).padStart(2, '0')}:00`;
-    const loadVal = Math.floor(Math.sin(x/50) * 20 + 60); // Simulated load curve
-    setHoverData(prev => ({ ...prev, [id]: { x, time: timeStr, load: loadVal } }));
+    const hours = timeIndex % 12 || 12;
+    const ampm = timeIndex < 12 ? 'AM' : 'PM';
+    const timeStr = `${hours}:00 ${ampm}`;
+    
+    // Improved simulation logic
+    const baseLoad = id === 'ag' ? 70 : 45;
+    const loadVal = Math.floor(Math.sin(x/40) * 15 + baseLoad); 
+    
+    const statusText = loadVal > 80 ? 'HIGH' : loadVal < 40 ? 'LOW' : 'NORMAL';
+    setHoverData(prev => ({ ...prev, [id]: { x, time: timeStr, load: loadVal, status: statusText } }));
   };
 
   const handleMouseLeave = (id) => {
@@ -52,12 +59,44 @@ const WaterOverview = () => {
 
   return (
     <div className="fade-in">
+      {/* --- GATEWAY MONITOR (NEW) --- */}
       <div className="page-header d-flex justify-content-between align-items-center mb-4">
-        <div>
+      <div>
           <h2 className="mb-1 text-white fw-bold">Hydraulic Master Overview</h2>
           <p className="text-secondary fs-7">Enterprise-wide water distribution, pressure, and asset health monitoring.</p>
+           <PdfButton />
         </div>
-        <PdfButton />
+      <div className="gateway-monitor mb-4 p-3 rounded-4 bg-dark bg-opacity-40 border border-secondary border-opacity-10 d-flex gap-4 align-items-center">
+            <div className="d-flex align-items-center gap-3 pe-4 border-end border-secondary border-opacity-20">
+                <div className="p-2 rounded-circle bg-success bg-opacity-10">
+                    <Activity className="text-success" size={20} />
+                </div>
+                <div>
+                    <small className="text-muted d-block fs-10 fw-bold uppercase letter-spacing-1">Gateways Online</small>
+                    <span className="text-white fs-5 fw-black">14 <Badge bg="success" className="ms-2 fs-11 bg-opacity-10 text-success border border-success border-opacity-20">ACTIVE</Badge></span>
+                </div>
+            </div>
+            <div className="d-flex align-items-center gap-3 pe-4 border-end border-secondary border-opacity-20">
+                <div className="p-2 rounded-circle bg-danger bg-opacity-10">
+                    <AlertTriangle className="text-danger" size={20} />
+                </div>
+                <div>
+                    <small className="text-muted d-block fs-10 fw-bold uppercase letter-spacing-1">Gateways Offline</small>
+                    <span className="text-white fs-5 fw-black">01 <Badge bg="danger" className="ms-2 fs-11 bg-opacity-10 text-danger border border-danger border-opacity-20">CRITICAL</Badge></span>
+                </div>
+            </div>
+            <div className="ms-auto d-flex align-items-center gap-3">
+                <div className="text-end me-3">
+                    <small className="text-muted d-block fs-10 fw-bold uppercase">System Latency</small>
+                    <span className="text-info fw-bold fs-9">24ms</span>
+                </div>
+                <Badge bg="info" className="bg-opacity-10 text-info border border-info border-opacity-20 px-3 py-2 fs-10 fw-bold">NETWORK STABLE</Badge>
+            </div>
+      </div>
+
+      
+        
+       
       </div>
 
       {/* --- NEW ASSET & ALARM SNAPSHOT --- */}
@@ -67,7 +106,7 @@ const WaterOverview = () => {
                 <Card.Body className="p-3">
                     <div className="d-flex align-items-center gap-2 mb-3">
                         <Zap size={18} className="text-info" />
-                        <span className="text-white fw-bold fs-9 letter-spacing-1">PUMP FLEET STATUS</span>
+                        <span className="text-white fw-bold fs-9 letter-spacing-1">PUMP STATUS</span>
                     </div>
                     <div className="d-flex justify-content-around text-center py-2">
                         <div>
@@ -90,32 +129,8 @@ const WaterOverview = () => {
             <Card className="bg-dark bg-opacity-20 border border-secondary border-opacity-10 h-100 rounded-4">
                 <Card.Body className="p-3">
                     <div className="d-flex align-items-center gap-2 mb-3">
-                        <ToggleRight size={18} className="text-primary" />
-                        <span className="text-white fw-bold fs-9 letter-spacing-1">VALVE NETWORK</span>
-                    </div>
-                    <div className="d-flex justify-content-around text-center py-2">
-                        <div>
-                            <h3 className="text-info fw-black mb-0">38</h3>
-                            <small className="text-muted fs-10 fw-bold uppercase">OPEN</small>
-                        </div>
-                        <div className="border-start border-secondary border-opacity-10 px-4">
-                            <h3 className="text-danger fw-black mb-0">10</h3>
-                            <small className="text-muted fs-10 fw-bold uppercase">CLOSED</small>
-                        </div>
-                        <div className="border-start border-secondary border-opacity-10 px-4">
-                            <h3 className="text-muted fw-black mb-0">48</h3>
-                            <small className="text-muted fs-10 fw-bold uppercase">TOTAL</small>
-                        </div>
-                    </div>
-                </Card.Body>
-            </Card>
-        </Col>
-        <Col lg={4}>
-            <Card className="bg-dark bg-opacity-20 border border-secondary border-opacity-10 h-100 rounded-4">
-                <Card.Body className="p-3">
-                    <div className="d-flex align-items-center gap-2 mb-3">
                         <AlertTriangle size={18} className="text-danger" />
-                        <span className="text-white fw-bold fs-9 letter-spacing-1">CRITICALITY MONITOR</span>
+                        <span className="text-white fw-bold fs-9 letter-spacing-1">TANKS STATUS</span>
                     </div>
                     <div className="d-flex justify-content-around text-center py-2">
                         <div>
@@ -134,12 +149,37 @@ const WaterOverview = () => {
                 </Card.Body>
             </Card>
         </Col>
+        <Col lg={4}>
+            <Card className="bg-dark bg-opacity-20 border border-secondary border-opacity-10 h-100 rounded-4">
+                <Card.Body className="p-3">
+                    <div className="d-flex align-items-center gap-2 mb-3">
+                        <ToggleRight size={18} className="text-primary" />
+                        <span className="text-white fw-bold fs-9 letter-spacing-1">VALVE STATUS</span>
+                    </div>
+                    <div className="d-flex justify-content-around text-center py-2">
+                        <div>
+                            <h3 className="text-info fw-black mb-0">38</h3>
+                            <small className="text-muted fs-10 fw-bold uppercase">OPEN</small>
+                        </div>
+                        <div className="border-start border-secondary border-opacity-10 px-4">
+                            <h3 className="text-danger fw-black mb-0">10</h3>
+                            <small className="text-muted fs-10 fw-bold uppercase">CLOSED</small>
+                        </div>
+                        <div className="border-start border-secondary border-opacity-10 px-4">
+                            <h3 className="text-muted fw-black mb-0">48</h3>
+                            <small className="text-muted fs-10 fw-bold uppercase">TOTAL</small>
+                        </div>
+                    </div>
+                </Card.Body>
+            </Card>
+        </Col>
+        
       </Row>
 
       {/* --- MASTER OVERVIEW TILES (Existing) --- */}
       <div className="mb-3 d-flex align-items-center gap-2">
           <Settings size={18} className="text-secondary" />
-          <span className="text-secondary fw-bold fs-9 letter-spacing-1 uppercase">Section Monitoring</span>
+          <span className="text-secondary fw-bold fs-9 letter-spacing-1 uppercase">DAY AVERAGE</span>
       </div>
       <Row className="g-4 mb-5">
         {stations.map((s) => (
@@ -161,103 +201,111 @@ const WaterOverview = () => {
                     </div>
                   </div>
                 </div>
-                {s.id === 'ag' ? (
-                  <>
-                    <div className="flex-grow-1 position-relative mt-2" style={{ minHeight: '180px' }}>
-                        <svg 
-                            width="100%" 
-                            height="200" 
-                            viewBox="0 0 400 180" 
-                            preserveAspectRatio="none" 
-                            className="overflow-visible cursor-crosshair"
-                            onMouseMove={(e) => handleMouseMove(e, s.id)}
-                            onMouseLeave={() => handleMouseLeave(s.id)}
-                        >
-                            <defs>
-                                <linearGradient id={`areaGrad-${s.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                                    <stop offset="0%" stopColor={s.color} stopOpacity="0.4" />
-                                    <stop offset="100%" stopColor={s.color} stopOpacity="0.05" />
-                                </linearGradient>
-                            </defs>
+                <div className="flex-grow-1 position-relative mt-2" style={{ minHeight: '180px' }}>
+                    <svg 
+                        width="100%" 
+                        height="200" 
+                        viewBox="0 0 400 180" 
+                        preserveAspectRatio="none" 
+                        className="overflow-visible cursor-crosshair"
+                        onMouseMove={(e) => handleMouseMove(e, s.id)}
+                        onMouseLeave={() => handleMouseLeave(s.id)}
+                    >
+                         <defs>
+                             <linearGradient id={`areaGrad-${s.id}`} x1="0%" y1="0%" x2="0%" y2="100%">
+                                 <stop offset="0%" stopColor={s.color} stopOpacity="0.4" />
+                                 <stop offset="100%" stopColor={s.color} stopOpacity="0.05" />
+                             </linearGradient>
+                             <filter id="glow"><feGaussianBlur stdDeviation="2.5" result="coloredBlur"/><feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+                         </defs>
 
-                            {[0, 25, 50, 75, 100].map(v => (
-                                <text key={v} x="-10" y={150 - (v * 1.3)} fill="#475569" fontSize="9" textAnchor="end">{v}</text>
-                            ))}
+                         {/* BACKGROUND REFERENCE ZONES */}
+                         <rect x="0" y="20" width="400" height="30" fill="#ef4444" fillOpacity="0.03" /> {/* Critical Area */}
+                         <rect x="0" y="50" width="400" height="70" fill={s.color} fillOpacity="0.05" /> {/* Optimal Zone */}
+                         <rect x="0" y="120" width="400" height="30" fill="#f59e0b" fillOpacity="0.03" /> {/* Low Buffer */}
 
-                            {[0, 25, 50, 75, 100].map(v => (
-                                <line key={v} x1="0" y1={150 - (v * 1.3)} x2="400" y2={150 - (v * 1.3)} stroke="#1e293b" strokeWidth="0.5" strokeDasharray="4,4" />
-                            ))}
+                         <text x="-5" y="30" fill="#ef4444" fontSize="7" fontWeight="bold" textAnchor="end">CRITICAL</text>
+                         <text x="-5" y="85" fill={s.color} fontSize="7" fontWeight="bold" textAnchor="end" opacity="0.5">OPTIMAL</text>
+                         <text x="-5" y="145" fill="#f59e0b" fontSize="7" fontWeight="bold" textAnchor="end">LOW</text>
 
-                            <path d="M0 120 Q50 135 100 110 T200 40 T300 20 T400 80 V150 H0 Z" fill={`url(#areaGrad-${s.id})`} />
-                            <path d="M0 120 Q50 135 100 110 T200 40 T300 20 T400 80" fill="none" stroke={s.color} strokeWidth="3" strokeLinecap="round" className="sparkline-path" />
+                         {/* Trend Path */}
+                         <path 
+                             d={s.id === 'ag' 
+                                 ? "M0 120 Q50 135 100 110 T200 40 T300 20 T400 80 V150 H0 Z" 
+                                 : "M0 140 Q60 120 120 130 T240 90 T360 110 T400 100 V150 H0 Z"
+                             } 
+                             fill={`url(#areaGrad-${s.id})`} 
+                         />
+                         <path 
+                             d={s.id === 'ag' 
+                                 ? "M0 120 Q50 135 100 110 T200 40 T300 20 T400 80" 
+                                 : "M0 140 Q60 120 120 130 T240 90 T360 110 T400 100"
+                             } 
+                             fill="none" 
+                             stroke={s.color} 
+                             strokeWidth="3" 
+                             strokeLinecap="round" 
+                             filter="url(#glow)"
+                         />
 
-                            {hoverData[s.id] && (
-                                <g style={{ pointerEvents: 'none' }}>
-                                    <line x1={hoverData[s.id].x} y1="150" x2={hoverData[s.id].x} y2="20" stroke={s.color} strokeWidth="1" opacity="0.6" strokeDasharray="2,2" />
-                                    <circle cx={hoverData[s.id].x} cy={150 - (hoverData[s.id].load * 1.3)} r="5" fill="#020617" stroke="#fff" strokeWidth="2" />
-                                    <g transform={`translate(${hoverData[s.id].x > 320 ? -70 : 10}, 0)`}>
-                                        <rect x={hoverData[s.id].x} y="30" width="65" height="40" rx="4" fill="#1e293b" className="shadow-lg" />
-                                        <text x={hoverData[s.id].x + 32.5} y="45" fill="#fff" fontSize="10" fontWeight="bold" textAnchor="middle">{hoverData[s.id].time}</text>
-                                        <text x={hoverData[s.id].x + 32.5} y="60" fill={s.color} fontSize="9" fontWeight="bold" textAnchor="middle">load: {hoverData[s.id].load}%</text>
-                                    </g>
-                                </g>
-                            )}
+                         {/* Peak indicators for 'Human Understanding' */}
+                         {s.id === 'ag' ? (
+                             <g transform="translate(300, 20)">
+                                 <circle r="4" fill="#ef4444" className="pulse-dot" />
+                                 <text y="-8" fill="#ef4444" fontSize="7" fontWeight="bold" textAnchor="middle">PEAK FILL</text>
+                             </g>
+                         ) : (
+                             <g transform="translate(240, 90)">
+                                 <circle r="4" fill="#22c55e" className="pulse-dot" />
+                                 <text y="-8" fill="#22c55e" fontSize="7" fontWeight="bold" textAnchor="middle">MAX FLOW</text>
+                             </g>
+                         )}
 
-                            {['00:00', '04:00', '08:00', '12:00', '16:00', '20:00'].map((t, i) => (
-                                <text key={t} x={i * 80} y="170" fill="#475569" fontSize="9" textAnchor="middle">{t}</text>
-                            ))}
-                        </svg>
+                         {hoverData[s.id] && (
+                             <g style={{ pointerEvents: 'none' }}>
+                                 <line x1={hoverData[s.id].x} y1="150" x2={hoverData[s.id].x} y2="20" stroke={s.color} strokeWidth="1" opacity="0.6" strokeDasharray="2,2" />
+                                 <circle cx={hoverData[s.id].x} cy={150 - (hoverData[s.id].load * 1.3)} r="5" fill="#020617" stroke="#fff" strokeWidth="2" />
+                                 <g transform={`translate(${hoverData[s.id].x > 320 ? -85 : 10}, 0)`}>
+                                     <rect x={hoverData[s.id].x} y="30" width="80" height="50" rx="6" fill="#1e293b" className="shadow-lg border border-secondary border-opacity-20" />
+                                     <text x={hoverData[s.id].x + 40} y="45" fill="#94a3b8" fontSize="8" fontWeight="bold" textAnchor="middle">{hoverData[s.id].time}</text>
+                                     <text x={hoverData[s.id].x + 40} y="60" fill="#fff" fontSize="11" fontWeight="900" textAnchor="middle">
+                                         {hoverData[s.id].load}{s.id === 'ag' ? '%' : ' LPM'}
+                                     </text>
+                                     <text x={hoverData[s.id].x + 40} y="72" fill={hoverData[s.id].status === 'HIGH' ? '#ef4444' : '#22c55e'} fontSize="7" fontWeight="black" textAnchor="middle" letter-spacing="1">
+                                         {hoverData[s.id].status} RANGE
+                                     </text>
+                                 </g>
+                             </g>
+                         )}
+
+                         {['00:00', '06:00', '12:00', '18:00', '24:00'].map((t, i) => (
+                             <text key={t} x={i * 100} y="170" fill="#475569" fontSize="9" textAnchor={i === 4 ? "end" : "middle"}>{t}</text>
+                         ))}
+                    </svg>
+                </div>
+
+                <div className="d-flex justify-content-between pt-4 border-top border-secondary border-opacity-10 mt-3">
+                    <div className="text-start">
+                        <small className="text-muted d-block mb-1 fs-10 fw-bold uppercase letter-spacing-1">{s.id === 'ag' ? 'Rooftop Storage' : 'Network Health'}</small>
+                        <span className="text-white fs-8 fw-black">{s.id === 'ag' ? 'STABLE SUPPLY' : 'ACTIVE MONITORING'}</span>
                     </div>
-
-                    <div className="d-flex justify-content-between pt-4 border-top border-secondary border-opacity-10">
-                        <div className="text-start">
-                            <small className="text-muted fs-10 d-block mb-1 fw-bold uppercase">System Capacity</small>
-                            <span className="text-white fs-8 fw-black">OPERATIONAL</span>
-                        </div>
-                        <div className="text-center">
-                            <Badge bg="info" className="bg-opacity-10 text-info border border-info border-opacity-20 px-3 py-1 fs-10">REAL-TIME TELEMETRY</Badge>
-                        </div>
-                        <div className="text-end">
-                            <small className="text-muted fs-10 d-block mb-1 fw-bold uppercase">Peak Load</small>
-                            <span className="text-info fs-8 fw-black">85% @ 08:00</span>
-                        </div>
+                    <div className="text-center">
+                        <Badge bg="info" className="bg-opacity-10 text-info border border-info border-opacity-20 px-3 py-1 fs-10 fw-bold uppercase">LIVE FEED</Badge>
                     </div>
-                  </>
-                ) : (
-                  <Row className="align-items-center">
-                    <Col md={7}>
-                        <div className="mb-4">
-                            <div className="d-flex justify-content-between align-items-end mb-2">
-                                <span className="text-secondary fs-9 fw-bold letter-spacing-1">AVERAGE NETWORK LEVEL</span>
-                                <span className="text-white fw-black fs-4">{s.level}%</span>
-                            </div>
-                            <ProgressBar variant="info" now={s.level} style={{ height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.05)' }} className="shadow-sm" />
-                        </div>
-                        <div className="d-flex gap-4">
-                            <div>
-                                <small className="text-muted d-block fs-10 fw-bold uppercase mb-1">TOTAL FLOW</small>
-                                <span className="text-white fw-bold fs-5">{s.flow}</span>
-                            </div>
-                            <div className="border-start border-secondary py-1 border-opacity-20 px-4">
-                                <small className="text-muted d-block fs-10 fw-bold uppercase mb-1">PUMPS</small>
-                                <span className="text-success fw-bold fs-5">{s.pumps}</span>
-                            </div>
-                        </div>
-                    </Col>
-                    <Col md={5} className="text-center">
-                        <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-secondary border-opacity-10 shadow-inner position-relative overflow-hidden">
-                            <div className="position-absolute top-0 end-0 p-2 opacity-10"><Activity size={48} /></div>
-                            <h2 className="display-5 fw-black text-white mb-0">{s.primaryStat}</h2>
-                            <small className="text-info fw-bold letter-spacing-2 fs-10">{s.statLabel}</small>
-                        </div>
-                    </Col>
-                  </Row>
-                )}
-
+                    <div className="text-end">
+                        <small className="text-muted d-block mb-1 fw-bold uppercase letter-spacing-1">Current Load</small>
+                        <span className="text-info fs-8 fw-black">{s.id === 'ag' ? 'High Capacity' : 'Normal Pressure'}</span>
+                    </div>
+                </div>
                 <div className="mt-4 pt-3 border-top border-secondary border-opacity-10 d-flex justify-content-between align-items-center">
-                   <div className="d-flex align-items-center gap-2 text-success">
-                      <ShieldCheck size={16} />
-                      <span className="fs-9 fw-bold">ALL ASSETS REPORTING HEALTHY</span>
+                   <div className="d-flex flex-column gap-1">
+                      <div className="d-flex align-items-center gap-2 text-success">
+                         <ShieldCheck size={16} />
+                         <span className="fs-9 fw-bold">ALL ASSETS REPORTING HEALTHY</span>
+                      </div>
+                      <small className="text-secondary opacity-50 fs-11 fw-bold">
+                        {s.id === 'ag' ? 'SYSTEM MAINTAINS OPTIMAL ROOFTOP HEAD PRESSURE' : 'ENSURING FIRE-SAFETY AND DOMESTIC BUFFER'}
+                      </small>
                    </div>
                    <div className="navigate-badge d-flex align-items-center gap-2 text-info opacity-75">
                       <span className="fs-9 fw-bold">VIEW NETWORK MAP</span>
@@ -276,8 +324,6 @@ const WaterOverview = () => {
       </h5>
       <Row className="g-4">
         {[
-            { label: 'DAILY CONSUMPTION', value: '42,500 L', trend: '+2.4%', color: 'text-info' },
-            { label: 'PEAK FLOW RATE', value: '55.2 LPS', trend: '-0.8%', color: 'text-warning' },
             { label: 'SYSTEM PRESSURE', value: '4.2 BAR', trend: 'STABLE', color: 'text-success' },
             { label: 'POWER DRAW', value: '18.4 kW', trend: '+1.5%', color: 'text-primary' },
         ].map((m, i) => (
@@ -298,6 +344,7 @@ const WaterOverview = () => {
         .interactive-overview-card:hover { transform: translateY(-8px); border: 1px solid rgba(56, 189, 248, 0.3) !important; }
         .interactive-overview-card:hover .navigate-badge { transform: translateX(4px); opacity: 1 !important; }
         .fw-black { font-weight: 900 !important; }
+        .fs-11 { font-size: 0.55rem; }
         .letter-spacing-1 { letter-spacing: 1px; }
         .letter-spacing-2 { letter-spacing: 2px; }
         .fs-10 { font-size: 0.65rem; }
@@ -307,6 +354,7 @@ const WaterOverview = () => {
         .cursor-crosshair { cursor: crosshair; }
         @keyframes draw-spark { to { stroke-dashoffset: 0; } }
         .tracking-tight { letter-spacing: -1px; }
+        .gateway-monitor { backdrop-filter: blur(10px); }
       `}} />
     </div>
   );
