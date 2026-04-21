@@ -118,7 +118,7 @@ const AgTank = () => {
   });
 
   const getTankColor = (type, level, status, valveStatus) => {
-    if (valveStatus === 'CLOSE') return '#475569'; // Gray when supply is closed
+    if (valveStatus === 'CLOSE') return '#71717a'; // Brighter visible gray when supply is closed
     if (status === 'Fault') return '#ef4444';
     if (level < 20) return '#f59e0b';
     return type === 'DOMESTIC' ? '#38bdf8' : '#10b981';
@@ -208,12 +208,15 @@ const AgTank = () => {
           {filteredTanks.map((tank) => (
             <Col key={tank.id} xs={isFullscreen ? 2 : 3} md={isFullscreen ? 1 : 2} lg={isFullscreen ? 1 : 1}>
               <div
-                className={`tank-unit-wrapper p-2 rounded text-center position-relative ${tank.valveStatus === 'CLOSE' || tank.status === 'Stopped' ? 'tank-stopped-tint' : ''} ${isFullscreen ? 'expanded-unit' : ''}`}
+                className={`tank-unit-wrapper p-2 rounded text-center position-relative ${tank.status === 'Stopped' ? 'tank-stopped-outline' : ''} ${isFullscreen ? 'expanded-unit' : ''}`}
                 onClick={() => handleTankClick(tank)}
                 style={{ cursor: 'pointer' }}
               >
                 <div className="tank-assembly-anchor mx-auto position-relative" style={{ width: isFullscreen ? '48px' : '36px' }}>
-                  <div className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''} ${tank.valveStatus === 'CLOSE' ? 'vessel-closed-state' : ''} ${tank.status === 'Stopped' ? 'vessel-stopped' : ''}`}>
+                  <div 
+                    className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''} ${tank.valveStatus === 'CLOSE' ? 'vessel-closed-state' : ''} ${tank.status === 'Stopped' ? 'vessel-stopped' : ''}`}
+                    style={{ borderColor: tank.valveStatus === 'OPEN' ? (tank.type === 'DOMESTIC' ? '#38bdf8' : '#10b981') : '#475569' }}
+                  >
                     <div className="tank-fill" style={{ height: `${tank.level}%`, backgroundColor: getTankColor(tank.type, tank.level, tank.status, tank.valveStatus) }}>
                       <div className="tank-water-wave"></div>
                     </div>
@@ -236,7 +239,9 @@ const AgTank = () => {
                     </div>
                   )}
                 </div>
-                <div className={`fw-bold text-white mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>#{tank.id}</div>
+                <div className={`fw-bold text-white mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
+                  {tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{tank.id}
+                </div>
                 <div className={`opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`} style={{ color: getTankColor(tank.type, tank.level, tank.status, tank.valveStatus) }}>{tank.level}%</div>
               </div>
             </Col>
@@ -246,10 +251,9 @@ const AgTank = () => {
 
       <style dangerouslySetInnerHTML={{
         __html: `
-        .fullscreen-scada-page { background-color: #111827 !important; min-height: 100vh !important; width: 100% !important; overflow-y: scroll !important; padding: 40px !important; }
         .tank-unit-wrapper { transition: all 0.3s ease; }
-        .tank-stopped-tint { filter: grayscale(0.8) opacity(0.6); }
-        .vessel-stopped { border-style: dashed !important; opacity: 0.5; }
+        .tank-stopped-outline { border: 1px dashed rgba(255,255,255,0.1); }
+        .vessel-stopped { border-style: dashed !important; opacity: 0.7; }
         .valve-inactive { color: #475569 !important; filter: none !important; }
         .expanded-unit { transform: scale(1.35); margin-bottom: 25px; }
         .vessel-large { width: 48px !important; height: 62px !important; border-width: 3px !important; }
@@ -260,7 +264,7 @@ const AgTank = () => {
         .filter-tile.active.all { border-bottom: 4px solid #94a3b8; background-color: rgba(148, 163, 184, 0.1); }
         .status-filter-card:hover { transform: translateY(-2px); background-color: rgba(255,255,255,0.02); }
         .status-filter-card.active { border-bottom-width: 4px !important; background-color: rgba(255,255,255,0.05); }
-        .tank-vessel { width: 36px; height: 50px; border: 2px solid #475569; border-radius: 4px; background: #0c121e; position: relative; overflow: hidden; transition: 0.4s; }
+        .tank-vessel { width: 36px; height: 50px; border: 3px solid #475569; border-radius: 6px; background: #0c121e; position: relative; overflow: hidden; transition: 0.4s; box-shadow: 0 0 10px rgba(0,0,0,0.3); }
         .vessel-closed-state { background: #1e293b !important; border-color: #334155 !important; }
         .tank-fill { position: absolute; bottom: 0; left: 0; width: 100%; transition: height 1s; }
         .tank-water-wave { position: absolute; top: -4px; width: 100%; height: 8px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 28'%3E%3Cpath d='M0 28h120V12C90 12 90 0 60 0S30 12 0 12z' fill='rgba(255,255,255,0.2)'/%3E%3C/svg%3E"); background-size: 30px 8px; animation: ag-wave 2s linear infinite; }
@@ -294,7 +298,11 @@ const AgTank = () => {
       <Modal show={showValveModal} onHide={() => setShowValveModal(false)} centered size="lg" contentClassName="bg-dark border-secondary shadow-lg custom-modal-wide">
         {selectedTank && (
           <Modal.Body className="p-5 text-white">
-            <div className="text-center mb-4"><h5 className="fw-bold text-info">TANK #{selectedTank.id} CONTROL </h5></div>
+            <div className="text-center mb-4">
+              <h5 className="fw-bold text-info">
+                {selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{selectedTank.id} CONTROL
+              </h5>
+            </div>
 
             <div className="d-flex justify-content-between align-items-center p-3 rounded-4 bg-black bg-opacity-50 border border-secondary mb-4">
               <div className="fw-bold fs-9">AUTO / MANUAL OVERRIDE</div>
