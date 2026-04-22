@@ -123,11 +123,10 @@ const AgTank = () => {
     return matchesSector && matchesStatus;
   });
 
-  const getTankColor = (type, level, status, valveStatus) => {
-    if (valveStatus === 'CLOSE') return '#71717a'; // Gray inside when closed
+  const getTankColor = (type, level, status) => {
     if (status === 'Fault') return '#ef4444';
     if (level < 20) return '#f59e0b';
-    return '#38bdf8'; // Constant Blue inside when open
+    return '#38bdf8'; // Constant Blue inside
   };
 
   const handleTankClick = (tank) => {
@@ -233,7 +232,7 @@ const AgTank = () => {
       <div className={`scada-card ${isFullscreen ? 'p-5' : 'p-4'}`}>
         <Row className="g-4">
           {filteredTanks.map((tank) => (
-            <Col key={tank.id} xs={6} sm={4} md={isFullscreen ? 2 : 2} lg={1} className={isFullscreen ? 'col-fs-2' : ''}>
+            <Col key={tank.id} xs={6} sm={4} md={isFullscreen ? 4 : 2} lg={isFullscreen ? 2 : 1} className={isFullscreen ? 'col-fs-2' : ''}>
               <div
                 className={`tank-unit-wrapper p-2 rounded text-center position-relative ${tank.status === 'Stopped' ? 'tank-stopped-outline' : ''} ${isFullscreen ? 'expanded-unit' : ''}`}
                 onClick={() => handleTankClick(tank)}
@@ -241,10 +240,10 @@ const AgTank = () => {
               >
                 <div className="tank-assembly-anchor mx-auto position-relative" style={{ width: isFullscreen ? '48px' : '36px' }}>
                   <div 
-                    className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''} ${tank.valveStatus === 'CLOSE' ? 'vessel-closed-state' : ''} ${tank.status === 'Stopped' ? 'vessel-stopped' : ''}`}
+                    className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''}`}
                     style={{ borderColor: '#475569' }}
                   >
-                    <div className="tank-fill" style={{ height: `${tank.level}%`, backgroundColor: getTankColor(tank.type, tank.level, tank.status, tank.valveStatus) }}>
+                    <div className="tank-fill" style={{ height: `${tank.level}%`, backgroundColor: getTankColor(tank.type, tank.level, tank.status) }}>
                       <div className="tank-water-wave"></div>
                     </div>
                     {/* Visual Threshold Markers */}
@@ -254,8 +253,8 @@ const AgTank = () => {
                   <div className="valve-connector-pipe"></div>
                   <div className={`industrial-valve-node ${tank.valveStatus === 'OPEN' ? 'valve-open' : 'valve-closed'}`}>
                     {/* Mode Indicator A/M */}
-                    <div className="valve-mode-pill">
-                      {tank.valveMode === 'AUTO' ? 'A' : 'M'}
+                    <div className={`valve-mode-pill mode-${tank.valveMode.toLowerCase()}`}>
+                      {tank.valveMode === 'AUTO' ? 'A' : tank.valveMode === 'MANUAL' ? 'M' : 'B'}
                     </div>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                       <path d="M4 6L20 18V6L4 18V6Z" 
@@ -277,7 +276,7 @@ const AgTank = () => {
                 <div className={`fw-bold text-white mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
                   {tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{tank.id}
                 </div>
-                <div className={`opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`} style={{ color: getTankColor(tank.type, tank.level, tank.status, tank.valveStatus) }}>{tank.level}%</div>
+                <div className={`opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`} style={{ color: getTankColor(tank.type, tank.level, tank.status) }}>{tank.level}%</div>
               </div>
             </Col>
           ))}
@@ -360,7 +359,7 @@ const AgTank = () => {
         
         .tank-stopped-outline { border: 1px dashed rgba(255,255,255,0.1); }
         .vessel-stopped { opacity: 0.6; grayscale: 100%; filter: grayscale(1); }
-        .expanded-unit { transform: scale(1.6); margin-bottom: 60px; margin-top: 20px; }
+        .expanded-unit { transform: scale(1.15); margin-bottom: 80px; margin-top: 40px; }
         .vessel-large { width: 48px !important; height: 68px !important; border-width: 3px !important; }
         .vessel-closed-state { background: #1e293b !important; border-color: #334155 !important; }
 
@@ -408,7 +407,11 @@ const AgTank = () => {
             justify-content: center;
             border: 1px solid #334155;
             z-index: 20;
+            transition: all 0.3s ease;
         }
+        .valve-mode-pill.mode-auto { color: #38bdf8; border-color: rgba(56, 189, 248, 0.3); }
+        .valve-mode-pill.mode-manual { color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); }
+        .valve-mode-pill.mode-bypass { color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
 
         .threshold-marker {
             position: absolute;
@@ -490,12 +493,21 @@ const AgTank = () => {
                    <div className="fw-black fs-10 tracking-widest text-secondary uppercase">Control Strategy</div>
                    <div className="text-white fw-bold fs-6">AUTO / MANUAL OVERRIDE</div>
                 </div>
-                <div className="d-flex align-items-center gap-3">
-                  <span className={`fs-11 fw-black tracking-widest ${selectedTank.valveMode === 'MANUAL' ? 'text-warning text-glow' : 'text-muted opacity-50'}`}>MANUAL</span>
-                  <div className="mode-toggle-switch" onClick={() => updateTankValve(selectedTank.id, { valveMode: selectedTank.valveMode === 'AUTO' ? 'MANUAL' : 'AUTO' })}>
-                    {selectedTank.valveMode === 'AUTO' ? <ToggleRight className="text-info" size={36} /> : <ToggleLeft className="text-muted" size={36} />}
-                  </div>
-                  <span className={`fs-11 fw-black tracking-widest ${selectedTank.valveMode === 'AUTO' ? 'text-info text-glow' : 'text-muted opacity-50'}`}>AUTO</span>
+                <div className="d-flex align-items-center gap-1 bg-dark bg-opacity-80 p-1 rounded-pill border border-white border-opacity-10 shadow-inner">
+                  {['AUTO', 'MANUAL', 'BYPASS'].map(mode => (
+                    <div 
+                      key={mode}
+                      onClick={() => updateTankValve(selectedTank.id, { valveMode: mode })}
+                      className={`px-4 py-2 rounded-pill fw-black tracking-widest transition-all cursor-pointer ${
+                        selectedTank.valveMode === mode 
+                          ? 'bg-info text-white shadow-lg scale-105' 
+                          : 'text-secondary opacity-40 hover-opacity-100 hover-white'
+                      }`}
+                      style={{ fontSize: '11px', letterSpacing: '1px', cursor: 'pointer' }}
+                    >
+                      {mode}
+                    </div>
+                  ))}
                 </div>
               </div>
 
@@ -544,7 +556,7 @@ const AgTank = () => {
                   <Col xs={6}>
                     <button 
                       className={`premium-action-btn open w-100 ${selectedTank.valveStatus === 'OPEN' ? 'active' : ''}`}
-                      disabled={selectedTank.valveMode === 'AUTO'}
+                      disabled={selectedTank.valveMode === 'AUTO' || selectedTank.valveMode === 'BYPASS'}
                       style={{ padding: '12px' }}
                       onClick={() => updateTankValve(selectedTank.id, { valveStatus: 'OPEN' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
@@ -558,7 +570,7 @@ const AgTank = () => {
                   <Col xs={6}>
                     <button 
                       className={`premium-action-btn close w-100 ${selectedTank.valveStatus === 'CLOSE' ? 'active' : ''}`}
-                      disabled={selectedTank.valveMode === 'AUTO'}
+                      disabled={selectedTank.valveMode === 'AUTO' || selectedTank.valveMode === 'BYPASS'}
                       style={{ padding: '12px' }}
                       onClick={() => updateTankValve(selectedTank.id, { valveStatus: 'CLOSE' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
