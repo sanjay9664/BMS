@@ -1,5 +1,5 @@
 import React from 'react';
-import { Card, Table, Button, Badge } from 'react-bootstrap';
+import { Row, Col, Card, Table, Button, Badge } from 'react-bootstrap';
 import { ShieldAlert, CheckCircle, Clock, Filter } from 'lucide-react';
 import DataTable from '../../components/DataTable';
 import StatusBadge from '../../components/StatusBadge';

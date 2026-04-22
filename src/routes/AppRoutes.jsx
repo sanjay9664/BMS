@@ -11,6 +11,7 @@ import TransformerOverview from '../pages/Transformer/Overview';
 import Settings from '../pages/Settings/Settings';
 import AgTank from '../pages/WaterManagement/AgTank';
 import UgTank from '../pages/WaterManagement/UgTank';
+import MotorsOverview from '../pages/Motors/Overview';
 import TicketingSystem from '../pages/Ticketing/Index';
 
 // Fallback for other routes until customized
@@ -66,7 +67,7 @@ const AppRoutes = () => {
       <Route path="/water-management/report" element={<PlaceholderPage title="Water Management PDF Reports" />} />
 
       {/* Motors */}
-      <Route path="/motors/overview" element={<PlaceholderPage title="Motors Overview" />} />
+      <Route path="/motors/overview" element={<MotorsOverview />} />
       <Route path="/motors/room1" element={<PlaceholderPage title="Pump Room 1" />} />
       <Route path="/motors/room2" element={<PlaceholderPage title="Pump Room 2" />} />
       <Route path="/motors/status" element={<PlaceholderPage title="VFD / DOL Status" />} />

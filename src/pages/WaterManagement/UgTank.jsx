@@ -1,10 +1,11 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Row, Col, Card, Button, Form, Badge, Modal } from 'react-bootstrap';
-import { Activity, Zap, ShieldCheck, Info, Droplets, ToggleRight, ToggleLeft, Layers, Maximize, Minimize, XCircle } from 'lucide-react';
+import { Activity, Zap, ShieldCheck, Info, Droplets, ToggleRight, ToggleLeft, Layers, Maximize, Minimize, XCircle, X } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
 
 const UgTank = () => {
   const [activeStation, setActiveStation] = useState(1);
+  const [controlMode, setControlMode] = useState('REMOTE');
   const [pulseTrigger, setPulseTrigger] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const pageRef = useRef(null);
@@ -174,8 +175,18 @@ const UgTank = () => {
               <div className="station-label-header p-3 border-bottom border-secondary border-opacity-10 d-flex justify-content-between align-items-center">
                 <div className="text-white fw-bold fs-7 letter-spacing-2">UNIT STATION #0{activeStation} MONITORING</div>
                 <div className="d-flex align-items-center gap-5">
+                  <div className="text-center pe-5 border-end border-secondary border-opacity-20 d-none d-md-block">
+                    <small className="text-secondary d-block fs-11 fw-bold uppercase mb-1">Station mode</small>
+                    <div className="d-flex align-items-center gap-2 bg-black bg-opacity-40 p-1 px-2 rounded-pill border border-secondary border-opacity-20">
+                       <span className={`fs-11 fw-black ${controlMode === 'LOCAL' ? 'text-warning' : 'text-muted'}`}>LOCAL</span>
+                       <div onClick={() => setControlMode(controlMode === 'REMOTE' ? 'LOCAL' : 'REMOTE')} style={{ cursor: 'pointer' }}>
+                          {controlMode === 'REMOTE' ? <ToggleRight className="text-info" size={24} /> : <ToggleLeft className="text-muted" size={24} />}
+                       </div>
+                       <span className={`fs-11 fw-black ${controlMode === 'REMOTE' ? 'text-info' : 'text-muted'}`}>REMOTE</span>
+                    </div>
+                  </div>
                   <div className="text-center">
-                    <small className="text-secondary d-block fs-10 fw-bold">PRESSURE</small>
+                    <small className="text-secondary d-block fs-10 fw-bold uppercase">PRESSURE</small>
                     <span className="text-white fw-black fs-4">{masterPressureValue.toFixed(1)} <small className="fs-9 text-info">BAR</small></span>
                   </div>
                   <div className="text-center border-start border-secondary border-opacity-20 ps-5">
@@ -185,9 +196,9 @@ const UgTank = () => {
                 </div>
               </div>
 
-              <div style={{ minWidth: '1200px', height: isFullscreen ? '850px' : '620px', padding: '40px' }}>
-                <svg width="1200" height={isFullscreen ? "800" : "540"} viewBox="0 0 1200 540" preserveAspectRatio="xMidYMid meet"
-                  style={{ transformOrigin: 'top left', transform: isFullscreen ? 'scale(1.1) translateY(20px)' : 'none', transition: 'all 0.5s ease' }}>
+              <div className="scada-schematic-wrapper" style={{ width: '100%', height: isFullscreen ? '850px' : 'auto', minHeight: '520px', padding: isFullscreen ? '40px' : '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <svg width="100%" height="100%" viewBox="0 0 1200 540" preserveAspectRatio="xMidYMid meet"
+                  style={{ maxWidth: '1200px', transition: 'all 0.5s ease' }}>
 
                   <defs>
                     <pattern id="thickGrid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M 100 0 L 0 0 0 100" fill="none" stroke="rgba(255,255,255,0.01)" strokeWidth="1" /></pattern>
@@ -285,7 +296,7 @@ const UgTank = () => {
                         <g transform={`translate(540, ${y + 5})`}>
                           <rect width="200" height="60" rx="8" fill="#0f172a" fillOpacity="0.9" stroke="#1e293b" strokeWidth="2" />
                           <text x="14" y="20" fill="#94a3b8" fontSize="9" fontWeight="bold">PUMP P{p.id}</text>
-                          <text x="14" y="44" fill={active ? "#22c55e" : "#475569"} fontSize="17" fontWeight="900">{p.status.toUpperCase()}</text>
+                          <text x="14" y="44" fill={active ? "#22c55e" : "#475569"} fontSize="16" fontWeight="900">{p.status.toUpperCase()} <tspan fill={p.mode === 'AUTO' ? '#38bdf8' : '#f59e0b'} fontSize="10" dy="-1">| {p.mode}</tspan></text>
                           <g transform="translate(165, 30)" style={{ cursor: 'pointer' }} onClick={(e) => openLimitSettings(e, p)}>
                             <circle r="22" fill="#111827" stroke="#334155" strokeWidth="1.5" />
 
@@ -457,6 +468,102 @@ const UgTank = () => {
         </Col>
       </Row>
 
+      <Modal show={showPumpModal} onHide={() => setShowPumpModal(false)} centered size="lg" contentClassName="bg-transparent border-0 shadow-2xl custom-modal-wide">
+        {selectedPump && (
+          <Modal.Body className="p-0 text-white overflow-hidden rounded-5" style={{ background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            
+            {/* Modal Header Bar */}
+            <div className="p-4 text-center border-bottom border-white border-opacity-10" style={{ background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, transparent 100%)' }}>
+               <Badge bg="info" className="bg-opacity-10 text-info px-3 py-1 mb-2 border border-info border-opacity-25 rounded-pill">
+                  <div className="d-flex align-items-center gap-2 fs-12 fw-black tracking-widest uppercase">
+                    <Activity size={10} className="pulse-icon" /> Station Controller
+                  </div>
+               </Badge>
+               <h3 className="fw-black text-white mb-0 size-3 tracking-tighter" style={{ textShadow: '0 0 20px rgba(56, 189, 248, 0.3)' }}>
+                 PUMP STATION <span className="text-info-scada">P{selectedPump.id}</span>
+               </h3>
+            </div>
+
+            <div className="p-4 px-5">
+              {/* Mode Control Section */}
+              <div className="d-flex justify-content-between align-items-center p-3 rounded-4 position-relative overflow-hidden mb-3" 
+                   style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <div className="position-absolute top-0 start-0 h-100 w-1 bg-info bg-opacity-50"></div>
+                <div>
+                   <div className="fw-black fs-10 tracking-widest text-secondary uppercase">System Mode</div>
+                   <div className="text-white fw-bold fs-6">AUTO / MANUAL OVERRIDE</div>
+                </div>
+                <div className="d-flex align-items-center gap-3">
+                  <span className={`fs-11 fw-black tracking-widest ${selectedPump.mode === 'MANUAL' ? 'text-warning text-glow' : 'text-muted opacity-50'}`}>MANUAL</span>
+                  <div className="mode-toggle-switch" onClick={() => handlePumpControl(selectedPump.id, { mode: selectedPump.mode === 'AUTO' ? 'MANUAL' : 'AUTO' })}>
+                    {selectedPump.mode === 'AUTO' ? <ToggleRight className="text-info" size={36} /> : <ToggleLeft className="text-muted" size={36} />}
+                  </div>
+                  <span className={`fs-11 fw-black tracking-widest ${selectedPump.mode === 'AUTO' ? 'text-info text-glow' : 'text-muted opacity-50'}`}>AUTO</span>
+                </div>
+              </div>
+
+              {/* Action Section */}
+              <div className="mb-4">
+                <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-2 uppercase text-center w-100">Pump Commutation commands</Form.Label>
+                <Row className="g-3">
+                  <Col xs={6}>
+                    <button 
+                      className={`premium-action-btn open w-100 ${selectedPump.status === 'Running' ? 'active' : ''}`}
+                      disabled={selectedPump.mode === 'AUTO'}
+                      style={{ padding: '16px' }}
+                      onClick={() => handlePumpControl(selectedPump.id, { status: 'Running', hz: '50.0' })}>
+                      <div className="d-flex align-items-center justify-content-center gap-2">
+                         <Zap size={20} />
+                         <div>
+                            <div className="btn-label fs-5">START PUMP</div>
+                         </div>
+                      </div>
+                    </button>
+                  </Col>
+                  <Col xs={6}>
+                    <button 
+                      className={`premium-action-btn close w-100 ${selectedPump.status === 'Stopped' ? 'active' : ''}`}
+                      disabled={selectedPump.mode === 'AUTO'}
+                      style={{ padding: '16px' }}
+                      onClick={() => handlePumpControl(selectedPump.id, { status: 'Stopped', hz: '0.0' })}>
+                      <div className="d-flex align-items-center justify-content-center gap-2">
+                         <X size={20} />
+                         <div>
+                            <div className="btn-label fs-5">STOP PUMP</div>
+                         </div>
+                      </div>
+                    </button>
+                  </Col>
+                </Row>
+              </div>
+
+              {actionFeedback && (
+                <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2" 
+                     style={{ 
+                       backgroundColor: actionFeedback.includes('DENIED') ? '#7f1d1d' : '#064e3b', 
+                       zIndex: 1000, 
+                       boxShadow: actionFeedback.includes('DENIED') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)' 
+                     }}>
+                    <div className="bg-white rounded-circle p-2 mb-2">
+                       {actionFeedback.includes('DENIED') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
+                    </div>
+                    <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
+                </div>
+              )}
+            </div>
+
+            <div className="p-3 border-top border-white border-opacity-5 text-center bg-black bg-opacity-20 d-flex justify-content-between align-items-center">
+              <div className="d-flex align-items-center gap-2 text-muted fs-12 fw-bold tracking-widest">
+                 <ShieldCheck size={14} className="text-success" /> SECURE STATION LINK
+              </div>
+              <Button variant="link" className="text-secondary fs-12 fw-black text-decoration-none hover-white transition-all uppercase tracking-widest" onClick={() => setShowPumpModal(false)}>
+                Dismiss Panel
+              </Button>
+            </div>
+          </Modal.Body>
+        )}
+      </Modal>
+
       <Modal show={showLimitModal} onHide={() => setShowLimitModal(false)} centered contentClassName="bg-dark border-secondary shadow-lg">
         {selectedPump && (
           <Modal.Body className="p-4 text-white">
@@ -481,68 +588,6 @@ const UgTank = () => {
         )}
       </Modal>
 
-      <Modal show={showPumpModal} onHide={() => setShowPumpModal(false)} centered contentClassName="bg-dark border-secondary shadow-lg">
-        {selectedPump && (
-          <Modal.Body className="p-4 text-white">
-            <div className="text-center mb-4"><h5 className="fw-bold text-info">PUMP P{selectedPump.id} </h5></div>
-
-            <div className="d-flex justify-content-between align-items-center p-3 rounded-4 bg-black bg-opacity-50 border border-secondary mb-4">
-              <div className="fw-bold">SYSTEM MODE</div>
-              <div className="d-flex align-items-center gap-2">
-                <span className={`fs-9 fw-bold ${selectedPump.mode === 'MANUAL' ? 'text-info' : 'text-muted opacity-50'}`}>MANUAL</span>
-                <div onClick={() => handlePumpControl(selectedPump.id, { mode: selectedPump.mode === 'AUTO' ? 'MANUAL' : 'AUTO' })} style={{ cursor: 'pointer' }}>
-                  {selectedPump.mode === 'AUTO' ? <ToggleRight className="text-info" size={36} /> : <ToggleLeft className="text-muted" size={36} />}
-                </div>
-                <span className={`fs-9 fw-bold ${selectedPump.mode === 'AUTO' ? 'text-info' : 'text-muted opacity-50'}`}>AUTO</span>
-              </div>
-            </div>
-            <Row className="g-3">
-              <Col xs={6}>
-                <Button
-                  className="w-100 py-3 fw-bold border-0"
-                  style={{
-                    backgroundColor: selectedPump.status === 'Running' ? '#22c55e' : 'rgba(34, 197, 94, 0.1)',
-                    color: selectedPump.status === 'Running' ? '#fff' : '#22c55e',
-                    border: '1px solid #22c55e !important'
-                  }}
-                  disabled={selectedPump.mode === 'AUTO'}
-                  onClick={() => handlePumpControl(selectedPump.id, { status: 'Running', hz: '50.0' })}>
-                  START
-                </Button>
-              </Col>
-              <Col xs={6}>
-                <Button
-                  className="w-100 py-3 fw-bold border-0"
-                  style={{
-                    backgroundColor: selectedPump.status === 'Stopped' ? '#ef4444' : 'rgba(239, 68, 68, 0.1)',
-                    color: selectedPump.status === 'Stopped' ? '#fff' : '#ef4444',
-                    border: '1px solid #ef4444 !important'
-                  }}
-                  disabled={selectedPump.mode === 'AUTO'}
-                  onClick={() => handlePumpControl(selectedPump.id, { status: 'Stopped', hz: '0.0' })}>
-                  STOP
-                </Button>
-              </Col>
-            </Row>
-
-            {actionFeedback && (
-              <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border border-white border-opacity-10 d-flex flex-column align-items-center gap-2"
-                style={{
-                  backgroundColor: actionFeedback.includes('DENIED') ? '#7f1d1d' : '#064e3b',
-                  zIndex: 1000,
-                  boxShadow: actionFeedback.includes('DENIED') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)'
-                }}>
-                <div className="bg-white rounded-circle p-2 mb-2">
-                  {actionFeedback.includes('DENIED') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
-                </div>
-                <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
-                <small className="text-white opacity-80 fw-bold">{actionFeedback.includes('DENIED') ? 'SECURITY PROTOCOL ACTIVE' : 'SYSTEM RESPONSE LOGGED'}</small>
-              </div>
-            )}
-          </Modal.Body>
-        )}
-      </Modal>
-
       <style dangerouslySetInnerHTML={{
         __html: `
         .fullscreen-scada-page { background-color: #111827 !important; min-height: 100vh !important; width: 100% !important; padding: 40px !important; overflow-y: scroll !important; }
@@ -550,7 +595,35 @@ const UgTank = () => {
         .scada-selector-tile { background-color: #0c121e; cursor: pointer; transition: all 0.3s ease; }
         .scada-selector-tile.active-station { background-color: #0d1525; border-color: #38bdf8 !important; }
         .text-info { color: #38bdf8 !important; }
+        .text-glow { text-shadow: 0 0 10px currentColor; }
+        .text-info-scada { color: #38bdf8; }
         .fw-black { font-weight: 900 !important; }
+        .premium-action-btn { 
+            padding: 16px; 
+            border-radius: 12px; 
+            border: 1px solid rgba(255,255,255,0.1); 
+            background: rgba(255,255,255,0.02); 
+            color: #94a3b8; 
+            transition: all 0.3s ease; 
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .premium-action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .premium-action-btn .btn-label { font-size: 12px; font-weight: 900; letter-spacing: 1px; }
+        
+        .premium-action-btn.open.active { background: rgba(34, 197, 94, 0.15); border-color: #22c55e; color: #22c55e; box-shadow: 0 0 20px rgba(34, 197, 94, 0.1); }
+        .premium-action-btn.open:hover:not(:disabled) { background: rgba(34, 197, 94, 0.1); border-color: #22c55e; color: #22c55e; }
+        
+        .premium-action-btn.close.active { background: rgba(239, 68, 68, 0.15); border-color: #ef4444; color: #ef4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.1); }
+        .premium-action-btn.close:hover:not(:disabled) { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: #ef4444; }
+
+        .pulse-icon { animation: ag-pulse 2s infinite; }
+        @keyframes ag-pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
+        .custom-modal-wide { width: 85% !important; max-width: 85% !important; }
+
         .fs-12 { font-size: 0.6rem; }
         .fs-11 { font-size: 0.75rem; }
         .fs-10 { font-size: 0.85rem; }
@@ -570,6 +643,20 @@ const UgTank = () => {
         .scale-in { animation: ug-scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         @keyframes ug-fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes ug-scaleIn { from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+        @media (max-width: 1200px) {
+            .scada-schematic-wrapper { padding: 10px !important; }
+            .station-label-header { padding: 10px !important; }
+            .fs-4 { font-size: 1.2rem !important; }
+        }
+
+        @media (max-width: 768px) {
+            .page-header h2 { font-size: 1.2rem; }
+            .scada-schematic-wrapper { min-height: 350px !important; padding: 5px !important; }
+            .station-label-header { flex-direction: column; align-items: flex-start !important; gap: 10px; }
+            .station-label-header .d-flex { gap: 20px !important; width: 100%; justify-content: space-between; }
+            .letter-spacing-2 { letter-spacing: 1px !important; font-size: 0.6rem !important; }
+        }
       `}} />
     </div>
   );
