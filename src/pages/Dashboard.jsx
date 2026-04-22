@@ -121,7 +121,7 @@ const Dashboard = () => {
             color="success"
             trend="up"
             trendValue="+2"
-            path={null}
+            path="/motors/overview"
           />
         </Col>
         <Col xl={3} md={6}>
