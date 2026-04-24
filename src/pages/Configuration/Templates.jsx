@@ -39,6 +39,8 @@ const ConfigTemplates = () => {
   const [ugStopPressConfig, setUgStopPressConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
   const [ugLocalModeConfig, setUgLocalModeConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
   const [ugRemoteModeConfig, setUgRemoteModeConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
+  const [ugPumpRange, setUgPumpRange] = useState({ name: '', id: '' });
+  const [ugTankLevelConfig, setUgTankLevelConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
   const [ugTankRange, setUgTankRange] = useState({ name: '', id: '' });
   const [pressureConfig, setPressureConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
   const [elecVoltageConfig, setElecVoltageConfig] = useState({ location: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
@@ -79,7 +81,7 @@ const ConfigTemplates = () => {
     id: `F-${String(i + 25).padStart(2, '0')}`
   }));
 
-  const ugTanksList = [
+  const ugPumpsList = [
     { name: 'FIRE RESERVOIR', id: 'UG-FIRE-01' },
     { name: 'DOMESTIC SUMP', id: 'UG-DOM-01' },
     { name: 'PROCESS TANK', id: 'UG-PROC-01' }
@@ -98,13 +100,13 @@ const ConfigTemplates = () => {
     { name: 'PUMP 02 METER', id: 'EM-P2' }
   ];
 
-  const handleUgTankChange = (name) => {
-    const tank = ugTanksList.find(t => t.name === name);
+  const handleUgPumpChange = (name) => {
+    const tank = ugPumpsList.find(t => t.name === name);
     if (tank) {
       const existing = savedTemplates.find(t => 
-        t.module === 'UG Tank' && 
-        t.mapping.ugTankRange && 
-        t.mapping.ugTankRange.name === name
+        t.module === 'UG Pump' && 
+        t.mapping.ugPumpRange && 
+        t.mapping.ugPumpRange.name === name
       );
 
       if (existing) {
@@ -131,6 +133,26 @@ const ConfigTemplates = () => {
         setUgLocalModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
         setUgRemoteModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
       }
+      setUgPumpRange({ name: tank.name, id: tank.id });
+    } else {
+      setUgPumpRange({ name: '', id: '' });
+    }
+  };
+
+  const handleUgTankChange = (name) => {
+    const tank = ugPumpsList.find(t => t.name === name);
+    if (tank) {
+      const existing = savedTemplates.find(t => 
+        t.module === 'UG Tank' && 
+        t.mapping.ugTankRange && 
+        t.mapping.ugTankRange.name === name
+      );
+
+      if (existing) {
+        setUgTankLevelConfig(existing.mapping.ugTankLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      } else {
+        setUgTankLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      }
       setUgTankRange({ name: tank.name, id: tank.id });
     } else {
       setUgTankRange({ name: '', id: '' });
@@ -153,7 +175,7 @@ const ConfigTemplates = () => {
   // Hierarchical Data Structure exactly matching the Sidebar
   const categories = {
     'Dashboard': ['Overview'],
-    'Water Management': ['Overview', 'AG Tank', 'UG Tank', 'Pressure', 'Electrical Parameter'],
+    'Water Management': ['Overview', 'AG Tank', 'UG Pump', 'UG Tank', 'Pressure', 'Electrical Parameter'],
     'Motors': ['Overview', 'Pump Room 1', 'Pump Room 2', 'VFD Status'],
     'DG Set': ['Overview', 'DG Set-1', 'DG Set-2', 'DG Set-3'],
     'Alarm System': ['Overview', 'Active Alarms', 'Alarm History'],
@@ -283,10 +305,11 @@ const ConfigTemplates = () => {
         agLevelConfig, agOpenConfig, agCloseConfig,
         ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
         ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
-        ugLocalModeConfig, ugRemoteModeConfig, ugTankRange, ugConfig,
+        ugLocalModeConfig, ugRemoteModeConfig, ugPumpRange, ugConfig,
         pressureConfig, pressureTarget,
         elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig, electricalTarget,
-        agTankType, agMasterEnabled
+        agTankType, agMasterEnabled,
+        ugTankLevelConfig, ugTankRange
       }
     };
 
@@ -297,8 +320,10 @@ const ConfigTemplates = () => {
       const globalIndex = savedTemplates.length + 1;
       
       let autoName = '';
-      if (selectedModule === 'UG Tank' && ugTankRange.name) {
-        autoName = `${ugTankRange.name} - UG TANK`;
+      if (selectedModule === 'UG Pump' && ugPumpRange.name) {
+        autoName = `${ugPumpRange.name} - UG PUMP`;
+      } else if (selectedModule === 'UG Tank' && ugTankRange.name) {
+        autoName = `${ugTankRange.name} - UG LEVEL`;
       } else if (selectedModule === 'AG Tank') {
         autoName = agTankRange.domStart || agTankRange.flushStart || 'AG TANK';
       } else {
@@ -340,6 +365,8 @@ const ConfigTemplates = () => {
     setElecCurrentConfig({ location: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
     setElecSystemConfig({ location: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
     setElecConsumptionConfig({ location: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+    setUgTankLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
+    setUgTankRange({ name: '', id: '' });
     setTemplateName('');
     setUgConfig({
       integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
@@ -403,9 +430,11 @@ const ConfigTemplates = () => {
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
         stationMode: 'REMOTE'
       });
-      setUgTankRange(template.mapping.ugTankRange || { name: '', id: '' });
+      setUgPumpRange(template.mapping.ugPumpRange || { name: '', id: '' });
       setPressureTarget(template.mapping.pressureTarget || '');
       setElectricalTarget(template.mapping.electricalTarget || '');
+      setUgTankLevelConfig(template.mapping.ugTankLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgTankRange(template.mapping.ugTankRange || { name: '', id: '' });
       setTemplateName(template.name || '');
     }
     setEditingTemplateId(template.id);
@@ -465,7 +494,7 @@ const ConfigTemplates = () => {
                 setUgStopPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setUgLocalModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setUgRemoteModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgTankRange({ name: '', id: '' });
+                setUgPumpRange({ name: '', id: '' });
                 
                 // Reset Others
                 setPressureConfig({ location: '', device: '', module: '', field: '', enabled: true });
@@ -490,7 +519,7 @@ const ConfigTemplates = () => {
                 setAgOpenConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setAgCloseConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setAgTankRange({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
-                setUgTankRange({ name: '', id: '' });
+                setUgPumpRange({ name: '', id: '' });
                 setViewMode('FORM');
               }}>
                 <Zap size={18} className="me-2" /> ADD NEW MAPPING
@@ -592,8 +621,8 @@ const ConfigTemplates = () => {
                         />
                         <Form.Check
                           type="radio"
-                          label="FLUSHING TANK"
-                          name="tankType"
+                          label="UG PUMP"
+                          name="ugPumpType"
                           id="radio-flushing"
                           className="scada-radio text-primary fw-black fs-11 uppercase"
                           checked={agTankType === 'FLUSHING'}
@@ -766,30 +795,30 @@ const ConfigTemplates = () => {
                     </Row>
                   </div>
                 </div>
-              ) : selectedModule === 'UG Tank' ? (
+              ) : selectedModule === 'UG Pump' ? (
                 <div className="config-form-container scale-in">
                   <div className="p-0 rounded-4 bg-black bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
                     <div className="p-3 border-bottom border-white border-opacity-5 bg-black bg-opacity-40 d-flex align-items-center justify-content-between">
                       <div className="d-flex align-items-center gap-2">
                         <Database className="text-success shadow-glow-green" size={18} />
-                        <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Tank Network Integration</h6>
+                        <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Pump Network Integration</h6>
                       </div>
                       <div className="d-flex align-items-center gap-3">
                          <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Select Asset First:</Form.Label>
                          <Form.Select 
                             className="premium-input p-2 fs-10 fw-bold border-success border-opacity-20" 
                             style={{ width: '220px' }}
-                            value={ugTankRange.name}
-                            onChange={(e) => handleUgTankChange(e.target.value)}
+                            value={ugPumpRange.name}
+                            onChange={(e) => handleUgPumpChange(e.target.value)}
                          >
                             <option value="">SELECT TANK UNIT</option>
-                            {ugTanksList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                            {ugPumpsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                          </Form.Select>
                       </div>
                     </div>
 
-                    <div className={`p-4 bg-black bg-opacity-20 ${!ugTankRange.name ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: ugTankRange.name ? 'auto' : 'none' }}>
-                      {!ugTankRange.name && (
+                    <div className={`p-4 bg-black bg-opacity-20 ${!ugPumpRange.name ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: ugPumpRange.name ? 'auto' : 'none' }}>
+                      {!ugPumpRange.name && (
                         <div className="position-absolute top-50 start-50 translate-middle z-3 text-center w-100">
                            <div className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-20 px-4 py-2 rounded-pill fs-11 fw-black tracking-widest">
                              <Info size={14} className="me-2" /> SELECT A TANK UNIT TO BEGIN MAPPING
@@ -846,6 +875,77 @@ const ConfigTemplates = () => {
                             </div>
                           </Col>
                         ))}
+                      </Row>
+                    </div>
+                  </div>
+                </div>
+              ) : selectedModule === 'UG Tank' ? (
+                <div className="config-form-container scale-in">
+                  <div className="p-0 rounded-4 bg-black bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-black bg-opacity-40 d-flex align-items-center justify-content-between">
+                      <div className="d-flex align-items-center gap-2">
+                        <Droplets className="text-info shadow-glow-blue" size={18} />
+                        <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Tank Level Integration <span className="opacity-40">(Hydrostatic / Ultrasonic)</span></h6>
+                      </div>
+                      <div className="d-flex align-items-center gap-3">
+                         <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Select Asset First:</Form.Label>
+                         <Form.Select 
+                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20" 
+                            style={{ width: '220px' }}
+                            value={ugTankRange.name}
+                            onChange={(e) => handleUgTankChange(e.target.value)}
+                         >
+                            <option value="">SELECT TANK UNIT</option>
+                            {ugPumpsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                         </Form.Select>
+                      </div>
+                    </div>
+
+                    <div className={`p-4 bg-black bg-opacity-20 ${!ugTankRange.name ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: ugTankRange.name ? 'auto' : 'none' }}>
+                      {!ugTankRange.name && (
+                        <div className="position-absolute top-50 start-50 translate-middle z-3 text-center w-100">
+                           <div className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-20 px-4 py-2 rounded-pill fs-11 fw-black tracking-widest">
+                             <Info size={14} className="me-2" /> SELECT A TANK UNIT TO BEGIN MAPPING
+                           </div>
+                        </div>
+                      )}
+                      <Row className="g-4 justify-content-center">
+                        <Col md={8}>
+                          <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-blue">
+                            <div className="card-inner-glow bg-info opacity-5"></div>
+                            <div className="mb-3 d-flex align-items-center justify-content-between">
+                              <div className="d-flex align-items-center gap-2">
+                                <div className="icon-box-premium info p-2">
+                                  <Layers size={18} />
+                                </div>
+                                <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">Water Level Mapping</h6>
+                              </div>
+                              <Form.Check
+                                type="switch"
+                                className="scada-switch success"
+                                checked={ugTankLevelConfig.enabled}
+                                onChange={(e) => setUgTankLevelConfig({ ...ugTankLevelConfig, enabled: e.target.checked })}
+                              />
+                            </div>
+                            <Row className="g-2 position-relative z-1">
+                              {[
+                                { label: 'Location', key: 'location', list: locations },
+                                { label: 'Device_ID', key: 'device', list: devices },
+                                { label: 'Module_ID', key: 'module', list: modules },
+                                { label: 'Event_ Field', key: 'field', list: fields }
+                              ].map((f) => (
+                                <Col xs={6} key={f.key}>
+                                  <Form.Label className="fs-12 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.6rem' }}>{f.label}</Form.Label>
+                                  <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
+                                    value={ugTankLevelConfig[f.key]} onChange={(e) => setUgTankLevelConfig({ ...ugTankLevelConfig, [f.key]: e.target.value })}>
+                                    <option value="">SELECT {f.label.toUpperCase()}</option>
+                                    {f.list.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                  </Form.Select>
+                                </Col>
+                              ))}
+                            </Row>
+                          </div>
+                        </Col>
                       </Row>
                     </div>
                   </div>
@@ -1068,7 +1168,7 @@ const ConfigTemplates = () => {
             <div className="d-flex align-items-center gap-3">
               <span className="fs-11 text-secondary fw-black uppercase letter-spacing-1 ms-2">Filter By:</span>
               <div className="d-flex gap-2">
-                {['ALL', 'AG Tank', 'UG Tank', 'Pressure', 'Electrical Parameter'].map(mod => (
+                {['ALL', 'AG Tank', 'UG Pump', 'UG Tank', 'Pressure', 'Electrical Parameter'].map(mod => (
                   <Button
                     key={mod}
                     variant={filterModule === mod ? "info" : "outline-secondary"}
@@ -1159,7 +1259,7 @@ const ConfigTemplates = () => {
                           </div>
                         )}
 
-                        {template.module === 'UG Tank' && template.mapping && template.mapping.ugConfig && (
+                        {template.module === 'UG Pump' && template.mapping && template.mapping.ugConfig && (
                           <div className="mt-3 mb-3 p-2 rounded-3 bg-black bg-opacity-40 border border-white border-opacity-5 scada-data-box">
                             <div className="d-flex justify-content-between align-items-center px-1">
                               <span className="fs-12 text-secondary uppercase fw-black opacity-60">Mode</span>
@@ -1170,6 +1270,14 @@ const ConfigTemplates = () => {
                           </div>
                         )}
 
+                        {template.module === 'UG Tank' && template.mapping && template.mapping.ugTankRange && (
+                          <div className="mt-3 mb-3 p-2 rounded-3 bg-black bg-opacity-40 border border-white border-opacity-5 scada-data-box">
+                            <div className="d-flex justify-content-between align-items-center px-1">
+                              <span className="fs-12 text-secondary uppercase fw-black opacity-60">Level Tank</span>
+                              <span className="fs-11 text-info fw-black tracking-widest">{template.mapping.ugTankRange.name || 'UG TANK'}</span>
+                            </div>
+                          </div>
+                        )}
                         <div className="pt-2 mt-auto border-top border-white border-opacity-5">
                           <div className="d-flex justify-content-between text-secondary fs-12 fw-bold mb-1">
                             <span className="opacity-40 uppercase tracking-tighter" style={{ fontSize: '0.65rem' }}>Site Status</span>
@@ -1224,8 +1332,48 @@ const ConfigTemplates = () => {
 
               <div className="p-3">
                 <Row className="g-3">
-                  {/* UG TANK SPECIFIC SECTION */}
-                  {previewTemplate.module === 'UG Tank' && previewTemplate.mapping && previewTemplate.mapping.ugConfig && (
+                  {/* UG TANK LEVEL SECTION */}
+                  {previewTemplate.module === 'UG Tank' && previewTemplate.mapping && previewTemplate.mapping.ugTankLevelConfig && (
+                    <Col md={12}>
+                      <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 mb-0 scada-data-box">
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <h6 className="text-info fw-black uppercase letter-spacing-1 m-0 d-flex align-items-center gap-2 fs-11">
+                            <Droplets size={16} /> UG Tank Level Configuration
+                          </h6>
+                          <div className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-20 px-3 py-1 rounded-pill fs-11 fw-black tracking-widest">
+                             {previewTemplate.mapping.ugTankRange?.name || 'UG TANK'}
+                          </div>
+                        </div>
+                        <Row className="g-3">
+                          <Col md={12}>
+                            <div className="p-3 rounded bg-black bg-opacity-40 border border-info border-opacity-10">
+                              <div className="d-flex justify-content-between align-items-center mb-2 border-bottom border-white border-opacity-5 pb-2">
+                                <span className="fs-12 text-info fw-black uppercase">Level Mapping Status</span>
+                                <Badge bg={previewTemplate.mapping.ugTankLevelConfig.enabled ? "success" : "secondary"} className="bg-opacity-10 text-success border border-success border-opacity-25">
+                                  {previewTemplate.mapping.ugTankLevelConfig.enabled ? "ACTIVE" : "DISABLED"}
+                                </Badge>
+                              </div>
+                              <Row className="g-2">
+                                {[
+                                  { label: 'Location', key: 'location' },
+                                  { label: 'Device ID', key: 'device' },
+                                  { label: 'Module ID', key: 'module' },
+                                  { label: 'Event Field', key: 'field' }
+                                ].map((f) => (
+                                  <Col xs={3} key={f.key}>
+                                    <span className="fs-13 text-secondary uppercase fw-bold opacity-40 d-block">{f.label}</span>
+                                    <span className="fs-13 text-white fw-bold d-block truncate">{previewTemplate.mapping.ugTankLevelConfig[f.key] || '---'}</span>
+                                  </Col>
+                                ))}
+                              </Row>
+                            </div>
+                          </Col>
+                        </Row>
+                      </div>
+                    </Col>
+                  )}
+                  {/* UG PUMP SPECIFIC SECTION */}
+                  {previewTemplate.module === 'UG Pump' && previewTemplate.mapping && previewTemplate.mapping.ugConfig && (
                     <Col md={12}>
                       <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 mb-0 scada-data-box">
                         <div className="d-flex justify-content-between align-items-center mb-3">
@@ -1243,7 +1391,7 @@ const ConfigTemplates = () => {
                           <Col md={12}>
                             <div className="fs-11 text-secondary uppercase fw-black mb-2 opacity-50">Tank Unit Assignment</div>
                             <div className="p-2 rounded bg-black bg-opacity-40 border border-success border-opacity-20 text-success fw-black fs-9 text-center shadow-inner">
-                               {previewTemplate.mapping.ugTankRange?.name || 'NOT ASSIGNED'}
+                               {previewTemplate.mapping.ugPumpRange?.name || 'NOT ASSIGNED'}
                             </div>
                           </Col>
                           <Col md={12} className="mt-2">
