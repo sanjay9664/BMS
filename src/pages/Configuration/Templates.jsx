@@ -103,36 +103,6 @@ const ConfigTemplates = () => {
   const handleUgPumpChange = (name) => {
     const tank = ugPumpsList.find(t => t.name === name);
     if (tank) {
-      const existing = savedTemplates.find(t => 
-        t.module === 'UG Pump' && 
-        t.mapping.ugPumpRange && 
-        t.mapping.ugPumpRange.name === name
-      );
-
-      if (existing) {
-        setUgLowerConfig(existing.mapping.ugLowerConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgUpperConfig(existing.mapping.ugUpperConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgAutoConfig(existing.mapping.ugAutoConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgManualConfig(existing.mapping.ugManualConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgStartCmdConfig(existing.mapping.ugStartCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgStopCmdConfig(existing.mapping.ugStopCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgStartPressConfig(existing.mapping.ugStartPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgStopPressConfig(existing.mapping.ugStopPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgLocalModeConfig(existing.mapping.ugLocalModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setUgRemoteModeConfig(existing.mapping.ugRemoteModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      } else {
-        // Reset if no existing config found to avoid carrying over from previous tank
-        setUgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgStartCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgStopCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgStartPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgStopPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgLocalModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
-        setUgRemoteModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      }
       setUgPumpRange({ name: tank.name, id: tank.id });
     } else {
       setUgPumpRange({ name: '', id: '' });
@@ -804,27 +774,11 @@ const ConfigTemplates = () => {
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Pump Network Integration</h6>
                       </div>
                       <div className="d-flex align-items-center gap-3">
-                         <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Select Asset First:</Form.Label>
-                         <Form.Select 
-                            className="premium-input p-2 fs-10 fw-bold border-success border-opacity-20" 
-                            style={{ width: '220px' }}
-                            value={ugPumpRange.name}
-                            onChange={(e) => handleUgPumpChange(e.target.value)}
-                         >
-                            <option value="">SELECT TANK UNIT</option>
-                            {ugPumpsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                         </Form.Select>
+                         {/* Asset selection removed for UG Pump as requested */}
                       </div>
                     </div>
 
-                    <div className={`p-4 bg-black bg-opacity-20 ${!ugPumpRange.name ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: ugPumpRange.name ? 'auto' : 'none' }}>
-                      {!ugPumpRange.name && (
-                        <div className="position-absolute top-50 start-50 translate-middle z-3 text-center w-100">
-                           <div className="badge bg-success bg-opacity-10 text-success border border-success border-opacity-20 px-4 py-2 rounded-pill fs-11 fw-black tracking-widest">
-                             <Info size={14} className="me-2" /> SELECT A TANK UNIT TO BEGIN MAPPING
-                           </div>
-                        </div>
-                      )}
+                    <div className="p-4 bg-black bg-opacity-20">
                       <Row className="g-4">
                         {[
                           { title: 'Lower Limits', state: ugLowerConfig, setter: setUgLowerConfig, icon: <ArrowDownCircle size={18} />, color: 'info' },
@@ -888,7 +842,7 @@ const ConfigTemplates = () => {
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Tank Level Integration <span className="opacity-40">(Hydrostatic / Ultrasonic)</span></h6>
                       </div>
                       <div className="d-flex align-items-center gap-3">
-                         <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Select Asset First:</Form.Label>
+                         <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Target Asset:</Form.Label>
                          <Form.Select 
                             className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20" 
                             style={{ width: '220px' }}
@@ -901,14 +855,7 @@ const ConfigTemplates = () => {
                       </div>
                     </div>
 
-                    <div className={`p-4 bg-black bg-opacity-20 ${!ugTankRange.name ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: ugTankRange.name ? 'auto' : 'none' }}>
-                      {!ugTankRange.name && (
-                        <div className="position-absolute top-50 start-50 translate-middle z-3 text-center w-100">
-                           <div className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-20 px-4 py-2 rounded-pill fs-11 fw-black tracking-widest">
-                             <Info size={14} className="me-2" /> SELECT A TANK UNIT TO BEGIN MAPPING
-                           </div>
-                        </div>
-                      )}
+                    <div className="p-4 bg-black bg-opacity-20">
                       <Row className="g-4 justify-content-center">
                         <Col md={8}>
                           <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-blue">
@@ -1288,7 +1235,7 @@ const ConfigTemplates = () => {
                             <span className="fs-13 opacity-75 fw-black tracking-tighter">{template.timestamp.split(',')[0]}</span>
                           </div>
                         </div>
-                      </div>
+                        </div>
                       <div className="card-action-bar-premium p-2 d-flex justify-content-between align-items-center mt-auto position-relative z-1">
                         <Button variant="link" className="text-info fs-11 fw-black text-decoration-none p-2 uppercase tracking-widest hover-glow-text cursor-pointer" onClick={() => handleEdit(template)}>EDIT CONFIG</Button>
                         <Button variant="link" className="text-danger fs-11 fw-black text-decoration-none p-2 uppercase tracking-widest hover-glow-text cursor-pointer" onClick={() => handleRemove(template.id)}>REMOVE</Button>
