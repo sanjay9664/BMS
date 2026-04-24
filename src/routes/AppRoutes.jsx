@@ -13,6 +13,7 @@ import AgTank from '../pages/WaterManagement/AgTank';
 import UgTank from '../pages/WaterManagement/UgTank';
 import MotorsOverview from '../pages/Motors/Overview';
 import TicketingSystem from '../pages/Ticketing/Index';
+import ConfigTemplates from '../pages/Configuration/Templates';
 
 // Fallback for other routes until customized
 const PlaceholderPage = ({ title }) => (
@@ -81,6 +82,9 @@ const AppRoutes = () => {
       <Route path="/dg-set/fuel" element={<PlaceholderPage title="Fuel Level Monitoring" />} />
       <Route path="/dg-set/runtime" element={<PlaceholderPage title="Runtime / Diesel Consumption" />} />
       <Route path="/dg-set/report" element={<PlaceholderPage title="DG Set PDF Reports" />} />
+
+      {/* Configuration Templates */}
+      <Route path="/config/templates" element={<ConfigTemplates />} />
 
       {/* Alarm System */}
       <Route path="/alarm-system/overview" element={<AlarmOverview />} />
