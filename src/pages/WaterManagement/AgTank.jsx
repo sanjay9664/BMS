@@ -129,15 +129,55 @@ const AgTank = () => {
     return '#38bdf8'; // Constant Blue inside
   };
 
-  const handleTankClick = (tank) => {
-    setSelectedTank(tank);
-    setShowValveModal(true);
-  };
-
   // Valve Control States
   const [selectedTank, setSelectedTank] = useState(null);
   const [showValveModal, setShowValveModal] = useState(false);
   const [actionFeedback, setActionFeedback] = useState(null);
+  const [disabledTanks, setDisabledTanks] = useState({});
+
+  useEffect(() => {
+    const syncDisabledTanks = () => {
+      const saved = localStorage.getItem('scada_templates');
+      if (saved) {
+        const templates = JSON.parse(saved);
+        const disabledMap = {};
+        templates.forEach(t => {
+          if (t.module === 'AG Tank' && t.mapping.agMasterEnabled === false) {
+            const tankName = t.mapping.agTankRange.domStart || t.mapping.agTankRange.flushStart;
+            if (tankName) {
+              disabledMap[tankName] = true;
+            }
+          }
+        });
+        setDisabledTanks(disabledMap);
+      }
+    };
+
+    syncDisabledTanks();
+    window.addEventListener('storage', syncDisabledTanks);
+    // Listen for custom events if navigation happens within same tab without storage event firing
+    window.addEventListener('focus', syncDisabledTanks);
+    
+    return () => {
+      window.removeEventListener('storage', syncDisabledTanks);
+      window.removeEventListener('focus', syncDisabledTanks);
+    };
+  }, []);
+
+  const isTankDisabled = (tank) => {
+    const name = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.id}`;
+    return disabledTanks[name];
+  };
+
+  const handleTankClick = (tank) => {
+    if (isTankDisabled(tank)) {
+      setActionFeedback("PLEASE CONNECT ADMIN");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
+    setSelectedTank(tank);
+    setShowValveModal(true);
+  };
 
   return (
     <div className={`fade-in p-2 ${isFullscreen ? 'fullscreen-scada-page' : ''}`} ref={pageRef}>
@@ -234,10 +274,11 @@ const AgTank = () => {
           {filteredTanks.map((tank) => (
             <Col key={tank.id} xs={6} sm={4} md={isFullscreen ? 4 : 2} lg={isFullscreen ? 2 : 1} className={isFullscreen ? 'col-fs-2' : ''}>
               <div
-                className={`tank-unit-wrapper p-2 rounded text-center position-relative ${tank.status === 'Stopped' ? 'tank-stopped-outline' : ''} ${isFullscreen ? 'expanded-unit' : ''}`}
+                className={`tank-unit-wrapper p-2 rounded text-center position-relative ${tank.status === 'Stopped' ? 'tank-stopped-outline' : ''} ${isFullscreen ? 'expanded-unit' : ''} ${isTankDisabled(tank) ? 'tank-disabled' : ''}`}
                 onClick={() => handleTankClick(tank)}
-                style={{ cursor: 'pointer' }}
+                style={{ cursor: isTankDisabled(tank) ? 'not-allowed' : 'pointer' }}
               >
+                {isTankDisabled(tank) && <div className="disabled-overlay-text">DISABLED</div>}
                 <div className="tank-assembly-anchor mx-auto position-relative" style={{ width: isFullscreen ? '48px' : '36px' }}>
                   <div 
                     className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''}`}
@@ -319,6 +360,34 @@ const AgTank = () => {
             border-color: rgba(56, 189, 248, 0.1);
             transform: translateY(-5px);
             box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+        }
+        
+        .tank-disabled {
+            opacity: 0.3 !important;
+            filter: grayscale(1) !important;
+            pointer-events: auto !important; /* Keep click enabled for the admin message */
+        }
+        .tank-disabled:hover {
+            transform: none !important;
+            background: transparent !important;
+            border-color: transparent !important;
+            box-shadow: none !important;
+        }
+        .disabled-overlay-text {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-15deg);
+            background: #ef4444;
+            color: white;
+            padding: 2px 6px;
+            font-size: 7px;
+            font-weight: 900;
+            border-radius: 3px;
+            z-index: 100;
+            letter-spacing: 1px;
+            box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+            pointer-events: none;
         }
 
         .tank-vessel { 

@@ -177,12 +177,10 @@ const UgTank = () => {
                 <div className="d-flex align-items-center gap-5">
                   <div className="text-center pe-5 border-end border-secondary border-opacity-20 d-none d-md-block">
                     <small className="text-secondary d-block fs-11 fw-bold uppercase mb-1">Station mode</small>
-                    <div className="d-flex align-items-center gap-2 bg-black bg-opacity-40 p-1 px-2 rounded-pill border border-secondary border-opacity-20">
-                       <span className={`fs-11 fw-black ${controlMode === 'LOCAL' ? 'text-warning' : 'text-muted'}`}>LOCAL</span>
-                       <div onClick={() => setControlMode(controlMode === 'REMOTE' ? 'LOCAL' : 'REMOTE')} style={{ cursor: 'pointer' }}>
-                          {controlMode === 'REMOTE' ? <ToggleRight className="text-info" size={24} /> : <ToggleLeft className="text-muted" size={24} />}
-                       </div>
-                       <span className={`fs-11 fw-black ${controlMode === 'REMOTE' ? 'text-info' : 'text-muted'}`}>REMOTE</span>
+                    <div className="d-flex align-items-center justify-content-center bg-black bg-opacity-40 p-1 px-3 rounded-pill border border-secondary border-opacity-20" style={{ minWidth: '100px' }}>
+                       <span className={`fs-10 fw-black letter-spacing-1 ${controlMode === 'REMOTE' ? 'text-info' : 'text-warning'}`}>
+                          {controlMode === 'REMOTE' ? 'REMOTE MODE' : 'LOCAL MODE'}
+                       </span>
                     </div>
                   </div>
                   <div className="text-center">

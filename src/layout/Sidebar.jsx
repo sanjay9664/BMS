@@ -68,6 +68,11 @@ const Sidebar = ({ collapsed }) => {
       ]
     },
     {
+      title: "Setting Templates",
+      icon: <Settings size={20} />,
+      path: "/config/templates"
+    },
+    {
       title: "Alarm System",
       icon: <Bell size={20} />,
       disabled: modulesConfig ? !modulesConfig["Alarm System"] : false,
