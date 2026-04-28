@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Row, Col, Card, Form, Button, Badge, Modal } from 'react-bootstrap';
 import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { loginToSochiot, getSochiotUserMe, getSochiotLocationData, getSochiotDeviceDetails } from '../../services/authService';
 
 const ConfigTemplates = () => {
   const [selectedCategory, setSelectedCategory] = useState('Water Management');
@@ -47,6 +48,7 @@ const ConfigTemplates = () => {
   const [elecCurrentConfig, setElecCurrentConfig] = useState({ location: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
   const [elecSystemConfig, setElecSystemConfig] = useState({ location: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
   const [elecConsumptionConfig, setElecConsumptionConfig] = useState({ location: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+  const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
   const [pressureTarget, setPressureTarget] = useState('');
   const [electricalTarget, setElectricalTarget] = useState('');
   const [ugConfig, setUgConfig] = useState({
@@ -100,6 +102,41 @@ const ConfigTemplates = () => {
     { name: 'PUMP 02 METER', id: 'EM-P2' }
   ];
 
+  const handleUgPumpNoChange = (no) => {
+    setSelectedUgPumpNo(no);
+    // Find if a template already exists for this specific pump number
+    const existing = savedTemplates.find(t => 
+      t.module === 'UG Pump' && 
+      t.mapping.ugPumpRange && 
+      t.mapping.ugPumpRange.pumpNo === no
+    );
+
+    if (existing) {
+      setUgLowerConfig(existing.mapping.ugLowerConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgUpperConfig(existing.mapping.ugUpperConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgAutoConfig(existing.mapping.ugAutoConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgManualConfig(existing.mapping.ugManualConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgStartCmdConfig(existing.mapping.ugStartCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgStopCmdConfig(existing.mapping.ugStopCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgStartPressConfig(existing.mapping.ugStartPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgStopPressConfig(existing.mapping.ugStopPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgLocalModeConfig(existing.mapping.ugLocalModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgRemoteModeConfig(existing.mapping.ugRemoteModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
+    } else {
+      // Clear for a new pump if no template exists
+      setUgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgStartCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgStopCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgStartPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgStopPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgLocalModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgRemoteModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
+    }
+  };
+
   const handleUgPumpChange = (name) => {
     const tank = ugPumpsList.find(t => t.name === name);
     if (tank) {
@@ -129,10 +166,245 @@ const ConfigTemplates = () => {
     }
   };
 
+  const [locationIdMap, setLocationIdMap] = useState({});
+  const [locationDetails, setLocationDetails] = useState({}); // { locationName: { deviceList: [{label, id}] } }
+  const [deviceDetails, setDeviceDetails] = useState({}); // { deviceId: { modules: { name: [fields] } } }
+  const [dynamicOptions, setDynamicOptions] = useState({
+    locations: ['Basement 1', 'Basement 2', 'Rooftop Sector A', 'Rooftop Sector B'],
+    devices: ['Gateway-01', 'Gateway-02', 'PLC-Main', 'Controller-X'],
+    modules: ['Modbus-RTU-1', 'BACnet-IP-1', 'Digital-IO'],
+    fields: ['Valve_Status', 'Level_Sensor', 'Pump_State', 'Pressure_Reading', 'Motor_Current']
+  });
+
+  // Fetch Dynamic Data from Sochiot API
+  useEffect(() => {
+    const initDynamicData = async () => {
+      try {
+        // Try to get user data (if token exists)
+        let userData = await getSochiotUserMe();
+        
+        // If no data/token, perform dummy login as requested
+        if (!userData) {
+          await loginToSochiot("sa@ismartaccess.com", "I0t3ch");
+          userData = await getSochiotUserMe();
+        }
+
+        if (userData) {
+          const companies = [];
+          const clients = [];
+          const zones = [];
+          const locations = [];
+
+          const lMap = {};
+
+          const traverseZones = (zList) => {
+            zList.forEach(z => {
+              zones.push(z.name);
+              if (z.locations) {
+                z.locations.forEach(l => {
+                  locations.push(l.name);
+                  lMap[l.name] = l.id;
+                });
+              }
+              if (z.subZones) traverseZones(z.subZones);
+            });
+          };
+
+          if (userData.userZoneLocationVO?.companyList) {
+            userData.userZoneLocationVO.companyList.forEach(comp => {
+              companies.push(comp.name);
+              if (comp.consumers) {
+                comp.consumers.forEach(client => {
+                  clients.push(client.name);
+                  if (client.zoneVOS) traverseZones(client.zoneVOS);
+                });
+              }
+            });
+          }
+
+          setLocationIdMap(lMap);
+          setDynamicOptions({
+            locations: locations.length > 0 ? [...new Set(locations)] : dynamicOptions.locations,
+            devices: zones.length > 0 ? [...new Set(zones)] : dynamicOptions.devices,
+            modules: clients.length > 0 ? [...new Set(clients)] : dynamicOptions.modules,
+            fields: companies.length > 0 ? [...new Set(companies)] : dynamicOptions.fields
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load dynamic Sochiot data:', error);
+      }
+    };
+
+    initDynamicData();
+  }, []);
+
+  const fetchLocationDetails = async (locationName) => {
+    if (locationDetails[locationName]) return;
+    
+    const locId = locationIdMap[locationName];
+    if (!locId) return;
+
+    try {
+      const data = await getSochiotLocationData(locId);
+      if (data?.locationVOS?.[0]) {
+        const gateways = data.locationVOS[0].gatewayVOList || [];
+        const deviceList = [];
+        
+        gateways.forEach(g => {
+          if (g.deviceEntityVOS) {
+            g.deviceEntityVOS.forEach(d => {
+              deviceList.push({
+                label: `${g.name} / ${d.name}`,
+                id: d.id,
+                uuid: d.uuid
+              });
+            });
+          }
+        });
+
+        setLocationDetails(prev => ({
+          ...prev,
+          [locationName]: { deviceList }
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching location details:', error);
+    }
+  };
+
+  const fetchDeviceDetails = async (deviceId) => {
+    console.log('Fetching details for device:', deviceId);
+    if (!deviceId || deviceDetails[deviceId]) return;
+    try {
+      const data = await getSochiotDeviceDetails(deviceId);
+      if (data) {
+        // Sochiot API can have modules in root 'modules' or 'deviceTemplateVO.moduleTemplates'
+        const moduleSource = data.modules || data.deviceTemplateVO?.moduleTemplates || [];
+        const moduleMap = {};
+        
+        moduleSource.forEach(m => {
+          // Event fields can be in root or inside moduleTypeVO
+          const fieldsSource = m.eventFieldVOS || m.moduleTypeVO?.eventFieldVOS || [];
+          const fields = fieldsSource.map(f => ({
+            label: `${f.displayName} (${f.fieldName})`, 
+            id: f.fieldName
+          }));
+          
+          moduleMap[m.id] = {
+            id: m.id,
+            name: m.name,
+            fields: fields
+          };
+        });
+
+        setDeviceDetails(prev => ({
+          ...prev,
+          [deviceId]: { modules: moduleMap }
+        }));
+      }
+    } catch (error) {
+      console.error('Error fetching device details:', error);
+    }
+  };
+
+  const handleConfigChange = async (config, setter, key, value) => {
+    console.log(`Config Change: ${key} = ${value}`);
+    const updated = { ...config, [key]: value };
+    
+    if (key === 'location') {
+      updated.device = '';
+      updated.module = '';
+      updated.field = '';
+      if (value) {
+        const locId = locationIdMap[value];
+        if (locId) fetchLocationDetails(value, locId);
+      }
+    } else if (key === 'device') {
+      updated.module = '';
+      updated.field = '';
+      if (value) fetchDeviceDetails(value);
+    } else if (key === 'module') {
+      updated.field = '';
+    }
+    
+    setter(updated);
+  };
+
+  const getFieldList = (key, rowState) => {
+    const locationName = typeof rowState === 'string' ? rowState : (rowState?.location || '');
+    if (key === 'location') return locations;
+    
+    const locInfo = locationDetails[locationName];
+    if (!locInfo || !locInfo.deviceList) return [];
+
+    if (key === 'device') return locInfo.deviceList;
+    
+    const selectedDeviceId = rowState?.device;
+    const devInfo = deviceDetails[selectedDeviceId];
+    
+    console.log(`getFieldList lookup for ${key}:`, {
+      selectedDeviceId,
+      hasDevInfo: !!devInfo,
+      cachedDeviceIds: Object.keys(deviceDetails)
+    });
+
+    if (!devInfo) return [];
+
+    if (key === 'module') {
+      const modules = Object.values(devInfo.modules).map(m => ({
+        label: m.name,
+        id: m.id
+      }));
+      console.log('Resolved modules:', modules);
+      return modules;
+    }
+    
+    const selectedModuleId = rowState?.module;
+    const moduleData = devInfo.modules[selectedModuleId];
+    if (key === 'field') {
+      const fields = (moduleData?.fields || []).map(f => ({
+        label: f.label,
+        id: f.id
+      }));
+      console.log('Resolved fields:', fields);
+      return fields;
+    }
+    
+    return [];
+  };
+
   // Sync to LocalStorage
   useEffect(() => {
     localStorage.setItem('scada_templates', JSON.stringify(savedTemplates));
   }, [savedTemplates]);
+
+  // Fetch from backend on mount
+  useEffect(() => {
+    const fetchTemplates = async () => {
+      try {
+        const response = await fetch('http://localhost:5000/api/templates');
+        if (response.ok) {
+          const data = await response.json();
+          // Map backend data to frontend format if necessary
+          const mappedData = data.map(t => ({
+            id: t.id,
+            name: t.name,
+            category: t.category || 'Water Management', // Fallback
+            module: t.settings[0]?.eventKey || 'AG Tank',
+            mapping: t.defaultValues || t.settings[0]?.meta || {},
+            timestamp: new Date(t.createdAt).toLocaleString()
+          }));
+          if (mappedData.length > 0) {
+            setSavedTemplates(mappedData);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching templates:', error);
+      }
+    };
+    fetchTemplates();
+  }, []);
+
 
   // Identify disabled towers for UI feedback in dropdowns
   const disabledTowerNames = useMemo(() => {
@@ -158,10 +430,15 @@ const ConfigTemplates = () => {
     'Daily DPR': ['Data Aggregation', 'Daily Logs']
   };
 
-  const locations = ['Basement 1', 'Basement 2', 'Rooftop Sector A', 'Rooftop Sector B'];
-  const devices = ['Gateway-01', 'Gateway-02', 'PLC-Main', 'Controller-X'];
-  const modules = ['Modbus-RTU-1', 'BACnet-IP-1', 'Digital-IO'];
-  const fields = ['Valve_Status', 'Level_Sensor', 'Pump_State', 'Pressure_Reading', 'Motor_Current'];
+  const locations = dynamicOptions.locations;
+  const devices = dynamicOptions.devices;
+  const modules = dynamicOptions.modules;
+  const fields = dynamicOptions.fields;
+
+  // Theme-consistent background colors based on Slate-900 (#0f172a)
+  const themeBg = "rgba(15, 23, 42, 0.95)";
+  const themeOverlay = "rgba(15, 23, 42, 0.6)";
+  const themeCardBg = "rgba(30, 41, 59, 0.4)"; // Slate-800 with opacity for cards inside cards
 
   const handleCategoryChange = (cat) => {
     setSelectedCategory(cat);
@@ -264,7 +541,7 @@ const ConfigTemplates = () => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const templateData = {
       category: selectedCategory,
       module: selectedModule,
@@ -275,7 +552,9 @@ const ConfigTemplates = () => {
         agLevelConfig, agOpenConfig, agCloseConfig,
         ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
         ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
-        ugLocalModeConfig, ugRemoteModeConfig, ugPumpRange, ugConfig,
+        ugLocalModeConfig, ugRemoteModeConfig, 
+        ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo }, 
+        ugConfig,
         pressureConfig, pressureTarget,
         elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig, electricalTarget,
         agTankType, agMasterEnabled,
@@ -283,29 +562,58 @@ const ConfigTemplates = () => {
       }
     };
 
-    if (editingTemplateId) {
-      setSavedTemplates(savedTemplates.map(t => t.id === editingTemplateId ? { ...t, ...templateData, name: templateName || t.name } : t));
-      setEditingTemplateId(null);
+    let autoName = '';
+    if (selectedModule === 'UG Pump') {
+      autoName = `PUMP ${selectedUgPumpNo} - UG SYSTEM`;
+    } else if (selectedModule === 'UG Tank' && ugTankRange.name) {
+      autoName = `${ugTankRange.name} - UG LEVEL`;
+    } else if (selectedModule === 'AG Tank') {
+      autoName = agTankRange.domStart || agTankRange.flushStart || 'AG TANK';
     } else {
-      const globalIndex = savedTemplates.length + 1;
-      
-      let autoName = '';
-      if (selectedModule === 'UG Pump' && ugPumpRange.name) {
-        autoName = `${ugPumpRange.name} - UG PUMP`;
-      } else if (selectedModule === 'UG Tank' && ugTankRange.name) {
-        autoName = `${ugTankRange.name} - UG LEVEL`;
-      } else if (selectedModule === 'AG Tank') {
-        autoName = agTankRange.domStart || agTankRange.flushStart || 'AG TANK';
-      } else {
-        autoName = pressureTarget || electricalTarget || selectedModule;
+      autoName = pressureTarget || electricalTarget || selectedModule;
+    }
+    const uniqueName = templateName || `${autoName} (#${String(savedTemplates.length + 1).padStart(2, '0')})`;
+
+    try {
+      const response = await fetch('http://localhost:5000/api/templates/save', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: uniqueName.toUpperCase(),
+          category: selectedCategory,
+          module: selectedModule,
+          mapping: templateData.mapping
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save to backend');
       }
 
-      const uniqueName = templateName || `${autoName} (#${String(globalIndex).padStart(2, '0')})`;
-      setSavedTemplates([...savedTemplates, { id: Date.now(), ...templateData, name: uniqueName.toUpperCase() }]);
-    }
+      const result = await response.json();
+      console.log('Saved to backend:', result);
 
-    // Success alert or notification could go here
-    alert(`${selectedModule} Configuration Saved Successfully for ${agTankRange.domStart || agTankRange.flushStart || 'Selected Module'}`);
+      if (editingTemplateId) {
+        setSavedTemplates(savedTemplates.map(t => t.id === editingTemplateId ? { ...t, ...templateData, name: uniqueName.toUpperCase() } : t));
+        setEditingTemplateId(null);
+      } else {
+        setSavedTemplates([...savedTemplates, { id: result.templateId || Date.now(), ...templateData, name: uniqueName.toUpperCase() }]);
+      }
+
+      alert(`${selectedModule} Configuration Saved Successfully to Neon Database!`);
+    } catch (error) {
+      console.error('Error saving to backend:', error);
+      // Fallback to local storage if backend fails
+      if (editingTemplateId) {
+        setSavedTemplates(savedTemplates.map(t => t.id === editingTemplateId ? { ...t, ...templateData, name: uniqueName.toUpperCase() } : t));
+        setEditingTemplateId(null);
+      } else {
+        setSavedTemplates([...savedTemplates, { id: Date.now(), ...templateData, name: uniqueName.toUpperCase() }]);
+      }
+      alert(`Saved to LocalStorage (Backend connection failed)`);
+    }
 
     // Reset only if NOT AG Tank (to let user see their save)
     if (selectedModule !== 'AG Tank') {
@@ -345,6 +653,7 @@ const ConfigTemplates = () => {
     });
     setViewMode('LIST');
   };
+
 
   const handleRemove = (id) => {
     if (window.confirm('Are you sure you want to remove this mapping?')) {
@@ -503,7 +812,7 @@ const ConfigTemplates = () => {
                 <Form.Control 
                   type="text" 
                   placeholder="E.g. Primary Mapping V1" 
-                  className="premium-input bg-black bg-opacity-40 border-info border-opacity-20 text-info fw-black fs-11 px-3 py-2 rounded-3"
+                  className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-black fs-11 px-3 py-2 rounded-3"
                   style={{ width: '200px' }}
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
@@ -539,7 +848,7 @@ const ConfigTemplates = () => {
 
               <Row className="g-3 mb-4">
                 <Col md={6}>
-                  <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                  <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <div className="icon-box-premium info" style={{ width: '24px', height: '24px' }}>
                         <Layers size={14} />
@@ -554,7 +863,7 @@ const ConfigTemplates = () => {
                   </div>
                 </Col>
                 <Col md={6}>
-                  <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                  <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
                     <div className="d-flex align-items-center gap-2 mb-2">
                       <div className="icon-box-premium warning" style={{ width: '24px', height: '24px' }}>
                         <Settings size={14} />
@@ -573,13 +882,13 @@ const ConfigTemplates = () => {
               {selectedModule === 'AG Tank' ? (
                 <div className="config-form-container scale-in">
                   {/* TANK TYPE SELECTION & ASSET MAPPING */}
-                  <div className="p-0 rounded-4 bg-black bg-opacity-20 border border-white border-opacity-5 mb-4 overflow-hidden position-relative">
-                    <div className="p-3 border-bottom border-white border-opacity-5 bg-black bg-opacity-40 d-flex align-items-center justify-content-between">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-4 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center justify-content-between">
                       <div className="d-flex align-items-center gap-2">
                         <LayoutGrid className="text-primary shadow-glow-blue" size={18} />
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">Tank Asset Mapping</h6>
                       </div>
-                      <div className="d-flex gap-4 bg-black bg-opacity-40 px-4 py-2 rounded-pill border border-white border-opacity-10">
+                      <div className="d-flex gap-4 bg-dark bg-opacity-40 px-4 py-2 rounded-pill border border-white border-opacity-10">
                         <Form.Check
                           type="radio"
                           label="DOMESTIC TANK"
@@ -601,7 +910,7 @@ const ConfigTemplates = () => {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-black bg-opacity-20">
+                    <div className="p-4 bg-dark bg-opacity-20">
                       <Row className="g-4 justify-content-center">
                         {agTankType === 'DOMESTIC' ? (
                           <Col md={8}>
@@ -632,13 +941,13 @@ const ConfigTemplates = () => {
                                 </Col>
                                 <Col xs={3}>
                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">Asset ID</Form.Label>
-                                  <div className="p-2 rounded bg-black bg-opacity-40 border border-info border-opacity-10 text-info fw-black fs-9 text-center" style={{ height: '38px', lineHeight: '22px' }}>
+                                  <div className="p-2 rounded bg-dark bg-opacity-40 border border-info border-opacity-10 text-info fw-black fs-9 text-center" style={{ height: '38px', lineHeight: '22px' }}>
                                     {agTankRange.domEnd || 'D-XX'}
                                   </div>
                                 </Col>
                                 <Col xs={4}>
                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">Master Control</Form.Label>
-                                  <div className="p-1 rounded bg-black bg-opacity-40 border border-info border-opacity-10 d-flex align-items-center justify-content-between px-3" style={{ height: '38px' }}>
+                                  <div className="p-1 rounded bg-dark bg-opacity-40 border border-info border-opacity-10 d-flex align-items-center justify-content-between px-3" style={{ height: '38px' }}>
                                     <div className={`p-1 rounded-circle ${agMasterEnabled ? 'bg-info shadow-glow-blue' : 'bg-secondary'} transition-all`} style={{ width: '6px', height: '6px' }}></div>
                                     <Form.Check 
                                       type="switch" 
@@ -684,13 +993,13 @@ const ConfigTemplates = () => {
                                 </Col>
                                 <Col xs={3}>
                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">Asset ID</Form.Label>
-                                  <div className="p-2 rounded bg-black bg-opacity-40 border border-primary border-opacity-10 text-primary fw-black fs-9 text-center" style={{ height: '38px', lineHeight: '22px' }}>
+                                  <div className="p-2 rounded bg-dark bg-opacity-40 border border-primary border-opacity-10 text-primary fw-black fs-9 text-center" style={{ height: '38px', lineHeight: '22px' }}>
                                     {agTankRange.flushEnd || 'F-XX'}
                                   </div>
                                 </Col>
                                 <Col xs={4}>
                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">Master Control</Form.Label>
-                                  <div className="p-1 rounded bg-black bg-opacity-40 border border-primary border-opacity-10 d-flex align-items-center justify-content-between px-3" style={{ height: '38px' }}>
+                                  <div className="p-1 rounded bg-dark bg-opacity-40 border border-primary border-opacity-10 d-flex align-items-center justify-content-between px-3" style={{ height: '38px' }}>
                                     <div className={`p-1 rounded-circle ${agMasterEnabled ? 'bg-primary shadow-glow-blue' : 'bg-secondary'} transition-all`} style={{ width: '6px', height: '6px' }}></div>
                                     <Form.Check 
                                       type="switch" 
@@ -744,18 +1053,22 @@ const ConfigTemplates = () => {
                             </div>
                             <Row className="g-2 position-relative z-1">
                               {[
-                                { label: 'Location', key: 'location', list: locations },
-                                { label: 'Device_ID', key: 'device', list: devices },
-                                { label: 'Module_ID', key: 'module', list: modules },
-                                { label: 'Event_ Field', key: 'field', list: fields }
+                                { label: 'Location', key: 'location' },
+                                { label: 'Device_ID', key: 'device' },
+                                { label: 'Module_ID', key: 'module' },
+                                { label: 'Event_ Field', key: 'field' }
                               ].map((f) => (
                                 <Col xs={6} key={f.key}>
                                   <Form.Label className="fs-12 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.6rem' }}>{f.label}</Form.Label>
-                                  <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
-                                    value={section.state[f.key]} onChange={(e) => section.setter({ ...section.state, [f.key]: e.target.value })}>
-                                    <option value="">SELECT {f.label.toUpperCase()}</option>
-                                    {f.list.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                  </Form.Select>
+                                    <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
+                                      value={section.state[f.key]} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}>
+                                      <option value="">SELECT {f.label.toUpperCase()}</option>
+                                      {getFieldList(f.key, section.state).map(opt => (
+                                        <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
+                                          {typeof opt === 'object' ? opt.label : opt}
+                                        </option>
+                                      ))}
+                                    </Form.Select>
                                 </Col>
                               ))}
                             </Row>
@@ -767,18 +1080,28 @@ const ConfigTemplates = () => {
                 </div>
               ) : selectedModule === 'UG Pump' ? (
                 <div className="config-form-container scale-in">
-                  <div className="p-0 rounded-4 bg-black bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
-                    <div className="p-3 border-bottom border-white border-opacity-5 bg-black bg-opacity-40 d-flex align-items-center justify-content-between">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center justify-content-between">
                       <div className="d-flex align-items-center gap-2">
                         <Database className="text-success shadow-glow-green" size={18} />
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Pump Network Integration</h6>
                       </div>
                       <div className="d-flex align-items-center gap-3">
-                         {/* Asset selection removed for UG Pump as requested */}
+                         <Form.Select 
+                            className="premium-input p-2 fs-10 fw-bold border-success border-opacity-20" 
+                            style={{ width: '150px' }}
+                            value={selectedUgPumpNo || ''}
+                            onChange={(e) => handleUgPumpNoChange(Number(e.target.value))}
+                         >
+                            <option value="">SELECT UNIT</option>
+                            <option value="1">PUMP 1</option>
+                            <option value="2">PUMP 2</option>
+                            <option value="3">PUMP 3</option>
+                         </Form.Select>
                       </div>
                     </div>
 
-                    <div className="p-4 bg-black bg-opacity-20">
+                    <div className={`p-4 bg-dark bg-opacity-20 position-relative ${!selectedUgPumpNo ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: selectedUgPumpNo ? 'auto' : 'none' }}>
                       <Row className="g-4">
                         {[
                           { title: 'Lower Limits', state: ugLowerConfig, setter: setUgLowerConfig, icon: <ArrowDownCircle size={18} />, color: 'info' },
@@ -811,17 +1134,21 @@ const ConfigTemplates = () => {
                               </div>
                               <Row className="g-2 position-relative z-1">
                                 {[
-                                  { label: 'Location', key: 'location', list: locations },
-                                  { label: 'Device_ID', key: 'device', list: devices },
-                                  { label: 'Module_ID', key: 'module', list: modules },
-                                  { label: 'Event_ Field', key: 'field', list: fields }
+                                  { label: 'Location', key: 'location' },
+                                  { label: 'Device_ID', key: 'device' },
+                                  { label: 'Module_ID', key: 'module' },
+                                  { label: 'Event_ Field', key: 'field' }
                                 ].map((f) => (
                                   <Col xs={6} key={f.key}>
                                     <Form.Label className="fs-12 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.6rem' }}>{f.label}</Form.Label>
                                     <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
-                                      value={section.state[f.key]} onChange={(e) => section.setter({ ...section.state, [f.key]: e.target.value })}>
+                                      value={section.state[f.key]} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}>
                                       <option value="">SELECT {f.label.toUpperCase()}</option>
-                                      {f.list.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                      {getFieldList(f.key, section.state).map(opt => (
+                                        <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
+                                          {typeof opt === 'object' ? opt.label : opt}
+                                        </option>
+                                      ))}
                                     </Form.Select>
                                   </Col>
                                 ))}
@@ -835,8 +1162,8 @@ const ConfigTemplates = () => {
                 </div>
               ) : selectedModule === 'UG Tank' ? (
                 <div className="config-form-container scale-in">
-                  <div className="p-0 rounded-4 bg-black bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
-                    <div className="p-3 border-bottom border-white border-opacity-5 bg-black bg-opacity-40 d-flex align-items-center justify-content-between">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center justify-content-between">
                       <div className="d-flex align-items-center gap-2">
                         <Droplets className="text-info shadow-glow-blue" size={18} />
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Tank Level Integration <span className="opacity-40">(Hydrostatic / Ultrasonic)</span></h6>
@@ -855,7 +1182,7 @@ const ConfigTemplates = () => {
                       </div>
                     </div>
 
-                    <div className="p-4 bg-black bg-opacity-20">
+                    <div className="p-4 bg-dark bg-opacity-20">
                       <Row className="g-4 justify-content-center">
                         <Col md={8}>
                           <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-blue">
@@ -876,17 +1203,21 @@ const ConfigTemplates = () => {
                             </div>
                             <Row className="g-2 position-relative z-1">
                               {[
-                                { label: 'Location', key: 'location', list: locations },
-                                { label: 'Device_ID', key: 'device', list: devices },
-                                { label: 'Module_ID', key: 'module', list: modules },
-                                { label: 'Event_ Field', key: 'field', list: fields }
+                                { label: 'Location', key: 'location' },
+                                { label: 'Device_ID', key: 'device' },
+                                { label: 'Module_ID', key: 'module' },
+                                { label: 'Event_ Field', key: 'field' }
                               ].map((f) => (
                                 <Col xs={6} key={f.key}>
                                   <Form.Label className="fs-12 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.6rem' }}>{f.label}</Form.Label>
                                   <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
-                                    value={ugTankLevelConfig[f.key]} onChange={(e) => setUgTankLevelConfig({ ...ugTankLevelConfig, [f.key]: e.target.value })}>
+                                    value={ugTankLevelConfig[f.key]} onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, f.key, e.target.value)}>
                                     <option value="">SELECT {f.label.toUpperCase()}</option>
-                                    {f.list.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                    {getFieldList(f.key, ugTankLevelConfig).map(opt => (
+                                      <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
+                                        {typeof opt === 'object' ? opt.label : opt}
+                                      </option>
+                                    ))}
                                   </Form.Select>
                                 </Col>
                               ))}
@@ -899,12 +1230,12 @@ const ConfigTemplates = () => {
                 </div>
               ) : selectedModule === 'Pressure' ? (
                 <div className="config-form-container scale-in">
-                  <div className="p-0 rounded-4 bg-black bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
-                    <div className="p-3 border-bottom border-white border-opacity-5 bg-black bg-opacity-40 d-flex align-items-center gap-2">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center gap-2">
                       <Activity className="text-info shadow-glow-blue" size={18} />
                       <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">Pressure Transmitter Mapping <span className="opacity-40">(Analog / Digital)</span></h6>
                     </div>
-                    <div className="p-4 bg-black bg-opacity-20">
+                    <div className="p-4 bg-dark bg-opacity-20">
                       <Row className="g-4">
                         <Col md={12}>
                           <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card position-relative overflow-hidden transition-all hover-glow-blue">
@@ -915,7 +1246,7 @@ const ConfigTemplates = () => {
                                   <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-9">Pressure_Settings</h6>
                                   <small className="text-info opacity-50 uppercase fs-12 fw-bold">Live Pressure Feedback Integration</small>
                                 </div>
-                                <div className="d-flex align-items-center gap-3 bg-black bg-opacity-30 p-1 px-3 rounded-pill border border-info border-opacity-10">
+                                <div className="d-flex align-items-center gap-3 bg-dark bg-opacity-30 p-1 px-3 rounded-pill border border-info border-opacity-10">
                                    <Form.Label className="mb-0 text-secondary fs-11 fw-black uppercase tracking-widest opacity-50">Sensor Unit:</Form.Label>
                                    <Form.Select 
                                       className="premium-input p-1 fs-11 fw-bold border-0 bg-transparent text-info" 
@@ -943,21 +1274,25 @@ const ConfigTemplates = () => {
                                )}
                                <Row className="g-3">
                               {[
-                                { label: 'Location', key: 'location', list: locations },
-                                { label: 'Device_ID', key: 'device', list: devices },
-                                { label: 'Module_ID', key: 'module', list: modules },
-                                { label: 'Event_ Field', key: 'field', list: fields }
-                              ].map((f) => (
-                                <Col md={3} key={f.key} className="mb-3 position-relative z-1">
-                                  <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">{f.label}</Form.Label>
-                                  <Form.Select className="premium-input p-2 fs-9 fw-bold border-info border-opacity-10"
-                                    value={pressureConfig[f.key]} onChange={(e) => setPressureConfig({ ...pressureConfig, [f.key]: e.target.value })}>
-                                    <option value="">SELECT {f.label.toUpperCase()}</option>
-                                    {f.list.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                  </Form.Select>
-                                </Col>
-                              ))}
-                            </Row>
+                                 { label: 'Location', key: 'location' },
+                                 { label: 'Device_ID', key: 'device' },
+                                 { label: 'Module_ID', key: 'module' },
+                                 { label: 'Event_ Field', key: 'field' }
+                               ].map((f) => (
+                                 <Col md={3} key={f.key} className="mb-3 position-relative z-1">
+                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">{f.label}</Form.Label>
+                                   <Form.Select className="premium-input p-2 fs-9 fw-bold border-info border-opacity-10"
+                                     value={pressureConfig[f.key]} onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, f.key, e.target.value)}>
+                                     <option value="">SELECT {f.label.toUpperCase()}</option>
+                                     {getFieldList(f.key, pressureConfig).map(opt => (
+                                       <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
+                                         {typeof opt === 'object' ? opt.label : opt}
+                                       </option>
+                                     ))}
+                                   </Form.Select>
+                                 </Col>
+                               ))}
+                             </Row>
                           </div>
                         </Col>
                       </Row>
@@ -966,8 +1301,8 @@ const ConfigTemplates = () => {
                 </div>
               ) : selectedModule === 'Electrical Parameter' ? (
                 <div className="config-form-container scale-in">
-                  <div className="p-0 rounded-4 bg-black bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
-                    <div className="p-3 border-bottom border-white border-opacity-5 bg-black bg-opacity-40 d-flex align-items-center justify-content-between">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center justify-content-between">
                       <div className="d-flex align-items-center gap-2">
                         <Zap className="text-warning shadow-glow" size={18} />
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">Power Meter Integration <span className="opacity-40">(RS-485 / Modbus)</span></h6>
@@ -986,7 +1321,7 @@ const ConfigTemplates = () => {
                       </div>
                     </div>
 
-                    <div className={`p-4 bg-black bg-opacity-20 ${!electricalTarget ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: electricalTarget ? 'auto' : 'none' }}>
+                    <div className={`p-4 bg-dark bg-opacity-20 ${!electricalTarget ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: electricalTarget ? 'auto' : 'none' }}>
                       {!electricalTarget && (
                         <div className="position-absolute top-50 start-50 translate-middle z-3 text-center w-100">
                            <div className="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-20 px-4 py-2 rounded-pill fs-11 fw-black tracking-widest">
@@ -1065,33 +1400,41 @@ const ConfigTemplates = () => {
 
                               <Row className="g-2 mb-3 pb-3 border-bottom border-white border-opacity-5">
                                 {[
-                                  { label: 'Location', key: 'location', list: locations },
-                                  { label: 'Device_ID', key: 'device', list: devices },
-                                  { label: 'Module_ID', key: 'module', list: modules }
+                                  { label: 'Location', key: 'location' },
+                                  { label: 'Device_ID', key: 'device' },
+                                  { label: 'Module_ID', key: 'module' }
                                 ].map((f) => (
                                   <Col xs={4} key={f.key}>
                                     <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.55rem' }}>{f.label}</Form.Label>
                                     <Form.Select className="premium-input p-2 fs-11 fw-bold border-white border-opacity-10" style={{ height: '30px', fontSize: '0.65rem' }}
-                                      value={section.state[f.key]} onChange={(e) => section.setter({ ...section.state, [f.key]: e.target.value })}>
+                                      value={section.state[f.key]} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}>
                                       <option value="">{f.label.split('_')[0]}</option>
-                                      {f.list.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                      {getFieldList(f.key, section.state).map(opt => (
+                                        <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
+                                          {typeof opt === 'object' ? opt.label : opt}
+                                        </option>
+                                      ))}
                                     </Form.Select>
                                   </Col>
                                 ))}
                               </Row>
 
-                              <Row className="g-2">
-                                {section.fields.map((field) => (
-                                  <Col xs={4} key={field.key}>
-                                    <Form.Label className="fs-11 text-white fw-bold uppercase tracking-wider mb-1 d-block" style={{ fontSize: '0.6rem' }}>{field.label}</Form.Label>
-                                    <Form.Select className={`premium-input p-2 fs-11 fw-bold border-${section.color} border-opacity-20`} style={{ height: '30px', fontSize: '0.65rem' }}
-                                      value={section.state[field.key]} onChange={(e) => section.setter({ ...section.state, [field.key]: e.target.value })}>
-                                      <option value="">FIELD ID</option>
-                                      {fields.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                    </Form.Select>
-                                  </Col>
-                                ))}
-                              </Row>
+                               <Row className="g-2">
+                                 {section.fields.map((field) => (
+                                   <Col xs={4} key={field.key}>
+                                     <Form.Label className="fs-11 text-white fw-bold uppercase tracking-wider mb-1 d-block" style={{ fontSize: '0.6rem' }}>{field.label}</Form.Label>
+                                     <Form.Select className={`premium-input p-2 fs-11 fw-bold border-${section.color} border-opacity-20`} style={{ height: '30px', fontSize: '0.65rem' }}
+                                       value={section.state[field.key]} onChange={(e) => section.setter({ ...section.state, [field.key]: e.target.value })}>
+                                       <option value="">FIELD ID</option>
+                                       {getFieldList('field', section.state).map(opt => (
+                                         <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
+                                           {typeof opt === 'object' ? opt.label : opt}
+                                         </option>
+                                       ))}
+                                     </Form.Select>
+                                   </Col>
+                                 ))}
+                               </Row>
                             </div>
                           </Col>
                         ))}
@@ -1188,7 +1531,7 @@ const ConfigTemplates = () => {
                         </div>
 
                         {template.module === 'AG Tank' && template.mapping && template.mapping.agTankRange && (template.mapping.agTankRange.domStart || template.mapping.agTankRange.flushStart) && (
-                          <div className="mt-3 mb-3 p-2 rounded-3 bg-black bg-opacity-40 border border-white border-opacity-5 scada-data-box">
+                          <div className="mt-3 mb-3 p-2 rounded-3 bg-dark bg-opacity-40 border border-white border-opacity-5 scada-data-box">
                             <div className="d-flex flex-column gap-2">
                               {template.mapping.agTankRange.domStart && (
                                 <div className="d-flex justify-content-between align-items-center px-1">
@@ -1207,7 +1550,7 @@ const ConfigTemplates = () => {
                         )}
 
                         {template.module === 'UG Pump' && template.mapping && template.mapping.ugConfig && (
-                          <div className="mt-3 mb-3 p-2 rounded-3 bg-black bg-opacity-40 border border-white border-opacity-5 scada-data-box">
+                          <div className="mt-3 mb-3 p-2 rounded-3 bg-dark bg-opacity-40 border border-white border-opacity-5 scada-data-box">
                             <div className="d-flex justify-content-between align-items-center px-1">
                               <span className="fs-12 text-secondary uppercase fw-black opacity-60">Mode</span>
                               <span className={`fs-11 fw-black tracking-widest ${template.mapping.ugConfig.stationMode === 'REMOTE' ? 'text-info' : 'text-warning'}`}>
@@ -1218,7 +1561,7 @@ const ConfigTemplates = () => {
                         )}
 
                         {template.module === 'UG Tank' && template.mapping && template.mapping.ugTankRange && (
-                          <div className="mt-3 mb-3 p-2 rounded-3 bg-black bg-opacity-40 border border-white border-opacity-5 scada-data-box">
+                          <div className="mt-3 mb-3 p-2 rounded-3 bg-dark bg-opacity-40 border border-white border-opacity-5 scada-data-box">
                             <div className="d-flex justify-content-between align-items-center px-1">
                               <span className="fs-12 text-secondary uppercase fw-black opacity-60">Level Tank</span>
                               <span className="fs-11 text-info fw-black tracking-widest">{template.mapping.ugTankRange.name || 'UG TANK'}</span>
@@ -1260,7 +1603,7 @@ const ConfigTemplates = () => {
           <div className="card-inner-glow"></div>
           {previewTemplate && (
             <div className="preview-container h-100 position-relative z-1">
-              <div className="p-3 border-bottom border-white border-opacity-5 d-flex justify-content-between align-items-center bg-black bg-opacity-20">
+              <div className="p-3 border-bottom border-white border-opacity-5 d-flex justify-content-between align-items-center bg-dark bg-opacity-20">
                 <div className="d-flex align-items-center gap-3">
                   <div className="p-2 rounded-3 bg-info bg-opacity-10 text-info border border-info border-opacity-10">
                     <Info size={20} />
@@ -1282,7 +1625,7 @@ const ConfigTemplates = () => {
                   {/* UG TANK LEVEL SECTION */}
                   {previewTemplate.module === 'UG Tank' && previewTemplate.mapping && previewTemplate.mapping.ugTankLevelConfig && (
                     <Col md={12}>
-                      <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 mb-0 scada-data-box">
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 mb-0 scada-data-box">
                         <div className="d-flex justify-content-between align-items-center mb-3">
                           <h6 className="text-info fw-black uppercase letter-spacing-1 m-0 d-flex align-items-center gap-2 fs-11">
                             <Droplets size={16} /> UG Tank Level Configuration
@@ -1293,7 +1636,7 @@ const ConfigTemplates = () => {
                         </div>
                         <Row className="g-3">
                           <Col md={12}>
-                            <div className="p-3 rounded bg-black bg-opacity-40 border border-info border-opacity-10">
+                            <div className="p-3 rounded bg-dark bg-opacity-40 border border-info border-opacity-10">
                               <div className="d-flex justify-content-between align-items-center mb-2 border-bottom border-white border-opacity-5 pb-2">
                                 <span className="fs-12 text-info fw-black uppercase">Level Mapping Status</span>
                                 <Badge bg={previewTemplate.mapping.ugTankLevelConfig.enabled ? "success" : "secondary"} className="bg-opacity-10 text-success border border-success border-opacity-25">
@@ -1322,7 +1665,7 @@ const ConfigTemplates = () => {
                   {/* UG PUMP SPECIFIC SECTION */}
                   {previewTemplate.module === 'UG Pump' && previewTemplate.mapping && previewTemplate.mapping.ugConfig && (
                     <Col md={12}>
-                      <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 mb-0 scada-data-box">
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 mb-0 scada-data-box">
                         <div className="d-flex justify-content-between align-items-center mb-3">
                           <h6 className="text-success fw-black uppercase letter-spacing-1 m-0 d-flex align-items-center gap-2 fs-11">
                             <Database size={16} /> UG System Parameters
@@ -1337,7 +1680,7 @@ const ConfigTemplates = () => {
                         <Row className="g-2">
                           <Col md={12}>
                             <div className="fs-11 text-secondary uppercase fw-black mb-2 opacity-50">Tank Unit Assignment</div>
-                            <div className="p-2 rounded bg-black bg-opacity-40 border border-success border-opacity-20 text-success fw-black fs-9 text-center shadow-inner">
+                            <div className="p-2 rounded bg-dark bg-opacity-40 border border-success border-opacity-20 text-success fw-black fs-9 text-center shadow-inner">
                                {previewTemplate.mapping.ugPumpRange?.name || 'NOT ASSIGNED'}
                             </div>
                           </Col>
@@ -1367,7 +1710,7 @@ const ConfigTemplates = () => {
                                 { title: 'Remote Mode', key: 'ugRemoteModeConfig' }
                               ].map((section, idx) => (
                                 <Col md={4} key={idx}>
-                                  <div className="p-2 rounded bg-black bg-opacity-40 border border-white border-opacity-5">
+                                  <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                     <span className="fs-13 text-success fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">{section.title}</span>
                                     {['location', 'device', 'module', 'field'].map(f => (
                                       <div key={f} className="d-flex justify-content-between">
@@ -1398,13 +1741,13 @@ const ConfigTemplates = () => {
                   {/* TANK RANGE SECTION - ONLY FOR AG TANK */}
                   {previewTemplate.module === 'AG Tank' && previewTemplate.mapping && previewTemplate.mapping.agTankRange && (
                     <Col md={12}>
-                      <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
                         <h6 className="text-info fw-black uppercase letter-spacing-1 mb-3 d-flex align-items-center gap-2 fs-11">
                           <LayoutGrid size={16} /> Tank Mapping Data
                         </h6>
                         <Row className="g-3">
                           <Col md={6}>
-                            <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 d-flex justify-content-between align-items-center shadow-inner hover-border-info transition-all cursor-default">
+                            <div className="p-3 rounded-4 bg-dark bg-opacity-40 border border-white border-opacity-5 d-flex justify-content-between align-items-center shadow-inner hover-border-info transition-all cursor-default">
                               <div>
                                 <small className="text-info uppercase fw-black fs-12 d-block opacity-80 mb-1 letter-spacing-1">Domestic Supply</small>
                                 <h4 className="text-white fw-black mb-0 tracking-widest fs-4 text-glow-blue">{previewTemplate.mapping.agTankRange.domStart || '---'}</h4>
@@ -1415,7 +1758,7 @@ const ConfigTemplates = () => {
                             </div>
                           </Col>
                           <Col md={6}>
-                            <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 d-flex justify-content-between align-items-center shadow-inner hover-border-info transition-all cursor-default">
+                            <div className="p-3 rounded-4 bg-dark bg-opacity-40 border border-white border-opacity-5 d-flex justify-content-between align-items-center shadow-inner hover-border-info transition-all cursor-default">
                               <div>
                                 <small className="text-info uppercase fw-black fs-12 d-block opacity-80 mb-1 letter-spacing-1">Flushing Supply</small>
                                 <h4 className="text-white fw-black mb-0 tracking-widest fs-4 text-glow-blue">{previewTemplate.mapping.agTankRange.flushStart || '---'}</h4>
@@ -1433,13 +1776,13 @@ const ConfigTemplates = () => {
                   {/* PRESSURE MODULE PREVIEW */}
                   {previewTemplate.module === 'Pressure' && previewTemplate.mapping && previewTemplate.mapping.pressureConfig && (
                     <Col md={12}>
-                      <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
                         <h6 className="text-info fw-black uppercase letter-spacing-1 mb-3 d-flex align-items-center gap-2 fs-11">
                           <Activity size={16} /> Pressure Sensor Protocol
                         </h6>
                         <div className="d-flex flex-wrap gap-2">
                           {Object.entries(previewTemplate.mapping.pressureConfig).map(([key, val]) => (
-                            <div key={key} className="flex-grow-1 p-2 rounded bg-black bg-opacity-40 border border-white border-opacity-5 text-center">
+                            <div key={key} className="flex-grow-1 p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5 text-center">
                               <small className="text-secondary uppercase fw-black fs-12 d-block opacity-50">{key}</small>
                               <span className="text-white fw-bold fs-11">{val || '---'}</span>
                             </div>
@@ -1452,7 +1795,7 @@ const ConfigTemplates = () => {
                   {/* ELECTRICAL PARAMETER PREVIEW */}
                   {previewTemplate.module === 'Electrical Parameter' && previewTemplate.mapping && (
                     <Col md={12}>
-                      <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
                         <h6 className="text-warning fw-black uppercase letter-spacing-1 mb-3 d-flex align-items-center gap-2 fs-11">
                           <Zap size={16} /> Electrical Analysis Matrix
                         </h6>
@@ -1464,7 +1807,7 @@ const ConfigTemplates = () => {
                             { title: 'Energy Consumption', key: 'elecConsumptionConfig', fields: ['kva', 'kwh', 'kvah'] }
                           ].map((section, idx) => (
                             <Col md={6} key={idx}>
-                              <div className="p-2 rounded bg-black bg-opacity-40 border border-white border-opacity-5">
+                              <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                 <span className="fs-13 text-warning fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">{section.title}</span>
                                 {['location', 'device', 'module', ...section.fields].map(f => (
                                   <div key={f} className="d-flex justify-content-between">
@@ -1483,7 +1826,7 @@ const ConfigTemplates = () => {
                   {/* FIELD MAPPING SECTION - FOR AG TANKS (NEW SKETCH BASED) */}
                   {previewTemplate.module === 'AG Tank' && previewTemplate.mapping && (
                     <Col md={12}>
-                      <div className="p-3 rounded-4 bg-black bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
                         <h6 className="text-white fw-black uppercase letter-spacing-1 mb-3 d-flex align-items-center gap-2 fs-11">
                           <LayoutGrid size={16} className="text-info" /> AG Hardware Field Matrix
                         </h6>
@@ -1499,7 +1842,7 @@ const ConfigTemplates = () => {
                             { title: 'Close Valve', key: 'agCloseConfig' }
                           ].map((section, idx) => (
                             <Col md={4} key={idx}>
-                              <div className="p-2 rounded bg-black bg-opacity-40 border border-white border-opacity-5">
+                              <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                 <div className="d-flex justify-content-between align-items-center mb-1 border-bottom border-white border-opacity-5 pb-1">
                                   <span className="fs-12 text-info fw-black uppercase">{section.title}</span>
                                   {previewTemplate.mapping[section.key]?.enabled !== undefined && (
@@ -1534,7 +1877,7 @@ const ConfigTemplates = () => {
                 </div>
               </div>
 
-              <div className="p-2 border-top border-white border-opacity-5 bg-black bg-opacity-40 d-flex justify-content-end gap-2">
+              <div className="p-2 border-top border-white border-opacity-5 bg-dark bg-opacity-40 d-flex justify-content-end gap-2">
                 <Button variant="outline-secondary" className="fs-12 fw-black uppercase tracking-widest py-1 px-3 border-opacity-20 hover-text-white cursor-pointer" onClick={() => setShowPreviewModal(false)}>
                   Dismiss
                 </Button>
@@ -1550,7 +1893,7 @@ const ConfigTemplates = () => {
       <style dangerouslySetInnerHTML={{
         __html: `
         .scada-select {
-          background-color: rgba(0, 0, 0, 0.4) !important;
+          background-color: rgba(15, 23, 42, 0.4) !important;
           border: 1px solid rgba(255, 255, 255, 0.1) !important;
           color: white !important;
           border-radius: 6px !important;
