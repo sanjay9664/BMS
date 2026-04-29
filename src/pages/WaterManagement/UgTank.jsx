@@ -30,10 +30,10 @@ const UgTank = () => {
     { id: 4, status: 'Running', mode: 'AUTO', hz: '50.0', amp: '12.2', pressure: 3.9, startLimit: 1.5, stopLimit: 4.5 },
   ]);
 
-  const [tanks] = useState([
-    { id: 1, name: 'FIRE RESERVOIR', level: 88, desc: 'PRIMARY FIRE' },
-    { id: 2, name: 'DOMESTIC SUMP', level: 62, desc: 'POTABLE SUPPLY' },
-    { id: 3, name: 'PROCESS TANK', level: 45, desc: 'INDUSTRIAL RECLAIM' },
+  const [tanks, setTanks] = useState([
+    { id: 1, name: 'FIRE RESERVOIR', level: 0, desc: 'PRIMARY FIRE' },
+    { id: 2, name: 'DOMESTIC SUMP', level: 0, desc: 'POTABLE SUPPLY' },
+    { id: 3, name: 'PROCESS TANK', level: 0, desc: 'INDUSTRIAL RECLAIM' },
   ]);
 
   const [selectedPump, setSelectedPump] = useState(null);
@@ -54,6 +54,84 @@ const UgTank = () => {
       setPumps2(prev => prev.map(p => p.status === 'Running' ? { ...p, pressure: Math.max(0, p.pressure + getJitter()) } : p));
       setPulseTrigger(prev => prev + 1);
     }, 800);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const fetchUgDynamicLevels = async () => {
+      try {
+        const saved = localStorage.getItem('scada_templates');
+        if (!saved) return;
+        const templates = JSON.parse(saved);
+
+        const moduleIds = new Set();
+        templates.forEach(t => {
+          if ((t.module === 'UG Tank' || t.module === 'UG Pump') && t.mapping?.ugTankLevelConfig?.module) {
+            moduleIds.add(t.mapping.ugTankLevelConfig.module);
+          }
+          if (t.module === 'AG Tank' && t.mapping?.agLevelConfig?.module) {
+            moduleIds.add(t.mapping.agLevelConfig.module);
+          }
+        });
+        
+        const modulesQuery = Array.from(moduleIds).join(',');
+        const url = modulesQuery ? `http://localhost:5000/api/templates/stats?modules=${modulesQuery}` : 'http://localhost:5000/api/templates/stats';
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const stats = await response.json();
+          
+          setTanks(prev => {
+            let updated = false;
+
+            // Get all generic UG Tank templates (those without a specific valid name)
+            const ugTemplates = templates.filter(t => 
+              t.module === 'UG Tank' || t.module === 'UG Pump'
+            );
+
+            const genericUgTemplates = ugTemplates.filter(t => 
+              !t.mapping?.ugTankRange?.name || t.mapping?.ugTankRange?.name === "" || t.mapping?.ugTankRange?.name === "UG TANK"
+            );
+
+            const next = prev.map((tank, index) => {
+              // 1. Try to find exact match
+              let template = ugTemplates.find(t => t.mapping?.ugTankRange?.name === tank.name);
+              
+              // 2. If no exact match, fallback to generic templates by index
+              if (!template && genericUgTemplates.length > index) {
+                template = genericUgTemplates[index];
+              }
+
+              let config = null;
+
+              if (template && template.mapping && template.mapping.ugTankLevelConfig && template.mapping.ugTankLevelConfig.module) {
+                config = template.mapping.ugTankLevelConfig;
+              }
+
+              if (config && config.field && config.module) {
+                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                  updated = true;
+                  console.log(`Matched ${tank.name} with module: ${config.module}, field: ${config.field}, value: ${stat.meta[config.field]}`);
+                  return { ...tank, level: Math.round(Number(stat.meta[config.field])) };
+                } else {
+                  console.log(`${tank.name} configured for module: ${config.module}, field: ${config.field} but no valid data found`);
+                }
+              } else {
+                console.log(`No valid template configuration found for UG Tank: ${tank.name}`);
+              }
+              return tank;
+            });
+            return updated ? next : prev;
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching dynamic UG tank levels:', error);
+      }
+    };
+
+    fetchUgDynamicLevels();
+    const interval = setInterval(fetchUgDynamicLevels, 5000);
     return () => clearInterval(interval);
   }, []);
 

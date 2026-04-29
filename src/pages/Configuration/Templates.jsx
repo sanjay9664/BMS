@@ -17,7 +17,8 @@ const ConfigTemplates = () => {
   const [templateName, setTemplateName] = useState('');
   const [filterModule, setFilterModule] = useState('ALL');
   const [selectedTemplates, setSelectedTemplates] = useState([]);
-
+  const [isSaving, setIsSaving] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
   // States for Mapping Fields
   const [agLowerConfig, setAgLowerConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
   const [agUpperConfig, setAgUpperConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
@@ -79,8 +80,8 @@ const ConfigTemplates = () => {
   }));
 
   const flushingTowers = Array.from({ length: 24 }, (_, i) => ({
-    name: `TOWER-F-${i + 25}`,
-    id: `F-${String(i + 25).padStart(2, '0')}`
+    name: `TOWER-F-${i + 1}`,
+    id: `F-${String(i + 1).padStart(2, '0')}`
   }));
 
   const ugPumpsList = [
@@ -138,6 +139,7 @@ const ConfigTemplates = () => {
   };
 
   const handleUgPumpChange = (name) => {
+    setTemplateName('');
     const tank = ugPumpsList.find(t => t.name === name);
     if (tank) {
       setUgPumpRange({ name: tank.name, id: tank.id });
@@ -147,6 +149,7 @@ const ConfigTemplates = () => {
   };
 
   const handleUgTankChange = (name) => {
+    setTemplateName('');
     const tank = ugPumpsList.find(t => t.name === name);
     if (tank) {
       const existing = savedTemplates.find(t => 
@@ -446,6 +449,7 @@ const ConfigTemplates = () => {
   };
 
   const handleDomesticTowerChange = (name) => {
+    setTemplateName('');
     const tower = domesticTowers.find(t => t.name === name);
     if (tower) {
       // Find if a template for this specific tower already exists
@@ -480,21 +484,27 @@ const ConfigTemplates = () => {
   const autoSaveMasterStatus = (enabledValue) => {
     if (!agTankRange.domStart && !agTankRange.flushStart) return;
 
+    const rawMapping = {
+      agLowerConfig, agUpperConfig, agTankRange,
+      agAutoConfig, agManualConfig, agBypassConfig,
+      agLevelConfig, agOpenConfig, agCloseConfig,
+      agTankType, agMasterEnabled: enabledValue
+    };
+
+    const cleanedMapping = {};
+    Object.keys(rawMapping).forEach(key => {
+      const val = rawMapping[key];
+      if (val && typeof val === 'object' && !Array.isArray(val) && 'location' in val) {
+        if (!val.location) return;
+      }
+      cleanedMapping[key] = val;
+    });
+
     const templateData = {
       category: selectedCategory,
       module: selectedModule,
       timestamp: new Date().toLocaleString(),
-      mapping: {
-        agLowerConfig, agUpperConfig, agTankRange,
-        agAutoConfig, agManualConfig, agBypassConfig,
-        agLevelConfig, agOpenConfig, agCloseConfig,
-        ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
-        ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
-        ugLocalModeConfig, ugRemoteModeConfig,
-        pressureConfig, 
-        elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig,
-        agTankType, agMasterEnabled: enabledValue
-      }
+      mapping: cleanedMapping
     };
 
     const existingTowerIdx = savedTemplates.findIndex(t => 
@@ -513,6 +523,7 @@ const ConfigTemplates = () => {
   };
 
   const handleFlushingTowerChange = (name) => {
+    setTemplateName('');
     const tower = flushingTowers.find(t => t.name === name);
     if (tower) {
       const existing = savedTemplates.find(t => 
@@ -542,11 +553,37 @@ const ConfigTemplates = () => {
   };
 
   const handleSave = async () => {
-    const templateData = {
-      category: selectedCategory,
-      module: selectedModule,
-      timestamp: new Date().toLocaleString(),
-      mapping: {
+    let mapping = {};
+    if (selectedModule === 'AG Tank') {
+      mapping = {
+        agLowerConfig, agUpperConfig, agTankRange,
+        agAutoConfig, agManualConfig, agBypassConfig,
+        agLevelConfig, agOpenConfig, agCloseConfig,
+        agTankType, agMasterEnabled
+      };
+    } else if (selectedModule === 'UG Pump') {
+      mapping = {
+        ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
+        ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
+        ugLocalModeConfig, ugRemoteModeConfig, 
+        ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo }, 
+        ugConfig
+      };
+    } else if (selectedModule === 'UG Tank') {
+      mapping = {
+        ugTankLevelConfig, ugTankRange
+      };
+    } else if (selectedModule === 'Pressure') {
+      mapping = {
+        pressureConfig, pressureTarget
+      };
+    } else if (selectedModule === 'Electrical Parameter') {
+      mapping = {
+        elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig, electricalTarget
+      };
+    } else {
+      // Fallback
+      mapping = {
         agLowerConfig, agUpperConfig, agTankRange,
         agAutoConfig, agManualConfig, agBypassConfig,
         agLevelConfig, agOpenConfig, agCloseConfig,
@@ -559,7 +596,37 @@ const ConfigTemplates = () => {
         elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig, electricalTarget,
         agTankType, agMasterEnabled,
         ugTankLevelConfig, ugTankRange
+      };
+    }
+
+    const rawMapping = mapping;
+    const cleanedMapping = {};
+    Object.keys(rawMapping).forEach(key => {
+      const val = rawMapping[key];
+      if (val && typeof val === 'object' && !Array.isArray(val) && 'module' in val) {
+        if (!val.module && val.enabled !== false) return; // Only strip if module ID is empty AND it's not disabled
       }
+      cleanedMapping[key] = val;
+    });
+
+    const hasValidConfig = Object.values(cleanedMapping).some(val => 
+      val && typeof val === 'object' && val.module && val.field
+    );
+
+    if (!hasValidConfig) {
+      setToastMessage({ type: 'error', text: "Please map at least one field to a device module before saving." });
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
+    if (isSaving) return;
+    setIsSaving(true);
+
+    const templateData = {
+      category: selectedCategory,
+      module: selectedModule,
+      timestamp: new Date().toLocaleString(),
+      mapping: cleanedMapping
     };
 
     let autoName = '';
@@ -581,6 +648,7 @@ const ConfigTemplates = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          id: editingTemplateId,
           name: uniqueName.toUpperCase(),
           category: selectedCategory,
           module: selectedModule,
@@ -602,7 +670,8 @@ const ConfigTemplates = () => {
         setSavedTemplates([...savedTemplates, { id: result.templateId || Date.now(), ...templateData, name: uniqueName.toUpperCase() }]);
       }
 
-      alert(`${selectedModule} Configuration Saved Successfully to Neon Database!`);
+      setToastMessage({ type: 'success', text: `${selectedModule} Configuration Saved Successfully.` });
+      setTimeout(() => setToastMessage(null), 3000);
     } catch (error) {
       console.error('Error saving to backend:', error);
       // Fallback to local storage if backend fails
@@ -612,7 +681,11 @@ const ConfigTemplates = () => {
       } else {
         setSavedTemplates([...savedTemplates, { id: Date.now(), ...templateData, name: uniqueName.toUpperCase() }]);
       }
-      alert(`Saved to LocalStorage (Backend connection failed)`);
+      
+      setToastMessage({ type: 'success', text: `${selectedModule} Configuration Saved Locally.` });
+      setTimeout(() => setToastMessage(null), 3000);
+    } finally {
+      setIsSaving(false);
     }
 
     // Reset only if NOT AG Tank (to let user see their save)
@@ -655,8 +728,16 @@ const ConfigTemplates = () => {
   };
 
 
-  const handleRemove = (id) => {
+  const handleRemove = async (id) => {
     if (window.confirm('Are you sure you want to remove this mapping?')) {
+      try {
+        const response = await fetch(`http://localhost:5000/api/templates/${id}`, { method: 'DELETE' });
+        if (!response.ok) {
+          throw new Error('Failed to delete from backend');
+        }
+      } catch (error) {
+        console.error('Error deleting from backend:', error);
+      }
       setSavedTemplates(savedTemplates.filter(t => t.id !== id));
     }
   };
@@ -667,8 +748,13 @@ const ConfigTemplates = () => {
     );
   };
 
-  const handleBulkRemove = () => {
+  const handleBulkRemove = async () => {
     if (window.confirm(`Are you sure you want to remove ${selectedTemplates.length} selected mappings?`)) {
+      try {
+        await Promise.all(selectedTemplates.map(id => fetch(`http://localhost:5000/api/templates/${id}`, { method: 'DELETE' })));
+      } catch (error) {
+        console.error('Error deleting multiple from backend:', error);
+      }
       setSavedTemplates(savedTemplates.filter(t => !selectedTemplates.includes(t.id)));
       setSelectedTemplates([]);
     }
@@ -715,6 +801,18 @@ const ConfigTemplates = () => {
       setUgTankLevelConfig(template.mapping.ugTankLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
       setUgTankRange(template.mapping.ugTankRange || { name: '', id: '' });
       setTemplateName(template.name || '');
+
+      // Pre-fetch dynamic data so dropdowns are fully populated
+      Object.values(template.mapping).forEach(config => {
+        if (config && typeof config === 'object') {
+          if (config.location) {
+            fetchLocationDetails(config.location);
+          }
+          if (config.device) {
+            fetchDeviceDetails(config.device);
+          }
+        }
+      });
     }
     setEditingTemplateId(template.id);
     setViewMode('FORM');
@@ -741,6 +839,18 @@ const ConfigTemplates = () => {
             </p>
           </div>
         </div>
+        
+        {toastMessage && (
+          <div className="position-fixed start-50 translate-middle-x fade-in" style={{ zIndex: 9999, bottom: '12%' }}>
+            <div className={`px-4 py-3 rounded-pill shadow-lg d-flex align-items-center gap-3 border ${
+              toastMessage.type === 'error' ? 'bg-danger bg-opacity-20 border-danger text-danger' : 'bg-success bg-opacity-20 border-success text-success'
+            }`} style={{ backdropFilter: 'blur(10px)', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
+              {toastMessage.type === 'error' ? <Info size={20} /> : <CheckCircle2 size={20} />}
+              <span className="fw-black tracking-widest fs-9">{toastMessage.text}</span>
+            </div>
+          </div>
+        )}
+
         <div className="d-flex gap-2">
           {viewMode === 'LIST' && (
             <div className="d-flex gap-2">
@@ -822,8 +932,8 @@ const ConfigTemplates = () => {
                 <Button variant="outline-warning" className="fw-bold px-4 rounded-3 border-opacity-25" onClick={() => setViewMode('LIST')}>
                   <History size={18} className="me-2" /> PREVIOUS SAVE SETTING
                 </Button>
-                <Button variant="info" className="fw-bold px-5 rounded-3 shadow-glow" onClick={handleSave}>
-                  <Save size={18} className="me-2" /> SAVE TEMPLATE
+                <Button variant="info" className={`fw-bold px-5 rounded-3 shadow-glow transition-all ${isSaving ? 'opacity-50' : ''}`} onClick={handleSave} disabled={isSaving}>
+                  <Save size={18} className="me-2" /> {isSaving ? 'SAVING...' : 'SAVE TEMPLATE'}
                 </Button>
               </div>
             </div>

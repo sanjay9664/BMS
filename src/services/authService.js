@@ -81,7 +81,7 @@ export const getSochiotDeviceDetails = async (deviceId) => {
         'Authorization': `Bearer ${token}`
       }
     });
-
+    
     if (!response.ok) throw new Error('Failed to fetch device details');
     return await response.json();
   } catch (error) {
@@ -89,3 +89,6 @@ export const getSochiotDeviceDetails = async (deviceId) => {
     throw error;
   }
 };
+          
+
+

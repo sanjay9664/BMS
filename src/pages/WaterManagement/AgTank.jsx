@@ -11,7 +11,7 @@ const AgTank = () => {
   const [domesticCount, setDomesticCount] = useState(24);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const pageRef = useRef(null);
-
+  
    
   // Status Filter Sync
   useEffect(() => {
@@ -26,12 +26,13 @@ const AgTank = () => {
   // Initialize tanks with valve states
   const [allTanks, setAllTanks] = useState(() =>
     Array.from({ length: totalTanks }, (_, i) => ({
-      id: i + 1,
+      globalId: i + 1,
+      localId: i < 24 ? i + 1 : i - 23,
       type: i < 24 ? 'DOMESTIC' : 'FLUSHING',
-      level: Math.floor(Math.random() * 100),
-      status: Math.random() > 0.92 ? 'Fault' : Math.random() > 0.85 ? 'Warning' : 'Running',
+      level: 0,
+      status: 'Stopped',
       valveMode: 'AUTO',
-      valveStatus: 'OPEN',
+      valveStatus: 'CLOSE',
       minLevel: 20,
       maxLevel: 90
     }))
@@ -44,7 +45,7 @@ const AgTank = () => {
     else document.exitFullscreen();
   };
 
-  const updateTankValve = (id, updates) => {
+  const updateTankValve = (globalId, updates) => {
     const userRole = localStorage.getItem('userRole') || 'user';
     if (userRole !== 'admin') {
       setActionFeedback("ACCESS DENIED: ADMIN ONLY");
@@ -54,7 +55,7 @@ const AgTank = () => {
 
     setAllTanks(prev => {
       const next = prev.map(t => {
-        if (t.id === id) {
+        if (t.globalId === globalId) {
           let syncedUpdates = { ...updates };
           // Synchronize Valve and Status for "Same Value" logic
           if (updates.valveStatus === 'OPEN') syncedUpdates.status = 'Running';
@@ -67,8 +68,8 @@ const AgTank = () => {
         return t;
       });
 
-      if (selectedTank && selectedTank.id === id) {
-        const currentItem = next.find(t => t.id === id);
+      if (selectedTank && selectedTank.globalId === globalId) {
+        const currentItem = next.find(t => t.globalId === globalId);
         setSelectedTank(currentItem);
       }
       return next;
@@ -86,7 +87,8 @@ const AgTank = () => {
   useMemo(() => {
     setAllTanks(prev => prev.map((t, i) => ({
       ...t,
-      type: i < domesticCount ? 'DOMESTIC' : 'FLUSHING'
+      type: i < domesticCount ? 'DOMESTIC' : 'FLUSHING',
+      localId: i < domesticCount ? i + 1 : i - domesticCount + 1
     })));
   }, [domesticCount]);
 
@@ -164,8 +166,108 @@ const AgTank = () => {
     };
   }, []);
 
+  useEffect(() => {
+    const fetchDynamicLevels = async () => {
+      try {
+        const saved = localStorage.getItem('scada_templates');
+        if (!saved) return;
+        const templates = JSON.parse(saved);
+
+        const moduleIds = new Set();
+        templates.forEach(t => {
+          if (t.module === 'AG Tank') {
+            if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
+            if (t.mapping?.agOpenConfig?.module) moduleIds.add(t.mapping.agOpenConfig.module);
+            if (t.mapping?.agCloseConfig?.module) moduleIds.add(t.mapping.agCloseConfig.module);
+          }
+        });
+        
+        const modulesQuery = Array.from(moduleIds).join(',');
+        const url = modulesQuery ? `http://localhost:5000/api/templates/stats?modules=${modulesQuery}` : 'http://localhost:5000/api/templates/stats';
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const stats = await response.json();
+          
+          setAllTanks(prev => {
+            let updated = false;
+
+            const agTemplates = templates.filter(t => t.module === 'AG Tank');
+            const genericAgTemplates = agTemplates.filter(t => 
+              (!t.mapping?.agTankRange?.domStart && !t.mapping?.agTankRange?.flushStart) ||
+              t.mapping?.agTankRange?.domStart === 'AG TANK' || t.mapping?.agTankRange?.flushStart === 'AG TANK'
+            );
+
+            const next = prev.map((tank, index) => {
+              const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
+              
+              let template = agTemplates.find(t => 
+                (tank.type === 'DOMESTIC' && t.mapping?.agTankRange?.domStart === tankName) ||
+                (tank.type === 'FLUSHING' && t.mapping?.agTankRange?.flushStart === tankName)
+              );
+
+              if (!template && genericAgTemplates.length > index) {
+                template = genericAgTemplates[index];
+              }
+
+              let newTank = { ...tank };
+
+              if (template && template.mapping) {
+                // Level Config
+                if (template.mapping.agLevelConfig?.field && template.mapping.agLevelConfig?.module) {
+                  const config = template.mapping.agLevelConfig;
+                  const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                  if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                    updated = true;
+                    newTank.level = Math.round(Number(stat.meta[config.field]));
+                  }
+                }
+
+                // Open Valve Config
+                if (template.mapping.agOpenConfig?.field && template.mapping.agOpenConfig?.module) {
+                  const config = template.mapping.agOpenConfig;
+                  const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                  if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                    updated = true;
+                    const isOpen = Number(stat.meta[config.field]) > 0 || String(stat.meta[config.field]).toLowerCase() === 'true';
+                    if (isOpen) {
+                      newTank.valveStatus = 'OPEN';
+                      newTank.status = 'Running';
+                    }
+                  }
+                }
+
+                // Close Valve Config
+                if (template.mapping.agCloseConfig?.field && template.mapping.agCloseConfig?.module) {
+                  const config = template.mapping.agCloseConfig;
+                  const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                  if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                    updated = true;
+                    const isClosed = Number(stat.meta[config.field]) > 0 || String(stat.meta[config.field]).toLowerCase() === 'true';
+                    if (isClosed) {
+                      newTank.valveStatus = 'CLOSE';
+                      newTank.status = 'Stopped';
+                    }
+                  }
+                }
+              }
+              return newTank;
+            });
+            return updated ? next : prev;
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching dynamic tank levels:', error);
+      }
+    };
+
+    fetchDynamicLevels();
+    const interval = setInterval(fetchDynamicLevels, 5000); // Fetch every 5s for realtime UI
+    return () => clearInterval(interval);
+  }, []);
+
   const isTankDisabled = (tank) => {
-    const name = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.id}`;
+    const name = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
     return disabledTanks[name];
   };
 
@@ -272,7 +374,7 @@ const AgTank = () => {
       <div className={`scada-card ${isFullscreen ? 'p-5' : 'p-4'}`}>
         <Row className="g-4">
           {filteredTanks.map((tank) => (
-            <Col key={tank.id} xs={6} sm={4} md={isFullscreen ? 4 : 2} lg={isFullscreen ? 2 : 1} className={isFullscreen ? 'col-fs-2' : ''}>
+            <Col key={tank.globalId} xs={6} sm={4} md={isFullscreen ? 4 : 2} lg={isFullscreen ? 2 : 1} className={isFullscreen ? 'col-fs-2' : ''}>
               <div
                 className={`tank-unit-wrapper p-2 rounded text-center position-relative ${tank.status === 'Stopped' ? 'tank-stopped-outline' : ''} ${isFullscreen ? 'expanded-unit' : ''} ${isTankDisabled(tank) ? 'tank-disabled' : ''}`}
                 onClick={() => handleTankClick(tank)}
@@ -315,7 +417,7 @@ const AgTank = () => {
                   )}
                 </div>
                 <div className={`fw-bold text-white mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
-                  {tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{tank.id}
+                  {tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{tank.localId}
                 </div>
                 <div className={`opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`} style={{ color: getTankColor(tank.type, tank.level, tank.status) }}>{tank.level}%</div>
               </div>
@@ -550,7 +652,7 @@ const AgTank = () => {
                   </div>
                </Badge>
                <h3 className="fw-black text-white mb-0 size-3 tracking-tighter" style={{ textShadow: '0 0 20px rgba(56, 189, 248, 0.3)' }}>
-                 {selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{selectedTank.id} <span className="text-info-scada">COMMAND</span>
+                 {selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{selectedTank.localId} <span className="text-info-scada">COMMAND</span>
                </h3>
             </div>
             <div className="p-4 px-5">
@@ -566,7 +668,7 @@ const AgTank = () => {
                   {['AUTO', 'MANUAL', 'BYPASS'].map(mode => (
                     <div 
                       key={mode}
-                      onClick={() => updateTankValve(selectedTank.id, { valveMode: mode })}
+                      onClick={() => updateTankValve(selectedTank.globalId, { valveMode: mode })}
                       className={`px-4 py-2 rounded-pill fw-black tracking-widest transition-all cursor-pointer ${
                         selectedTank.valveMode === mode 
                           ? 'bg-info text-white shadow-lg scale-105' 
@@ -592,7 +694,7 @@ const AgTank = () => {
                          <Form.Control 
                             type="number" 
                             value={selectedTank.minLevel} 
-                            onChange={(e) => updateTankValve(selectedTank.id, { minLevel: parseInt(e.target.value) })}
+                            onChange={(e) => updateTankValve(selectedTank.globalId, { minLevel: parseInt(e.target.value) })}
                             className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
                          />
                          <span className="text-info fw-black fs-5">%</span>
@@ -609,7 +711,7 @@ const AgTank = () => {
                          <Form.Control 
                             type="number" 
                             value={selectedTank.maxLevel} 
-                            onChange={(e) => updateTankValve(selectedTank.id, { maxLevel: parseInt(e.target.value) })}
+                            onChange={(e) => updateTankValve(selectedTank.globalId, { maxLevel: parseInt(e.target.value) })}
                             className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
                          />
                          <span className="text-danger fw-black fs-5">%</span>
@@ -627,7 +729,7 @@ const AgTank = () => {
                       className={`premium-action-btn open w-100 ${selectedTank.valveStatus === 'OPEN' ? 'active' : ''}`}
                       disabled={selectedTank.valveMode === 'AUTO' || selectedTank.valveMode === 'BYPASS'}
                       style={{ padding: '12px' }}
-                      onClick={() => updateTankValve(selectedTank.id, { valveStatus: 'OPEN' })}>
+                      onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'OPEN' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
                          <Droplets size={16} />
                          <div>
@@ -641,7 +743,7 @@ const AgTank = () => {
                       className={`premium-action-btn close w-100 ${selectedTank.valveStatus === 'CLOSE' ? 'active' : ''}`}
                       disabled={selectedTank.valveMode === 'AUTO' || selectedTank.valveMode === 'BYPASS'}
                       style={{ padding: '12px' }}
-                      onClick={() => updateTankValve(selectedTank.id, { valveStatus: 'CLOSE' })}>
+                      onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'CLOSE' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
                          <X size={16} />
                          <div>
