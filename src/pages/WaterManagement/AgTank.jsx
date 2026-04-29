@@ -540,7 +540,7 @@ const AgTank = () => {
         .filter-tile.active.flushing { border-bottom: 4px solid #10b981; background: rgba(16, 185, 129, 0.08); }
         .filter-tile.active.all { border-bottom: 4px solid #94a3b8; background: rgba(148, 163, 184, 0.1); }
         
-        .status-filter-card { transition: 0.3s; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(5px); }
+        .status-filter-card { transition: 0.3s; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(5px); will-change: transform; }
         .status-filter-card:hover { transform: translateY(-2px); background: rgba(255,255,255,0.02); }
         .status-filter-card.active { border-bottom-width: 4px !important; background: rgba(56, 189, 248, 0.05); }
 
@@ -549,9 +549,9 @@ const AgTank = () => {
         .hud-stat-container { border-left: 2px solid rgba(56, 189, 248, 0.2); padding-left: 15px; }
         .hud-label { font-size: 9px; color: #94a3b8; font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase; }
         .hud-value { font-size: 18px; color: #fff; font-weight: 900; }
-        .tank-fill { position: absolute; bottom: 0; left: 0; width: 100%; transition: height 1s; }
-        .tank-water-wave { position: absolute; top: -4px; width: 100%; height: 8px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 28'%3E%3Cpath d='M0 28h120V12C90 12 90 0 60 0S30 12 0 12z' fill='rgba(255,255,255,0.2)'/%3E%3C/svg%3E"); background-size: 30px 8px; animation: ag-wave 2s linear infinite; }
-        @keyframes ag-wave { from { background-position-x: 0; } to { background-position-x: 30px; } }
+        .tank-fill { position: absolute; bottom: 0; left: 0; width: 100%; transition: height 1s cubic-bezier(0.4, 0, 0.2, 1); will-change: height; }
+        .tank-water-wave { position: absolute; top: -4px; width: calc(100% + 30px); height: 8px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 28'%3E%3Cpath d='M0 28h120V12C90 12 90 0 60 0S30 12 0 12z' fill='rgba(255,255,255,0.2)'/%3E%3C/svg%3E"); background-size: 30px 8px; background-repeat: repeat-x; animation: ag-wave 2s linear infinite; will-change: transform; transform: translateZ(0); }
+        @keyframes ag-wave { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-30px, 0, 0); } }
         .industrial-valve-node { width: 24px; height: 16px; position: absolute; top: 45%; right: -24px; transform: translateY(-50%) rotate(90deg); display: flex; align-items: center; justify-content: center; z-index: 10; transition: 0.3s; }
         .vessel-large + .valve-connector-pipe { width: 20px !important; height: 8px !important; }
         .expanded-unit .industrial-valve-node { right: -32px; transform: translateY(-50%) rotate(90deg) scale(1.3); }
@@ -596,9 +596,9 @@ const AgTank = () => {
         .threshold-marker.upper { border-color: rgba(239, 68, 68, 0.6); }
 
         .horizontal-stream { width: 30px; height: 6px; background: rgba(71, 85, 105, 0.5); position: relative; overflow: hidden; border-radius: 0 4px 4px 0; }
-        .stream-pulse { position: absolute; top: 0; left: 0; height: 100%; width: 50%; background: linear-gradient(90deg, transparent, #38bdf8, transparent); animation: stream-flow 1s linear infinite; }
+        .stream-pulse { position: absolute; top: 0; left: 0; height: 100%; width: 50%; background: linear-gradient(90deg, transparent, #38bdf8, transparent); animation: stream-flow 1s linear infinite; will-change: transform; }
         
-        @keyframes stream-flow { from { transform: translateX(-100%); } to { transform: translateX(200%); } }
+        @keyframes stream-flow { from { transform: translate3d(-100%, 0, 0); } to { transform: translate3d(200%, 0, 0); } }
 
         .fw-black { font-weight: 900 !important; }
         .fs-10 { font-size: 0.65rem; }
@@ -638,6 +638,19 @@ const AgTank = () => {
         .scale-in { animation: ag-scaleIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
         @keyframes ag-fadeIn { from { opacity: 0; } to { opacity: 1; } }
         @keyframes ag-scaleIn { from { transform: translate(-50%, -50%) scale(0.8); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+
+        /* Mobile Performance Optimizations */
+        @media (max-width: 768px) {
+            .scada-card, .status-filter-card { backdrop-filter: none !important; background: #0f172a !important; box-shadow: none !important; }
+            .tank-water-wave { display: none !important; animation: none !important; }
+            .tank-vessel { box-shadow: none !important; border-width: 1px !important; }
+            .tank-vessel::after { display: none !important; }
+            .tank-fill { transition: none !important; }
+            .stream-pulse { display: none !important; }
+            .filter-tile { box-shadow: none !important; }
+            .tank-unit-wrapper { padding: 4px !important; }
+            .industrial-valve-node { transform: translateY(-50%) rotate(90deg) scale(0.8); right: -20px; }
+        }
       `}} />
 
       <Modal show={showValveModal} onHide={() => setShowValveModal(false)} centered size="lg" contentClassName="bg-transparent border-0 shadow-2xl custom-modal-wide">
