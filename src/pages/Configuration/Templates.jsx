@@ -825,7 +825,7 @@ const ConfigTemplates = () => {
 
   return (
     <div className="fade-in p-4 scada-config-page">
-      <div className="page-header d-flex justify-content-between align-items-center mb-4 p-4 bg-dark bg-opacity-40 rounded-4 border border-white border-opacity-10 shadow-lg">
+      <div className="page-header d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center gap-4 mb-4 p-4 bg-dark bg-opacity-40 rounded-4 border border-white border-opacity-10 shadow-lg">
         <div className="d-flex align-items-center gap-4">
           <div className="p-3 rounded-4 bg-info bg-opacity-10 text-info border border-info border-opacity-20 shadow-glow">
             <Layers size={32} />
@@ -851,11 +851,11 @@ const ConfigTemplates = () => {
           </div>
         )}
 
-        <div className="d-flex gap-2">
+        <div className="d-flex flex-column w-100 w-lg-auto gap-3">
           {viewMode === 'LIST' && (
-            <div className="d-flex gap-2">
+            <div className="d-flex flex-column flex-sm-row gap-2 w-100">
               {selectedTemplates.length > 0 && (
-                <Button variant="danger" className="fw-black px-4 rounded-3 shadow-glow-danger-box me-2" onClick={handleBulkRemove}>
+                <Button variant="danger" className="fw-black px-4 rounded-3 shadow-glow-danger-box me-0 me-sm-2 w-100 text-nowrap" onClick={handleBulkRemove}>
                   <X size={18} className="me-2" /> DELETE SELECTED ({selectedTemplates.length})
                 </Button>
               )}
@@ -916,23 +916,22 @@ const ConfigTemplates = () => {
             </div>
           )}
           {viewMode === 'FORM' && (
-            <div className="d-flex align-items-center gap-3">
-              <div className="d-flex flex-column">
+            <div className="d-flex flex-column flex-xl-row align-items-start align-items-xl-center gap-3 w-100 justify-content-xl-end">
+              <div className="d-flex flex-column w-100" style={{ maxWidth: '400px' }}>
                 <span className="fs-10 text-secondary fw-black uppercase opacity-50 tracking-widest mb-1">Config Label</span>
                 <Form.Control 
                   type="text" 
                   placeholder="E.g. Primary Mapping V1" 
-                  className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-black fs-11 px-3 py-2 rounded-3"
-                  style={{ width: '200px' }}
+                  className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-black fs-11 px-3 py-2 rounded-3 w-100"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
                 />
               </div>
-              <div className="d-flex gap-2 align-self-end">
-                <Button variant="outline-warning" className="fw-bold px-4 rounded-3 border-opacity-25" onClick={() => setViewMode('LIST')}>
-                  <History size={18} className="me-2" /> PREVIOUS SAVE SETTING
+              <div className="d-flex flex-column flex-sm-row gap-2 align-self-start align-self-xl-end w-100 w-xl-auto">
+                <Button variant="outline-warning" className="fw-bold px-4 rounded-3 border-opacity-25 w-100 text-nowrap" onClick={() => setViewMode('LIST')}>
+                  <History size={18} className="me-2" /> PREVIOUS SETTING
                 </Button>
-                <Button variant="info" className={`fw-bold px-5 rounded-3 shadow-glow transition-all ${isSaving ? 'opacity-50' : ''}`} onClick={handleSave} disabled={isSaving}>
+                <Button variant="info" className={`fw-bold px-4 rounded-3 shadow-glow transition-all w-100 text-nowrap ${isSaving ? 'opacity-50' : ''}`} onClick={handleSave} disabled={isSaving}>
                   <Save size={18} className="me-2" /> {isSaving ? 'SAVING...' : 'SAVE TEMPLATE'}
                 </Button>
               </div>
@@ -2263,14 +2262,39 @@ const ConfigTemplates = () => {
            box-shadow: 0 0 30px rgba(56, 189, 248, 0.1) !important;
            border-color: rgba(56, 189, 248, 0.4) !important;
            transform: translateY(-2px);
-        }
-
+        .scada-config-page { max-width: 1600px; margin: 0 auto; }
+        
+        /* Typography System */
         .fw-black { font-weight: 900 !important; }
-        .fs-12 { font-size: 0.65rem !important; }
-        .fs-11 { font-size: 0.75rem !important; }
-        .fs-10 { font-size: 0.85rem !important; }
-        .tracking-widest { letter-spacing: 0.15em !important; }
-        .letter-spacing-1 { letter-spacing: 1px !important; }
+        .letter-spacing-2 { letter-spacing: 2px; }
+        .tracking-widest { letter-spacing: 0.1em; }
+        .tracking-tighter { letter-spacing: -0.05em; }
+        .uppercase { text-transform: uppercase; }
+        
+        .fs-7 { font-size: 1.1rem; }
+        .fs-9 { font-size: 0.8rem; }
+        .fs-10 { font-size: 0.7rem; }
+        .fs-11 { font-size: 0.65rem; }
+        .fs-12 { font-size: 0.6rem; }
+        .fs-13 { font-size: 0.55rem; }
+
+        /* Responsive Global Scaling */
+        @media (max-width: 768px) {
+            .page-header h2 { font-size: 1.3rem !important; }
+            .page-header p { font-size: 0.6rem !important; }
+            .page-header .btn { font-size: 0.75rem !important; padding: 0.6rem 1rem !important; width: 100%; justify-content: center; }
+            .premium-input { font-size: 0.75rem !important; padding: 0.6rem !important; width: 100% !important; }
+            .scada-config-page { padding: 0.5rem !important; }
+            .page-header { padding: 1rem !important; margin-bottom: 1rem !important; }
+            .page-header .lucide { width: 18px; height: 18px; }
+            .configuration-form-wrapper { padding: 1rem !important; }
+            .premium-figma-card { padding: 1rem !important; }
+            h4 { font-size: 1.1rem !important; }
+            h5 { font-size: 0.9rem !important; }
+            h6 { font-size: 0.8rem !important; }
+            .form-switch .form-check-input { width: 2em; height: 1em; }
+        } 
+        
         .z-1 { z-index: 1; }
         .shadow-glow-blue { text-shadow: 0 0 15px rgba(56, 189, 248, 0.6); }
       `}} />
