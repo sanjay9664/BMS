@@ -1312,9 +1312,15 @@ const ConfigTemplates = () => {
             <div className="d-flex flex-column flex-xl-row align-items-start align-items-xl-center gap-3 w-100 justify-content-xl-end">
               <div className="d-flex flex-column w-100" style={{ maxWidth: '400px' }}>
                 <span className="fs-10 text-secondary fw-black uppercase opacity-50 tracking-widest mb-1">Config Label</span>
+
                 <Form.Control
                   type="text"
                   placeholder="E.g. Primary Mapping V1"
+
+                <Form.Control 
+                  type="text" 
+                  placeholder="E.g. Primary Mapping V1" 
+
                   className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-black fs-11 px-3 py-2 rounded-3 w-100"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
