@@ -9,6 +9,7 @@ const Settings = () => {
     "Water Management": true,
     "Motors": true,
     "DG Monitoring": true,
+    "Setting Templates": true,
     "Alarm System": true,
     "LT Panel": true,
     "Transformer": true,
