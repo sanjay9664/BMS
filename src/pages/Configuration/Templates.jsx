@@ -1316,11 +1316,6 @@ const ConfigTemplates = () => {
                 <Form.Control
                   type="text"
                   placeholder="E.g. Primary Mapping V1"
-
-                <Form.Control 
-                  type="text" 
-                  placeholder="E.g. Primary Mapping V1" 
-
                   className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-black fs-11 px-3 py-2 rounded-3 w-100"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
