@@ -3229,6 +3229,7 @@ const ConfigTemplates = () => {
            box-shadow: 0 0 30px rgba(56, 189, 248, 0.1) !important;
            border-color: rgba(56, 189, 248, 0.4) !important;
            transform: translateY(-2px);
+        }
         .scada-config-page { max-width: 1600px; margin: 0 auto; }
         
         /* Typography System */
