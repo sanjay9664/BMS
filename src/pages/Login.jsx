@@ -12,33 +12,65 @@ const Login = () => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
-    setTimeout(() => {
-      const { username, password } = credentials;
-      if (loginMode === 'admin') {
-        if (username === 'admin@sochiot.com' && password === 'admin123') {
-          localStorage.setItem('userRole', 'admin');
-          localStorage.setItem('isAuthenticated', 'true');
-          navigate('/dashboard');
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const response = await fetch(`${apiUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          email: credentials.username, 
+          password: credentials.password 
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('userRole', data.user.role);
+        localStorage.setItem('userData', JSON.stringify(data.user));
+        localStorage.setItem('isAuthenticated', 'true');
+        
+        // Save the visibility configuration
+        const sidebarMapping = {
+          "Dashboard": data.config.showDashboard,
+          "Water Management": data.config.showWaterManagement,
+          "Motors": data.config.showMotors,
+          "DG Monitoring": data.config.showDGSet,
+          "Setting Templates": data.config.showSettingTemplates,
+          "Alarm System": data.config.showAlarms,
+          "LT Panel": data.config.showLTPanel,
+          "Transformer": data.config.showTransformers,
+          "Fire Pumps": data.config.showFirePumps,
+          "Ticketing": data.config.showTicketing,
+          "Maintenance": data.config.showMaintenance,
+          "Service History": data.config.showServiceHistory,
+          "Daily DPR": data.config.showDailyDPR
+        };
+        localStorage.setItem('scada_modules_config', JSON.stringify(sidebarMapping));
+        localStorage.setItem('scada_submodules_config', JSON.stringify(data.config.submoduleVisibility || {}));
+        
+        window.dispatchEvent(new Event('storage-update'));
+        
+        if (data.user.role === 'SUPER_ADMIN') {
+          navigate('/super-admin');
         } else {
-          setError('AUTH_FAILED: Admin credentials rejected.');
-          setLoading(false);
+          navigate('/dashboard');
         }
       } else {
-        if (username === 'user@sochiot.com' && password === 'user123') {
-          localStorage.setItem('userRole', 'user');
-          localStorage.setItem('isAuthenticated', 'true');
-          navigate('/dashboard');
-        } else {
-          setError('AUTH_FAILED: User credentials rejected.');
-          setLoading(false);
-        }
+        setError(data.error || 'Authentication failed');
       }
-    }, 1500);
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Connection error. Is the server running?');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (

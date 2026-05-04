@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import { 
   Droplets, Activity, Zap, Bell, Battery, ShieldAlert, 
   Settings, ClipboardList, PenTool, History, LayoutDashboard,
-  ChevronRight, Gauge, Database, Lock
+  ChevronRight, Gauge, Database, Lock, User
 } from 'lucide-react';
 import { Accordion } from 'react-bootstrap';
 import logo from "../assets/logo.png";
@@ -13,19 +13,54 @@ const Sidebar = ({ collapsed }) => {
     const saved = localStorage.getItem('scada_modules_config');
     return saved ? JSON.parse(saved) : null;
   });
+  const [submodulesConfig, setSubmodulesConfig] = useState(() => {
+    const saved = localStorage.getItem('scada_submodules_config');
+    return saved ? JSON.parse(saved) : {};
+  });
 
-  const userRole = localStorage.getItem('userRole') || 'user';
-  const isAdmin = userRole === 'admin';
+  const userRole = localStorage.getItem('userRole') || 'USER';
+  const isSuperAdmin = userRole === 'SUPER_ADMIN';
+  const isAdmin = userRole === 'ADMIN';
+  const isImpersonating = !!localStorage.getItem('impersonator_backup_role');
 
   useEffect(() => {
     const updateConfig = () => {
-      const saved = localStorage.getItem('scada_modules_config');
-      if (saved) setModulesConfig(JSON.parse(saved));
+      const savedModules = localStorage.getItem('scada_modules_config');
+      const savedSubmodules = localStorage.getItem('scada_submodules_config');
+      if (savedModules) setModulesConfig(JSON.parse(savedModules));
+      if (savedSubmodules) setSubmodulesConfig(JSON.parse(savedSubmodules));
     };
     
     window.addEventListener('storage-update', updateConfig);
     return () => window.removeEventListener('storage-update', updateConfig);
   }, []);
+
+  const handleExitImpersonation = () => {
+    const originalUser = localStorage.getItem('impersonator_backup_user');
+    const originalRole = localStorage.getItem('impersonator_backup_role');
+    
+    if (originalUser && originalRole) {
+      localStorage.setItem('userData', originalUser);
+      localStorage.setItem('userRole', originalRole);
+      
+      // Cleanup backups
+      localStorage.removeItem('impersonator_backup_user');
+      localStorage.removeItem('impersonator_backup_role');
+      
+      // Clear simulation configs
+      localStorage.removeItem('scada_modules_config');
+      localStorage.removeItem('scada_submodules_config');
+      
+      // Navigate back to the appropriate management page
+      if (originalRole === 'SUPER_ADMIN') {
+        window.location.href = '/super-admin';
+      } else if (originalRole === 'ADMIN') {
+        window.location.href = '/admin/manage-users';
+      } else {
+        window.location.href = '/dashboard';
+      }
+    }
+  };
 
   const menuItems = [
     {
@@ -42,7 +77,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Overview", path: "/water-management/overview" },
         { title: "AG TANK", path: "/water-management/ag-pump" },
         { title: "UG TANK", path: "/water-management/ug-pump" }
-      ]
+      ].filter((subItem) => submodulesConfig.showWaterManagement?.[subItem.title] ?? true)
     },
     {
       title: "Motors",
@@ -54,7 +89,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Pump Room 2", path: "/motors/room2" },
         { title: "VFD / DOL Status", path: "/motors/status" },
         { title: "PDF Report", path: "/motors/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showMotors?.[subItem.title] ?? true)
     },
     {
       title: "DG Set",
@@ -65,12 +100,14 @@ const Sidebar = ({ collapsed }) => {
         { title: "DG Set-1", path: "/dg-set/dg1" },
         { title: "DG Set-2", path: "/dg-set/dg2" },
         { title: "DG Set-3", path: "/dg-set/dg3" }
-      ]
+      ].filter((subItem) => submodulesConfig.showDGSet?.[subItem.title] ?? true)
     },
     {
       title: "Setting Templates",
       icon: <Settings size={20} />,
-      path: "/config/templates"
+      path: "/config/templates",
+      disabled: modulesConfig ? !modulesConfig["Setting Templates"] : false,
+      adminOnly: true  // Only visible to ADMIN and above
     },
     {
       title: "Alarm System",
@@ -83,7 +120,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "ACK (Acknowledge)", path: "/alarm-system/ack" },
         { title: "Alarm History", path: "/alarm-system/history" },
         { title: "PDF Report", path: "/alarm-system/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showAlarms?.[subItem.title] ?? true)
     },
     {
       title: "LT Panel",
@@ -97,7 +134,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Incoming / Outgoing", path: "/lt-panel/io" },
         { title: "Breaker Status", path: "/lt-panel/breaker" },
         { title: "PDF Report", path: "/lt-panel/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showLTPanel?.[subItem.title] ?? true)
     },
     {
       title: "Transformer",
@@ -109,7 +146,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Transformer-2", path: "/transformer/t2" },
         { title: "Load / Temp", path: "/transformer/load" },
         { title: "PDF Report", path: "/transformer/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showTransformers?.[subItem.title] ?? true)
     },
     {
       title: "Fire Pumps",
@@ -121,7 +158,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Header Pressure", path: "/fire-pumps/pressure" },
         { title: "Jockey / Main", path: "/fire-pumps/jockey" },
         { title: "PDF Report", path: "/fire-pumps/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showFirePumps?.[subItem.title] ?? true)
     },
     {
       title: "Ticketing",
@@ -137,7 +174,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Scheduled", path: "/maintenance/scheduled" },
         { title: "Pending Tasks", path: "/maintenance/pending" },
         { title: "PDF Report", path: "/maintenance/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showMaintenance?.[subItem.title] ?? true)
     },
     {
       title: "Service History",
@@ -147,7 +184,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Equipment-wise", path: "/service/equipment" },
         { title: "Service Records", path: "/service/records" },
         { title: "PDF Report", path: "/service/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showServiceHistory?.[subItem.title] ?? true)
     },
     {
       title: "Daily DPR",
@@ -157,7 +194,7 @@ const Sidebar = ({ collapsed }) => {
         { title: "Data Aggregation", path: "/dpr/aggregation" },
         { title: "Daily Logs", path: "/dpr/logs" },
         { title: "PDF Report", path: "/dpr/report" }
-      ]
+      ].filter((subItem) => submodulesConfig.showDailyDPR?.[subItem.title] ?? true)
     }
   ];
 
@@ -172,8 +209,48 @@ const Sidebar = ({ collapsed }) => {
       />
       </div>
       
-      <div className="sidebar-nav py-3">
-        {menuItems.map((item, index) => (
+      <div className="sidebar-nav py-3" style={{ height: 'calc(100vh - 100px)', overflowY: 'auto' }}>
+        
+        {/* Verification Mode Banner */}
+        {isImpersonating && (
+          <div 
+            onClick={handleExitImpersonation}
+            className="sidebar-link text-warning fw-bold border-warning mb-2"
+            style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', cursor: 'pointer', borderLeft: '3px solid #f59e0b' }}
+          >
+            <ShieldAlert size={20} />
+            {!collapsed && <span className="ms-3">Exit Verification</span>}
+          </div>
+        )}
+
+        {/* Super Admin Top Links */}
+        {isSuperAdmin && !isImpersonating && (
+          <>
+            <NavLink to="/super-admin" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+              <ShieldAlert size={20} className="text-info" />
+              {!collapsed && <span className="ms-3 text-info">Super Admin Console</span>}
+            </NavLink>
+            <NavLink to="/config/templates" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+              <Settings size={20} />
+              {!collapsed && <span className="ms-3">Setting Templates</span>}
+            </NavLink>
+            <NavLink to="/settings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+              <Settings size={20} />
+              {!collapsed && <span className="ms-3">Global Settings</span>}
+            </NavLink>
+          </>
+        )}
+
+        {/* Admin Top Links */}
+        {isAdmin && (
+           <NavLink to="/admin/manage-users" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+              <User size={20} className="text-success" />
+              {!collapsed && <span className="ms-3 text-success">Manage Users</span>}
+           </NavLink>
+        )}
+
+        {/* Operational Modules (Hidden for Super Admin unless Impersonating) */}
+        {(!isSuperAdmin || isImpersonating) && menuItems.filter(item => !item.adminOnly || isAdmin || isSuperAdmin).map((item, index) => (
           item.subItems ? (
             <Accordion key={index} className="sidebar-accordion">
               <Accordion.Item eventKey={index.toString()} className={`bg-transparent border-0 ${item.disabled ? 'sidebar-disabled-item' : ''}`}>
@@ -219,17 +296,13 @@ const Sidebar = ({ collapsed }) => {
             </div>
           )
         ))}
-      </div>
 
-      <div className="sidebar-footer mt-auto p-3 border-top border-secondary border-opacity-25 text-center">
+        {/* Generic Bottom Links (For Admins only) */}
         {isAdmin && (
-          <NavLink 
-            to="/settings" 
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-          >
-            <Settings size={20} />
-            {!collapsed && <span className="ms-3">Settings</span>}
-          </NavLink>
+            <NavLink to="/settings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+              <Settings size={20} />
+              {!collapsed && <span className="ms-3">Settings</span>}
+            </NavLink>
         )}
       </div>
 

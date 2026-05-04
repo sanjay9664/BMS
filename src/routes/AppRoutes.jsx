@@ -14,6 +14,8 @@ import UgTank from '../pages/WaterManagement/UgTank';
 import MotorsOverview from '../pages/Motors/Overview';
 import TicketingSystem from '../pages/Ticketing/Index';
 import ConfigTemplates from '../pages/Configuration/Templates';
+import SuperAdminConfig from '../pages/SuperAdmin/SuperAdminConfig';
+import UserManagement from '../pages/Admin/UserManagement';
 
 // Fallback for other routes until customized
 const PlaceholderPage = ({ title }) => (
@@ -54,9 +56,11 @@ const PlaceholderPage = ({ title }) => (
 );
 
 const AppRoutes = () => {
+  const userRole = localStorage.getItem('userRole');
+
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Navigate to={userRole === 'SUPER_ADMIN' ? "/super-admin" : "/dashboard"} replace />} />
       <Route path="/dashboard" element={<Dashboard />} />
       
       {/* Water Management */}
@@ -103,6 +107,16 @@ const AppRoutes = () => {
 
       {/* Settings */}
       <Route path="/settings" element={<Settings />} />
+
+      {/* Super Admin Routes */}
+      {userRole === 'SUPER_ADMIN' && (
+        <Route path="/super-admin" element={<SuperAdminConfig />} />
+      )}
+
+      {/* Admin Routes */}
+      {userRole === 'ADMIN' && (
+        <Route path="/admin/manage-users" element={<UserManagement />} />
+      )}
 
       {/* Ticketing */}
       <Route path="/ticketing" element={<TicketingSystem />} />

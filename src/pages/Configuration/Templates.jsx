@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Row, Col, Card, Form, Button, Badge, Modal } from 'react-bootstrap';
-import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle } from 'lucide-react';
+import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
 import { loginToSochiot, getSochiotUserMe, getSochiotLocationData, getSochiotDeviceDetails } from '../../services/authService';
 
 const ConfigTemplates = () => {
@@ -12,43 +12,134 @@ const ConfigTemplates = () => {
   });
   const [viewMode, setViewMode] = useState('FORM'); // 'FORM' or 'LIST'
   const [editingTemplateId, setEditingTemplateId] = useState(null);
+  const [globalLocation, setGlobalLocation] = useState({ organization: '', client: '', zone: '', subZone: '', building: '' });
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
+  const [showRuleEngineModal, setShowRuleEngineModal] = useState(false);
+  const [ruleEngineConfig, setRuleEngineConfig] = useState({
+    condition: {
+      isScheduleEnabled: false,
+      timeDate: '',
+      repeatDays: [],
+      type: 'MODBUS',
+      modbus: '',
+      comparisonType: 'LESS_THAN',
+      comparisonValue: ''
+    },
+    consequence: {
+      type: 'OUTPUT_2',
+      modbus: '',
+      value: ''
+    }
+  });
   const [templateName, setTemplateName] = useState('');
   const [filterModule, setFilterModule] = useState('ALL');
   const [selectedTemplates, setSelectedTemplates] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState(null);
+  const [hierarchyData, setHierarchyData] = useState([]);
+  const [isSendingRules, setIsSendingRules] = useState(false);
+
+  const handleApplyRules = async () => {
+    setIsSendingRules(true);
+    try {
+      const apiURL = import.meta.env.VITE_RULE_ENGINE_API;
+      
+      const payload = {
+        condition: {
+          date_time: ruleEngineConfig.condition.timeDate,
+          repeat_days: ruleEngineConfig.condition.repeatDays,
+          type: ruleEngineConfig.condition.type,
+          modbus: ruleEngineConfig.condition.modbus,
+          comparison_type: ruleEngineConfig.condition.comparisonType,
+          comparison_value: ruleEngineConfig.condition.comparisonValue
+        },
+        consequence: {
+          type: ruleEngineConfig.consequence.type,
+          modbus: ruleEngineConfig.consequence.modbus,
+          value: ruleEngineConfig.consequence.value
+        },
+        timestamp: new Date().toISOString()
+      };
+
+      const token = localStorage.getItem('sochiot_token');
+      
+      const response = await fetch(apiURL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error('API request failed');
+      }
+
+      setToastMessage({
+        type: 'success',
+        text: 'successfully send rule'
+      });
+      
+      setTimeout(() => setShowRuleEngineModal(false), 2000);
+    } catch (error) {
+      console.error("Error sending rules:", error);
+      setToastMessage({
+        type: 'error',
+        text: 'Failed to send rules. Please check connection.'
+      });
+    } finally {
+      setIsSendingRules(false);
+    }
+  };
+
+  // Default config object for initialization and resets
+  const createDefaultConfig = (withMode = false) => {
+    const base = {
+      organization: '',
+      client: '',
+      zone: '',
+      subZone: '',
+      building: '',
+      device: '',
+      module: '',
+      field: '',
+      enabled: true
+    };
+    return withMode ? { ...base, mode: 'read' } : base;
+  };
+
   // States for Mapping Fields
-  const [agLowerConfig, setAgLowerConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [agUpperConfig, setAgUpperConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [agAutoConfig, setAgAutoConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [agManualConfig, setAgManualConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [agBypassConfig, setAgBypassConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [agLevelConfig, setAgLevelConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [agOpenConfig, setAgOpenConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [agCloseConfig, setAgCloseConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
+  const [agLowerConfig, setAgLowerConfig] = useState(createDefaultConfig(true));
+  const [agUpperConfig, setAgUpperConfig] = useState(createDefaultConfig(true));
+  const [agAutoConfig, setAgAutoConfig] = useState(createDefaultConfig());
+  const [agManualConfig, setAgManualConfig] = useState(createDefaultConfig());
+  const [agBypassConfig, setAgBypassConfig] = useState(createDefaultConfig());
+  const [agLevelConfig, setAgLevelConfig] = useState(createDefaultConfig());
+  const [agOpenConfig, setAgOpenConfig] = useState(createDefaultConfig());
+  const [agCloseConfig, setAgCloseConfig] = useState(createDefaultConfig());
   const [agTankRange, setAgTankRange] = useState({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
   const [agTankType, setAgTankType] = useState('DOMESTIC'); // 'DOMESTIC' or 'FLUSHING'
   const [agMasterEnabled, setAgMasterEnabled] = useState(true);
-  const [ugLowerConfig, setUgLowerConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugUpperConfig, setUgUpperConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugAutoConfig, setUgAutoConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugManualConfig, setUgManualConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugStartCmdConfig, setUgStartCmdConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugStopCmdConfig, setUgStopCmdConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugStartPressConfig, setUgStartPressConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugStopPressConfig, setUgStopPressConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugLocalModeConfig, setUgLocalModeConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [ugRemoteModeConfig, setUgRemoteModeConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
+  const [ugLowerConfig, setUgLowerConfig] = useState(createDefaultConfig(true));
+  const [ugUpperConfig, setUgUpperConfig] = useState(createDefaultConfig(true));
+  const [ugAutoConfig, setUgAutoConfig] = useState(createDefaultConfig());
+  const [ugManualConfig, setUgManualConfig] = useState(createDefaultConfig());
+  const [ugStartCmdConfig, setUgStartCmdConfig] = useState(createDefaultConfig());
+  const [ugStopCmdConfig, setUgStopCmdConfig] = useState(createDefaultConfig());
+  const [ugStartPressConfig, setUgStartPressConfig] = useState(createDefaultConfig());
+  const [ugStopPressConfig, setUgStopPressConfig] = useState(createDefaultConfig());
+  const [ugLocalModeConfig, setUgLocalModeConfig] = useState(createDefaultConfig());
+  const [ugRemoteModeConfig, setUgRemoteModeConfig] = useState(createDefaultConfig());
   const [ugPumpRange, setUgPumpRange] = useState({ name: '', id: '' });
-  const [ugTankLevelConfig, setUgTankLevelConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
+  const [ugTankLevelConfig, setUgTankLevelConfig] = useState(createDefaultConfig());
   const [ugTankRange, setUgTankRange] = useState({ name: '', id: '' });
-  const [pressureConfig, setPressureConfig] = useState({ location: '', device: '', module: '', field: '', enabled: true });
-  const [elecVoltageConfig, setElecVoltageConfig] = useState({ location: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
-  const [elecCurrentConfig, setElecCurrentConfig] = useState({ location: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
-  const [elecSystemConfig, setElecSystemConfig] = useState({ location: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
-  const [elecConsumptionConfig, setElecConsumptionConfig] = useState({ location: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+  const [pressureConfig, setPressureConfig] = useState(createDefaultConfig());
+  const [elecVoltageConfig, setElecVoltageConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
+  const [elecCurrentConfig, setElecCurrentConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
+  const [elecSystemConfig, setElecSystemConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
+  const [elecConsumptionConfig, setElecConsumptionConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
   const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
   const [pressureTarget, setPressureTarget] = useState('');
   const [electricalTarget, setElectricalTarget] = useState('');
@@ -106,35 +197,35 @@ const ConfigTemplates = () => {
   const handleUgPumpNoChange = (no) => {
     setSelectedUgPumpNo(no);
     // Find if a template already exists for this specific pump number
-    const existing = savedTemplates.find(t => 
-      t.module === 'UG Pump' && 
-      t.mapping.ugPumpRange && 
+    const existing = savedTemplates.find(t =>
+      t.module === 'UG Pump' &&
+      t.mapping.ugPumpRange &&
       t.mapping.ugPumpRange.pumpNo === no
     );
 
     if (existing) {
-      setUgLowerConfig(existing.mapping.ugLowerConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgUpperConfig(existing.mapping.ugUpperConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgAutoConfig(existing.mapping.ugAutoConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgManualConfig(existing.mapping.ugManualConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStartCmdConfig(existing.mapping.ugStartCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStopCmdConfig(existing.mapping.ugStopCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStartPressConfig(existing.mapping.ugStartPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStopPressConfig(existing.mapping.ugStopPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgLocalModeConfig(existing.mapping.ugLocalModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgRemoteModeConfig(existing.mapping.ugRemoteModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgLowerConfig(existing.mapping.ugLowerConfig || createDefaultConfig(true));
+      setUgUpperConfig(existing.mapping.ugUpperConfig || createDefaultConfig(true));
+      setUgAutoConfig(existing.mapping.ugAutoConfig || createDefaultConfig());
+      setUgManualConfig(existing.mapping.ugManualConfig || createDefaultConfig());
+      setUgStartCmdConfig(existing.mapping.ugStartCmdConfig || createDefaultConfig());
+      setUgStopCmdConfig(existing.mapping.ugStopCmdConfig || createDefaultConfig());
+      setUgStartPressConfig(existing.mapping.ugStartPressConfig || createDefaultConfig());
+      setUgStopPressConfig(existing.mapping.ugStopPressConfig || createDefaultConfig());
+      setUgLocalModeConfig(existing.mapping.ugLocalModeConfig || createDefaultConfig());
+      setUgRemoteModeConfig(existing.mapping.ugRemoteModeConfig || createDefaultConfig());
     } else {
       // Clear for a new pump if no template exists
-      setUgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgStartCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgStopCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgStartPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgStopPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgLocalModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setUgRemoteModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setUgLowerConfig(createDefaultConfig(true));
+      setUgUpperConfig(createDefaultConfig(true));
+      setUgAutoConfig(createDefaultConfig());
+      setUgManualConfig(createDefaultConfig());
+      setUgStartCmdConfig(createDefaultConfig());
+      setUgStopCmdConfig(createDefaultConfig());
+      setUgStartPressConfig(createDefaultConfig());
+      setUgStopPressConfig(createDefaultConfig());
+      setUgLocalModeConfig(createDefaultConfig());
+      setUgRemoteModeConfig(createDefaultConfig());
     }
   };
 
@@ -152,16 +243,16 @@ const ConfigTemplates = () => {
     setTemplateName('');
     const tank = ugPumpsList.find(t => t.name === name);
     if (tank) {
-      const existing = savedTemplates.find(t => 
-        t.module === 'UG Tank' && 
-        t.mapping.ugTankRange && 
+      const existing = savedTemplates.find(t =>
+        t.module === 'UG Tank' &&
+        t.mapping.ugTankRange &&
         t.mapping.ugTankRange.name === name
       );
 
       if (existing) {
-        setUgTankLevelConfig(existing.mapping.ugTankLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
+        setUgTankLevelConfig(existing.mapping.ugTankLevelConfig || createDefaultConfig());
       } else {
-        setUgTankLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
+        setUgTankLevelConfig(createDefaultConfig());
       }
       setUgTankRange({ name: tank.name, id: tank.id });
     } else {
@@ -185,7 +276,7 @@ const ConfigTemplates = () => {
       try {
         // Try to get user data (if token exists)
         let userData = await getSochiotUserMe();
-        
+
         // If no data/token, perform dummy login as requested
         if (!userData) {
           await loginToSochiot("sa@ismartaccess.com", "I0t3ch");
@@ -214,6 +305,7 @@ const ConfigTemplates = () => {
           };
 
           if (userData.userZoneLocationVO?.companyList) {
+            setHierarchyData(userData.userZoneLocationVO.companyList);
             userData.userZoneLocationVO.companyList.forEach(comp => {
               companies.push(comp.name);
               if (comp.consumers) {
@@ -241,9 +333,21 @@ const ConfigTemplates = () => {
     initDynamicData();
   }, []);
 
+  // Rule Engine Auto-Popup Logic
+  useEffect(() => {
+    if (selectedModule === 'AG Tank' && viewMode === 'FORM') {
+      const isLowerFilled = agLowerConfig.enabled && agLowerConfig.device && agLowerConfig.module && agLowerConfig.field;
+      const isUpperFilled = agUpperConfig.enabled && agUpperConfig.device && agUpperConfig.module && agUpperConfig.field;
+
+      if (isLowerFilled && isUpperFilled && !showRuleEngineModal && !ruleEngineConfig.condition.moduleId) {
+        setShowRuleEngineModal(true);
+      }
+    }
+  }, [agLowerConfig, agUpperConfig, selectedModule, viewMode]);
+
   const fetchLocationDetails = async (locationName) => {
     if (locationDetails[locationName]) return;
-    
+
     const locId = locationIdMap[locationName];
     if (!locId) return;
 
@@ -252,14 +356,16 @@ const ConfigTemplates = () => {
       if (data?.locationVOS?.[0]) {
         const gateways = data.locationVOS[0].gatewayVOList || [];
         const deviceList = [];
-        
+        const gatewayList = gateways.map(g => ({ label: g.name, id: g.id }));
+
         gateways.forEach(g => {
           if (g.deviceEntityVOS) {
             g.deviceEntityVOS.forEach(d => {
               deviceList.push({
                 label: `${g.name} / ${d.name}`,
                 id: d.id,
-                uuid: d.uuid
+                uuid: d.uuid,
+                gatewayId: g.id
               });
             });
           }
@@ -267,7 +373,7 @@ const ConfigTemplates = () => {
 
         setLocationDetails(prev => ({
           ...prev,
-          [locationName]: { deviceList }
+          [locationName]: { deviceList, gatewayList }
         }));
       }
     } catch (error) {
@@ -284,15 +390,15 @@ const ConfigTemplates = () => {
         // Sochiot API can have modules in root 'modules' or 'deviceTemplateVO.moduleTemplates'
         const moduleSource = data.modules || data.deviceTemplateVO?.moduleTemplates || [];
         const moduleMap = {};
-        
+
         moduleSource.forEach(m => {
           // Event fields can be in root or inside moduleTypeVO
           const fieldsSource = m.eventFieldVOS || m.moduleTypeVO?.eventFieldVOS || [];
           const fields = fieldsSource.map(f => ({
-            label: `${f.displayName} (${f.fieldName})`, 
+            label: `${f.displayName} (${f.fieldName})`,
             id: f.fieldName
           }));
-          
+
           moduleMap[m.id] = {
             id: m.id,
             name: m.name,
@@ -313,14 +419,48 @@ const ConfigTemplates = () => {
   const handleConfigChange = async (config, setter, key, value) => {
     console.log(`Config Change: ${key} = ${value}`);
     const updated = { ...config, [key]: value };
-    
-    if (key === 'location') {
-      updated.device = '';
-      updated.module = '';
-      updated.field = '';
+
+    // Hierarchical Location Logic (Single Dropdown)
+    if (key === 'location_hierarchical') {
+      if (value === '__BACK__') {
+        if (updated.building) updated.building = '';
+        else if (updated.subZone) updated.subZone = '';
+        else if (updated.zone) updated.zone = '';
+        else if (updated.client) updated.client = '';
+        else if (updated.organization) updated.organization = '';
+      } else if (value === '__RESET__') {
+        updated.organization = ''; updated.client = ''; updated.zone = ''; updated.subZone = ''; updated.building = '';
+        updated.device = ''; updated.module = ''; updated.field = '';
+      } else {
+        if (!updated.organization) updated.organization = value;
+        else if (!updated.client) updated.client = value;
+        else if (!updated.zone) updated.zone = value;
+        else if (!updated.subZone) {
+          updated.subZone = value;
+          const szOptions = getFieldList('subZone', updated);
+          const b = szOptions.find(o => o.id === value);
+          if (b && b.type === 'location' && b.rawId) {
+            fetchLocationDetails(value, b.rawId);
+          }
+        }
+        else if (!updated.building) {
+          updated.building = value;
+          const buildingOptions = getFieldList('building', updated);
+          const selectedBuilding = buildingOptions.find(o => o.id === value);
+          if (selectedBuilding && selectedBuilding.rawId) {
+            fetchLocationDetails(value, selectedBuilding.rawId);
+          }
+        }
+      }
+      updated.location_hierarchical = ''; // Reset the select value so placeholder shows the path
+    } else if (key === 'building') {
+      updated.device = ''; updated.module = ''; updated.field = '';
       if (value) {
-        const locId = locationIdMap[value];
-        if (locId) fetchLocationDetails(value, locId);
+        const buildingOptions = getFieldList('building', updated);
+        const selectedBuilding = buildingOptions.find(o => o.id === value);
+        if (selectedBuilding && selectedBuilding.rawId) {
+          fetchLocationDetails(value, selectedBuilding.rawId);
+        }
       }
     } else if (key === 'device') {
       updated.module = '';
@@ -329,50 +469,226 @@ const ConfigTemplates = () => {
     } else if (key === 'module') {
       updated.field = '';
     }
-    
+
     setter(updated);
   };
 
+  const handleGlobalHierarchyChange = (key, value) => {
+    const updated = { ...globalLocation };
+    updated[key] = value;
+
+    // Reset lower levels
+    const levels = ['organization', 'client', 'zone', 'subZone', 'building'];
+    const startIdx = levels.indexOf(key);
+    for (let i = startIdx + 1; i < levels.length; i++) {
+      updated[levels[i]] = '';
+    }
+
+    if (key === 'subZone' && value) {
+      // Find the rawId from the options to fetch details
+      const org = hierarchyData.find(o => o.name === updated.organization);
+      const client = org?.consumers?.find(c => c.name === updated.client);
+      const zone = client?.zoneVOS?.find(z => z.name === updated.zone);
+      const subZoneOptions = (zone?.subZones || []).map(sz => ({ id: sz.name, type: 'subZone' }))
+        .concat((zone?.locations || []).map(l => ({ id: l.name, rawId: l.id, type: 'location' })));
+
+      const b = subZoneOptions.find(o => o.id === value);
+      if (b && b.type === 'location' && b.rawId) {
+        fetchLocationDetails(value, b.rawId);
+      }
+    }
+
+    if (key === 'building' && value) {
+      // For level 5, we need to find the location's rawId to fetch devices
+      const org = hierarchyData.find(o => o.name === updated.organization);
+      const client = org?.consumers?.find(c => c.name === updated.client);
+      const zone = client?.zoneVOS?.find(z => z.name === updated.zone);
+      const targetZone = (zone?.subZones || []).find(sz => sz.name === updated.subZone) || zone;
+      const buildingOptions = (targetZone?.locations || []).map(l => ({ id: l.name, rawId: l.id }));
+
+      const b = buildingOptions.find(o => o.id === value);
+      if (b && b.rawId) fetchLocationDetails(value, b.rawId);
+    }
+
+    setGlobalLocation(updated);
+  };
+
+  const handleGlobalLocationChange = (value) => {
+    // Legacy support or fallback
+    if (value === '__RESET__') {
+      setGlobalLocation({ organization: '', client: '', zone: '', subZone: '', building: '' });
+      return;
+    }
+    handleGlobalHierarchyChange('organization', value);
+  };
+
+  const getLocationPlaceholder = (state) => {
+    if (state.building) return state.building.toUpperCase();
+    return "SELECT ORGANIZATION";
+  };
+
+  const findHierarchyFromBuilding = (buildingName) => {
+    if (!hierarchyData || !buildingName) return null;
+
+    const isId = !isNaN(buildingName) || (typeof buildingName === 'string' && buildingName.length > 10);
+
+    try {
+      for (const comp of hierarchyData) {
+        if (comp.consumers) {
+          for (const client of comp.consumers) {
+            if (client.zoneVOS) {
+              for (const zone of client.zoneVOS) {
+                // Check direct locations in zone
+                const loc = zone.locations?.find(l => l.name === buildingName || String(l.id) === String(buildingName));
+                if (loc) {
+                  return { organization: comp.name, client: client.name, zone: zone.name, subZone: '', building: loc.name };
+                }
+                // Check sub-zones
+                if (zone.subZones) {
+                  for (const sub of zone.subZones) {
+                    const subLoc = sub.locations?.find(l => l.name === buildingName || String(l.id) === String(buildingName));
+                    if (subLoc) {
+                      return { organization: comp.name, client: client.name, zone: zone.name, subZone: sub.name, building: subLoc.name };
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Hierarchy search failed:", e);
+    }
+    return null;
+  };
+
   const getFieldList = (key, rowState) => {
-    const locationName = typeof rowState === 'string' ? rowState : (rowState?.location || '');
-    if (key === 'location') return locations;
-    
-    const locInfo = locationDetails[locationName];
-    if (!locInfo || !locInfo.deviceList) return [];
+    if (!hierarchyData || hierarchyData.length === 0) return [];
 
-    if (key === 'device') return locInfo.deviceList;
-    
-    const selectedDeviceId = rowState?.device;
-    const devInfo = deviceDetails[selectedDeviceId];
-    
-    console.log(`getFieldList lookup for ${key}:`, {
-      selectedDeviceId,
-      hasDevInfo: !!devInfo,
-      cachedDeviceIds: Object.keys(deviceDetails)
-    });
+    if (key === 'location_hierarchical') {
+      if (!rowState.organization) return getFieldList('organization', rowState);
+      if (!rowState.client) return [{ label: '← BACK', id: '__BACK__' }, ...getFieldList('client', rowState)];
+      if (!rowState.zone) return [{ label: '← BACK', id: '__BACK__' }, ...getFieldList('zone', rowState)];
+      if (!rowState.subZone) {
+        const subZones = getFieldList('subZone', rowState);
+        if (subZones.length > 0) return [{ label: '← BACK', id: '__BACK__' }, ...subZones];
+        // If no subzones, skip to building
+        return [{ label: '← BACK', id: '__BACK__' }, ...getFieldList('building', rowState)];
+      }
+      if (!rowState.building) {
+        const buildings = getFieldList('building', rowState);
+        if (buildings.length === 0) return [{ label: '← CHANGE LOCATION (RESET)', id: '__RESET__' }];
+        return [{ label: '← BACK', id: '__BACK__' }, ...buildings];
+      }
+      return [{ label: '← CHANGE LOCATION (RESET)', id: '__RESET__' }];
+    }
 
+    const getSafeVal = (k) => rowState[k] || globalLocation[k];
+
+    // 1. Organization Level
+    if (key === 'organization') {
+      return hierarchyData.map(org => ({ label: org.name, id: org.name }));
+    }
+
+    const orgName = getSafeVal('organization');
+    const org = hierarchyData.find(o => o.name === orgName);
+    if (!org) return [];
+
+    // 2. Client Level
+    if (key === 'client') {
+      return (org.consumers || []).map(c => ({ label: c.name, id: c.name }));
+    }
+
+    const clientName = getSafeVal('client');
+    const client = (org.consumers || []).find(c => c.name === clientName);
+    if (!client) return [];
+
+    // 3. Zone Level
+    if (key === 'zone') {
+      return (client.zoneVOS || []).map(z => ({ label: z.name, id: z.name }));
+    }
+
+    const zoneName = getSafeVal('zone');
+
+    // Helper to find a zone by name in a nested structure
+    const findZone = (zones, name) => {
+      for (const z of zones) {
+        if (z.name === name) return z;
+        if (z.subZones) {
+          const found = findZone(z.subZones, name);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const zone = findZone(client.zoneVOS || [], zoneName);
+    if (!zone) return [];
+
+    // 4. Sub Zone / Building Level
+    if (key === 'subZone') {
+      const szList = (zone.subZones || []).map(sz => ({ label: sz.name, id: sz.name, type: 'subZone' }));
+      const locList = (zone.locations || []).map(l => ({ label: l.name, id: l.name, rawId: l.id, type: 'location' }));
+      return [...szList, ...locList];
+    }
+
+    const subZoneName = getSafeVal('subZone');
+
+    // 5. Building / Gateway Level (Final Selection)
+    if (key === 'building') {
+      const subZoneList = getFieldList('subZone', rowState);
+      const selectedSZ = subZoneList.find(s => s.id === subZoneName);
+
+      if (selectedSZ && selectedSZ.type === 'location') {
+        const locInfo = locationDetails[subZoneName];
+        return locInfo ? (locInfo.gatewayList || []) : [];
+      }
+
+      const targetZone = (zone.subZones || []).find(sz => sz.name === subZoneName) || zone;
+      return (targetZone.locations || []).map(l => ({ label: l.name, id: l.name, rawId: l.id }));
+    }
+
+    const buildingName = getSafeVal('building');
+
+    // 6. Device ID Level
+    if (key === 'device') {
+      const subZoneList = getFieldList('subZone', rowState);
+      const selectedSZ = subZoneList.find(s => s.id === subZoneName);
+
+      let locName = buildingName;
+      let gatewayIdFilter = null;
+
+      if (selectedSZ && selectedSZ.type === 'location') {
+        locName = subZoneName;
+        gatewayIdFilter = buildingName;
+      }
+
+      const locInfo = locationDetails[locName];
+      if (!locInfo) return [];
+
+      if (gatewayIdFilter) {
+        return locInfo.deviceList.filter(d => String(d.gatewayId) === String(gatewayIdFilter));
+      }
+      return locInfo.deviceList;
+    }
+
+    const deviceId = getSafeVal('device');
+
+    // 7. Module & Field Levels
+    const devInfo = deviceDetails[deviceId];
     if (!devInfo) return [];
 
     if (key === 'module') {
-      const modules = Object.values(devInfo.modules).map(m => ({
-        label: m.name,
-        id: m.id
-      }));
-      console.log('Resolved modules:', modules);
-      return modules;
+      return Object.values(devInfo.modules).map(m => ({ label: m.name, id: m.id }));
     }
-    
+
     const selectedModuleId = rowState?.module;
     const moduleData = devInfo.modules[selectedModuleId];
     if (key === 'field') {
-      const fields = (moduleData?.fields || []).map(f => ({
-        label: f.label,
-        id: f.id
-      }));
-      console.log('Resolved fields:', fields);
-      return fields;
+      return (moduleData?.fields || []).map(f => ({ label: f.label, id: f.id }));
     }
-    
+
     return [];
   };
 
@@ -453,23 +769,32 @@ const ConfigTemplates = () => {
     const tower = domesticTowers.find(t => t.name === name);
     if (tower) {
       // Find if a template for this specific tower already exists
-      const existing = savedTemplates.find(t => 
-        t.module === 'AG Tank' && 
-        t.mapping.agTankRange && 
+      const existing = savedTemplates.find(t =>
+        t.module === 'AG Tank' &&
+        t.mapping.agTankRange &&
         t.mapping.agTankRange.domStart === name
       );
 
       if (existing) {
         // Load the saved state for this specific tower
         setAgMasterEnabled(existing.mapping.agMasterEnabled !== undefined ? existing.mapping.agMasterEnabled : true);
-        setAgLowerConfig(existing.mapping.agLowerConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgUpperConfig(existing.mapping.agUpperConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgAutoConfig(existing.mapping.agAutoConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgManualConfig(existing.mapping.agManualConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgBypassConfig(existing.mapping.agBypassConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgLevelConfig(existing.mapping.agLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgOpenConfig(existing.mapping.agOpenConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgCloseConfig(existing.mapping.agCloseConfig || { location: '', device: '', module: '', field: '', enabled: true });
+        setAgLowerConfig(existing.mapping.agLowerConfig || createDefaultConfig(true));
+        setAgUpperConfig(existing.mapping.agUpperConfig || createDefaultConfig(true));
+        setAgAutoConfig(existing.mapping.agAutoConfig || createDefaultConfig());
+        setAgManualConfig(existing.mapping.agManualConfig || createDefaultConfig());
+        setAgBypassConfig(existing.mapping.agBypassConfig || createDefaultConfig());
+        setAgLevelConfig(existing.mapping.agLevelConfig || createDefaultConfig());
+        setAgOpenConfig(existing.mapping.agOpenConfig || createDefaultConfig());
+        setAgCloseConfig(existing.mapping.agCloseConfig || createDefaultConfig());
+
+        // Restore Global Location from this existing template
+        setGlobalLocation({
+          organization: existing.mapping.agLowerConfig?.organization || '',
+          client: existing.mapping.agLowerConfig?.client || '',
+          zone: existing.mapping.agLowerConfig?.zone || '',
+          subZone: existing.mapping.agLowerConfig?.subZone || '',
+          building: existing.mapping.agLowerConfig?.building || ''
+        });
       } else {
         // Default for new selection
         setAgMasterEnabled(true);
@@ -494,8 +819,8 @@ const ConfigTemplates = () => {
     const cleanedMapping = {};
     Object.keys(rawMapping).forEach(key => {
       const val = rawMapping[key];
-      if (val && typeof val === 'object' && !Array.isArray(val) && 'location' in val) {
-        if (!val.location) return;
+      if (val && typeof val === 'object' && !Array.isArray(val) && ('building' in val || 'location' in val)) {
+        if (!val.building && !val.location) return;
       }
       cleanedMapping[key] = val;
     });
@@ -504,13 +829,16 @@ const ConfigTemplates = () => {
       category: selectedCategory,
       module: selectedModule,
       timestamp: new Date().toLocaleString(),
-      mapping: cleanedMapping
+      mapping: {
+        ...cleanedMapping,
+        globalHierarchy: globalLocation
+      }
     };
 
-    const existingTowerIdx = savedTemplates.findIndex(t => 
-      t.module === 'AG Tank' && 
+    const existingTowerIdx = savedTemplates.findIndex(t =>
+      t.module === 'AG Tank' &&
       ((agTankType === 'DOMESTIC' && t.mapping.agTankRange.domStart === agTankRange.domStart) ||
-       (agTankType === 'FLUSHING' && t.mapping.agTankRange.flushStart === agTankRange.flushStart))
+        (agTankType === 'FLUSHING' && t.mapping.agTankRange.flushStart === agTankRange.flushStart))
     );
 
     if (existingTowerIdx !== -1) {
@@ -526,22 +854,31 @@ const ConfigTemplates = () => {
     setTemplateName('');
     const tower = flushingTowers.find(t => t.name === name);
     if (tower) {
-      const existing = savedTemplates.find(t => 
-        t.module === 'AG Tank' && 
-        t.mapping.agTankRange && 
+      const existing = savedTemplates.find(t =>
+        t.module === 'AG Tank' &&
+        t.mapping.agTankRange &&
         t.mapping.agTankRange.flushStart === name
       );
 
       if (existing) {
         setAgMasterEnabled(existing.mapping.agMasterEnabled !== undefined ? existing.mapping.agMasterEnabled : true);
-        setAgLowerConfig(existing.mapping.agLowerConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgUpperConfig(existing.mapping.agUpperConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgAutoConfig(existing.mapping.agAutoConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgManualConfig(existing.mapping.agManualConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgBypassConfig(existing.mapping.agBypassConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgLevelConfig(existing.mapping.agLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgOpenConfig(existing.mapping.agOpenConfig || { location: '', device: '', module: '', field: '', enabled: true });
-        setAgCloseConfig(existing.mapping.agCloseConfig || { location: '', device: '', module: '', field: '', enabled: true });
+        setAgLowerConfig(existing.mapping.agLowerConfig || createDefaultConfig(true));
+        setAgUpperConfig(existing.mapping.agUpperConfig || createDefaultConfig(true));
+        setAgAutoConfig(existing.mapping.agAutoConfig || createDefaultConfig());
+        setAgManualConfig(existing.mapping.agManualConfig || createDefaultConfig());
+        setAgBypassConfig(existing.mapping.agBypassConfig || createDefaultConfig());
+        setAgLevelConfig(existing.mapping.agLevelConfig || createDefaultConfig());
+        setAgOpenConfig(existing.mapping.agOpenConfig || createDefaultConfig());
+        setAgCloseConfig(existing.mapping.agCloseConfig || createDefaultConfig());
+
+        // Restore Global Location from this existing template
+        setGlobalLocation({
+          organization: existing.mapping.agLowerConfig?.organization || '',
+          client: existing.mapping.agLowerConfig?.client || '',
+          zone: existing.mapping.agLowerConfig?.zone || '',
+          subZone: existing.mapping.agLowerConfig?.subZone || '',
+          building: existing.mapping.agLowerConfig?.building || ''
+        });
       } else {
         setAgMasterEnabled(true);
       }
@@ -559,14 +896,14 @@ const ConfigTemplates = () => {
         agLowerConfig, agUpperConfig, agTankRange,
         agAutoConfig, agManualConfig, agBypassConfig,
         agLevelConfig, agOpenConfig, agCloseConfig,
-        agTankType, agMasterEnabled
+        agTankType, agMasterEnabled, ruleEngineConfig
       };
     } else if (selectedModule === 'UG Pump') {
       mapping = {
         ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
         ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
-        ugLocalModeConfig, ugRemoteModeConfig, 
-        ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo }, 
+        ugLocalModeConfig, ugRemoteModeConfig,
+        ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo },
         ugConfig
       };
     } else if (selectedModule === 'UG Tank') {
@@ -589,8 +926,8 @@ const ConfigTemplates = () => {
         agLevelConfig, agOpenConfig, agCloseConfig,
         ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
         ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
-        ugLocalModeConfig, ugRemoteModeConfig, 
-        ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo }, 
+        ugLocalModeConfig, ugRemoteModeConfig,
+        ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo },
         ugConfig,
         pressureConfig, pressureTarget,
         elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig, electricalTarget,
@@ -603,14 +940,20 @@ const ConfigTemplates = () => {
     const cleanedMapping = {};
     Object.keys(rawMapping).forEach(key => {
       const val = rawMapping[key];
-      if (val && typeof val === 'object' && !Array.isArray(val) && 'module' in val) {
-        if (!val.module && val.enabled !== false) return; // Only strip if module ID is empty AND it's not disabled
+      // Only include sections that have a field selected (actually configured)
+      if (val && typeof val === 'object' && !Array.isArray(val) && 'field' in val) {
+        if (!val.field) return;
+
+        // Add unique mapping ID for database tracking if it doesn't have one
+        if (!val.mappingId) {
+          val.mappingId = `map_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        }
       }
       cleanedMapping[key] = val;
     });
 
-    const hasValidConfig = Object.values(cleanedMapping).some(val => 
-      val && typeof val === 'object' && val.module && val.field
+    const hasValidConfig = Object.values(cleanedMapping).some(val =>
+      val && typeof val === 'object' && val.field
     );
 
     if (!hasValidConfig) {
@@ -626,7 +969,10 @@ const ConfigTemplates = () => {
       category: selectedCategory,
       module: selectedModule,
       timestamp: new Date().toLocaleString(),
-      mapping: cleanedMapping
+      mapping: {
+        ...cleanedMapping,
+        globalHierarchy: globalLocation
+      }
     };
 
     let autoName = '';
@@ -681,7 +1027,7 @@ const ConfigTemplates = () => {
       } else {
         setSavedTemplates([...savedTemplates, { id: Date.now(), ...templateData, name: uniqueName.toUpperCase() }]);
       }
-      
+
       setToastMessage({ type: 'success', text: `${selectedModule} Configuration Saved Locally.` });
       setTimeout(() => setToastMessage(null), 3000);
     } finally {
@@ -690,33 +1036,33 @@ const ConfigTemplates = () => {
 
     // Reset only if NOT AG Tank (to let user see their save)
     if (selectedModule !== 'AG Tank') {
-      setAgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setAgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setAgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setAgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setAgBypassConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setAgLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setAgOpenConfig({ location: '', device: '', module: '', field: '', enabled: true });
-      setAgCloseConfig({ location: '', device: '', module: '', field: '', enabled: true });
+      setAgLowerConfig(createDefaultConfig(true));
+      setAgUpperConfig(createDefaultConfig(true));
+      setAgAutoConfig(createDefaultConfig());
+      setAgManualConfig(createDefaultConfig());
+      setAgBypassConfig(createDefaultConfig());
+      setAgLevelConfig(createDefaultConfig());
+      setAgOpenConfig(createDefaultConfig());
+      setAgCloseConfig(createDefaultConfig());
       setAgTankRange({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
       setAgMasterEnabled(true);
     }
-    setUgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgStartCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgStopCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgStartPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgStopPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgLocalModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setUgRemoteModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setPressureConfig({ location: '', device: '', module: '', field: '', enabled: true });
-    setElecVoltageConfig({ location: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
-    setElecCurrentConfig({ location: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
-    setElecSystemConfig({ location: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
-    setElecConsumptionConfig({ location: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
-    setUgTankLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
+    setUgLowerConfig(createDefaultConfig(true));
+    setUgUpperConfig(createDefaultConfig(true));
+    setUgAutoConfig(createDefaultConfig());
+    setUgManualConfig(createDefaultConfig());
+    setUgStartCmdConfig(createDefaultConfig());
+    setUgStopCmdConfig(createDefaultConfig());
+    setUgStartPressConfig(createDefaultConfig());
+    setUgStopPressConfig(createDefaultConfig());
+    setUgLocalModeConfig(createDefaultConfig());
+    setUgRemoteModeConfig(createDefaultConfig());
+    setPressureConfig(createDefaultConfig());
+    setElecVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
+    setElecCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
+    setElecSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
+    setElecConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+    setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
     setTemplateName('');
     setUgConfig({
@@ -743,7 +1089,7 @@ const ConfigTemplates = () => {
   };
 
   const toggleSelectTemplate = (id) => {
-    setSelectedTemplates(prev => 
+    setSelectedTemplates(prev =>
       prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
     );
   };
@@ -764,32 +1110,32 @@ const ConfigTemplates = () => {
     setSelectedCategory(template.category);
     setSelectedModule(template.module);
     if (template.mapping) {
-      setAgLowerConfig(template.mapping.agLowerConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setAgUpperConfig(template.mapping.agUpperConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setAgAutoConfig(template.mapping.agAutoConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setAgManualConfig(template.mapping.agManualConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setAgBypassConfig(template.mapping.agBypassConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setAgLevelConfig(template.mapping.agLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setAgOpenConfig(template.mapping.agOpenConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setAgCloseConfig(template.mapping.agCloseConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setAgLowerConfig(template.mapping.agLowerConfig || createDefaultConfig(true));
+      setAgUpperConfig(template.mapping.agUpperConfig || createDefaultConfig(true));
+      setAgAutoConfig(template.mapping.agAutoConfig || createDefaultConfig());
+      setAgManualConfig(template.mapping.agManualConfig || createDefaultConfig());
+      setAgBypassConfig(template.mapping.agBypassConfig || createDefaultConfig());
+      setAgLevelConfig(template.mapping.agLevelConfig || createDefaultConfig());
+      setAgOpenConfig(template.mapping.agOpenConfig || createDefaultConfig());
+      setAgCloseConfig(template.mapping.agCloseConfig || createDefaultConfig());
       setAgTankRange(template.mapping.agTankRange || { domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
       setAgTankType(template.mapping.agTankType || 'DOMESTIC');
       setAgMasterEnabled(template.mapping.agMasterEnabled !== undefined ? template.mapping.agMasterEnabled : true);
-      setUgLowerConfig(template.mapping.ugLowerConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgUpperConfig(template.mapping.ugUpperConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgAutoConfig(template.mapping.ugAutoConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgManualConfig(template.mapping.ugManualConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStartCmdConfig(template.mapping.ugStartCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStopCmdConfig(template.mapping.ugStopCmdConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStartPressConfig(template.mapping.ugStartPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgStopPressConfig(template.mapping.ugStopPressConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgLocalModeConfig(template.mapping.ugLocalModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setUgRemoteModeConfig(template.mapping.ugRemoteModeConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setPressureConfig(template.mapping.pressureConfig || { location: '', device: '', module: '', field: '', enabled: true });
-      setElecVoltageConfig(template.mapping.elecVoltageConfig || { location: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
-      setElecCurrentConfig(template.mapping.elecCurrentConfig || { location: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
-      setElecSystemConfig(template.mapping.elecSystemConfig || { location: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
-      setElecConsumptionConfig(template.mapping.elecConsumptionConfig || { location: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+      setUgLowerConfig(template.mapping.ugLowerConfig || createDefaultConfig(true));
+      setUgUpperConfig(template.mapping.ugUpperConfig || createDefaultConfig(true));
+      setUgAutoConfig(template.mapping.ugAutoConfig || createDefaultConfig());
+      setUgManualConfig(template.mapping.ugManualConfig || createDefaultConfig());
+      setUgStartCmdConfig(template.mapping.ugStartCmdConfig || createDefaultConfig());
+      setUgStopCmdConfig(template.mapping.ugStopCmdConfig || createDefaultConfig());
+      setUgStartPressConfig(template.mapping.ugStartPressConfig || createDefaultConfig());
+      setUgStopPressConfig(template.mapping.ugStopPressConfig || createDefaultConfig());
+      setUgLocalModeConfig(template.mapping.ugLocalModeConfig || createDefaultConfig());
+      setUgRemoteModeConfig(template.mapping.ugRemoteModeConfig || createDefaultConfig());
+      setPressureConfig(template.mapping.pressureConfig || createDefaultConfig());
+      setElecVoltageConfig(template.mapping.elecVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
+      setElecCurrentConfig(template.mapping.elecCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
+      setElecSystemConfig(template.mapping.elecSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
+      setElecConsumptionConfig(template.mapping.elecConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
       setUgConfig(template.mapping.ugConfig || {
         integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
@@ -798,19 +1144,67 @@ const ConfigTemplates = () => {
       setUgPumpRange(template.mapping.ugPumpRange || { name: '', id: '' });
       setPressureTarget(template.mapping.pressureTarget || '');
       setElectricalTarget(template.mapping.electricalTarget || '');
-      setUgTankLevelConfig(template.mapping.ugTankLevelConfig || { location: '', device: '', module: '', field: '', enabled: true });
+      setUgTankLevelConfig(template.mapping.ugTankLevelConfig || createDefaultConfig());
       setUgTankRange(template.mapping.ugTankRange || { name: '', id: '' });
       setTemplateName(template.name || '');
+      if (template.mapping.ruleEngineConfig) {
+        setRuleEngineConfig(template.mapping.ruleEngineConfig);
+      }
 
-      // Pre-fetch dynamic data so dropdowns are fully populated
+      // 1. Restore Global Location
+      let restoredHierarchy = null;
+
+      if (template.mapping.globalHierarchy) {
+        restoredHierarchy = template.mapping.globalHierarchy;
+      } else {
+        // Fallback for legacy data: Search within mapping sections
+        const firstSectionWithHierarchy = Object.values(template.mapping).find(
+          s => s && typeof s === 'object' && (s.organization || s.building || s.location)
+        );
+
+        if (firstSectionWithHierarchy) {
+          restoredHierarchy = {
+            organization: firstSectionWithHierarchy.organization || '',
+            client: firstSectionWithHierarchy.client || '',
+            zone: firstSectionWithHierarchy.zone || '',
+            subZone: firstSectionWithHierarchy.subZone || '',
+            building: firstSectionWithHierarchy.building || firstSectionWithHierarchy.location || ''
+          };
+        } else {
+          // Secondary fallback: Try to derive from AG/UG targets (very useful for old templates with no mapped fields)
+          const bName = template.mapping.agTankRange?.domStart ||
+            template.mapping.agTankRange?.flushStart ||
+            template.mapping.ugTankRange?.name;
+
+          if (bName) {
+            restoredHierarchy = findHierarchyFromBuilding(bName);
+          }
+        }
+      }
+
+      if (restoredHierarchy) {
+        // Final normalization to ensure we use NAMES (labels) for dropdown matching
+        const normalized = findHierarchyFromBuilding(restoredHierarchy.building);
+        const finalHierarchy = normalized || restoredHierarchy;
+
+        setGlobalLocation(finalHierarchy);
+        if (finalHierarchy.building) {
+          fetchLocationDetails(finalHierarchy.building);
+        }
+      }
+
+      // 2. Restore Module Specific States
+      if (template.mapping.ugPumpRange?.pumpNo) {
+        setSelectedUgPumpNo(template.mapping.ugPumpRange.pumpNo);
+      }
+
+      // 3. Pre-fetch dynamic data for all mapped devices
       Object.values(template.mapping).forEach(config => {
         if (config && typeof config === 'object') {
-          if (config.location) {
-            fetchLocationDetails(config.location);
-          }
-          if (config.device) {
-            fetchDeviceDetails(config.device);
-          }
+          // Check for building/location and device
+          const locName = config.building || config.location;
+          if (locName) fetchLocationDetails(locName);
+          if (config.device) fetchDeviceDetails(config.device);
         }
       });
     }
@@ -839,12 +1233,11 @@ const ConfigTemplates = () => {
             </p>
           </div>
         </div>
-        
+
         {toastMessage && (
           <div className="position-fixed start-50 translate-middle-x fade-in" style={{ zIndex: 9999, bottom: '12%' }}>
-            <div className={`px-4 py-3 rounded-pill shadow-lg d-flex align-items-center gap-3 border ${
-              toastMessage.type === 'error' ? 'bg-danger bg-opacity-20 border-danger text-danger' : 'bg-success bg-opacity-20 border-success text-success'
-            }`} style={{ backdropFilter: 'blur(10px)', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
+            <div className={`px-4 py-3 rounded-pill shadow-lg d-flex align-items-center gap-3 border ${toastMessage.type === 'error' ? 'bg-danger bg-opacity-20 border-danger text-danger' : 'bg-success bg-opacity-20 border-success text-success'
+              }`} style={{ backdropFilter: 'blur(10px)', boxShadow: '0 10px 40px rgba(0,0,0,0.5)' }}>
               {toastMessage.type === 'error' ? <Info size={20} /> : <CheckCircle2 size={20} />}
               <span className="fw-black tracking-widest fs-9">{toastMessage.text}</span>
             </div>
@@ -862,36 +1255,36 @@ const ConfigTemplates = () => {
               <Button variant="outline-info" className="fw-bold px-4 rounded-3" onClick={() => {
                 setEditingTemplateId(null);
                 // Reset AG Configs
-                setAgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgBypassConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgOpenConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgCloseConfig({ location: '', device: '', module: '', field: '', enabled: true });
+                setAgLowerConfig(createDefaultConfig(true));
+                setAgUpperConfig(createDefaultConfig(true));
+                setAgAutoConfig(createDefaultConfig());
+                setAgManualConfig(createDefaultConfig());
+                setAgBypassConfig(createDefaultConfig());
+                setAgLevelConfig(createDefaultConfig());
+                setAgOpenConfig(createDefaultConfig());
+                setAgCloseConfig(createDefaultConfig());
                 setAgTankRange({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
-                
+
                 // Reset UG Configs
-                setUgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgStartCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgStopCmdConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgStartPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgStopPressConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgLocalModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setUgRemoteModeConfig({ location: '', device: '', module: '', field: '', enabled: true });
+                setUgLowerConfig(createDefaultConfig(true));
+                setUgUpperConfig(createDefaultConfig(true));
+                setUgAutoConfig(createDefaultConfig());
+                setUgManualConfig(createDefaultConfig());
+                setUgStartCmdConfig(createDefaultConfig());
+                setUgStopCmdConfig(createDefaultConfig());
+                setUgStartPressConfig(createDefaultConfig());
+                setUgStopPressConfig(createDefaultConfig());
+                setUgLocalModeConfig(createDefaultConfig());
+                setUgRemoteModeConfig(createDefaultConfig());
                 setUgPumpRange({ name: '', id: '' });
-                
+
                 // Reset Others
-                setPressureConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setElecVoltageConfig({ location: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
-                setElecCurrentConfig({ location: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
-                setElecSystemConfig({ location: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
-                setElecConsumptionConfig({ location: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
-                
+                setPressureConfig(createDefaultConfig());
+                setElecVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
+                setElecCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
+                setElecSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
+                setElecConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+
                 setViewMode('FORM');
               }}>
                 <Settings size={18} className="me-2" /> MAPPING CONFIGURATION
@@ -899,8 +1292,8 @@ const ConfigTemplates = () => {
               <Button variant="info" className="fw-bold px-4 rounded-3 shadow-glow" onClick={() => {
                 setEditingTemplateId(null);
                 // Same reset logic as above but focused on "Add New"
-                setAgLowerConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgUpperConfig({ location: '', device: '', module: '', field: '', enabled: true });
+                setAgLowerConfig(createDefaultConfig(true));
+                setAgUpperConfig(createDefaultConfig(true));
                 setAgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setAgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setAgBypassConfig({ location: '', device: '', module: '', field: '', enabled: true });
@@ -919,9 +1312,15 @@ const ConfigTemplates = () => {
             <div className="d-flex flex-column flex-xl-row align-items-start align-items-xl-center gap-3 w-100 justify-content-xl-end">
               <div className="d-flex flex-column w-100" style={{ maxWidth: '400px' }}>
                 <span className="fs-10 text-secondary fw-black uppercase opacity-50 tracking-widest mb-1">Config Label</span>
+
+                <Form.Control
+                  type="text"
+                  placeholder="E.g. Primary Mapping V1"
+
                 <Form.Control 
                   type="text" 
                   placeholder="E.g. Primary Mapping V1" 
+
                   className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-black fs-11 px-3 py-2 rounded-3 w-100"
                   value={templateName}
                   onChange={(e) => setTemplateName(e.target.value)}
@@ -953,6 +1352,75 @@ const ConfigTemplates = () => {
                 <Button variant="outline-danger" className="fw-black px-4 py-2 fs-11 uppercase tracking-widest border-opacity-20 hover-glow-text" onClick={() => setViewMode('LIST')}>
                   Discard
                 </Button>
+              </div>
+
+              {/* GLOBAL LOCATION SELECTOR - 5 LEVEL HIERARCHY */}
+              <div className="mb-5 p-4 rounded-4 border border-info border-opacity-10 bg-dark bg-opacity-20 shadow-inner">
+                <div className="d-flex align-items-center gap-3 mb-4">
+                  <div className="p-2 rounded-3 bg-info bg-opacity-10 text-info border border-info border-opacity-10 shadow-glow-blue">
+                    <MapPin size={24} />
+                  </div>
+                  <div>
+                    <h5 className="text-white fw-black uppercase tracking-tighter mb-0">HIERARCHY <span className="text-info">SPECIFICATION</span></h5>
+                    <small className="text-secondary opacity-50 uppercase fs-12 fw-bold tracking-widest">Select target location for mapping</small>
+                  </div>
+                </div>
+
+                <Row className="g-3">
+                  {[
+                    { label: 'Organization (Company)', key: 'organization', placeholder: 'SELECT COMPANY' },
+                    { label: 'Client (Consumer)', key: 'client', placeholder: 'SELECT CLIENT' },
+                    { label: 'Zone', key: 'zone', placeholder: 'SELECT ZONE' },
+                    { label: 'Sub Zone / Building', key: 'subZone', placeholder: 'SELECT OPTION' },
+                    { label: 'Building / Gateway', key: 'building', placeholder: 'SELECT LOCATION' }
+                  ].map((level, idx, arr) => (
+                    <Col md={idx === 4 ? 2.4 : 2.4} xl={idx === 4 ? 2.4 : 2.4} key={level.key} style={{ width: '20%' }}>
+                      <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">{level.label}</Form.Label>
+                      <Form.Select
+                        className={`premium-input p-2 fs-11 fw-bold border-info transition-all ${globalLocation[level.key] ? 'border-opacity-40 text-info' : 'border-opacity-10'}`}
+                        value={globalLocation[level.key]}
+                        onChange={(e) => handleGlobalHierarchyChange(level.key, e.target.value)}
+                        disabled={idx > 0 && !globalLocation[arr[idx - 1].key]}
+                        style={{ height: '40px' }}
+                      >
+                        <option value="">{level.placeholder}</option>
+                        {getFieldList(level.key, globalLocation).map(opt => (
+                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                        ))}
+                      </Form.Select>
+                    </Col>
+                  ))}
+                </Row>
+
+                {/* BREADCRUMB SUMMARY BOX */}
+                {globalLocation.organization && (
+                  <div className="mt-4 p-3 rounded-3 bg-dark bg-opacity-40 border border-info border-opacity-10 d-flex align-items-center gap-2 flex-wrap">
+                    <span className="fs-11 text-secondary fw-black uppercase opacity-40 me-2 letter-spacing-1">Active Path:</span>
+                    {['organization', 'client', 'zone', 'subZone', 'building'].map((key, idx, arr) => {
+                      const value = globalLocation[key];
+                      if (!value) return null;
+
+                      // Find label for breadcrumb if value is an ID
+                      const options = getFieldList(key, globalLocation);
+                      const opt = options.find(o => o.id === value);
+                      const displayLabel = opt ? opt.label : value;
+
+                      return (
+                        <React.Fragment key={key}>
+                          <div className="px-3 py-1 rounded-pill bg-info bg-opacity-10 text-info fw-black fs-12 uppercase border border-info border-opacity-20 shadow-glow-blue">
+                            {displayLabel}
+                          </div>
+                          {idx < arr.length - 1 && globalLocation[arr[idx + 1].key] && (
+                            <ChevronRight size={14} className="text-info opacity-30" />
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                    <Button variant="link" className="ms-auto text-danger fs-11 fw-black text-decoration-none p-0 uppercase opacity-50 hover-opacity-100" onClick={() => setGlobalLocation({ organization: '', client: '', zone: '', subZone: '', building: '' })}>
+                      ↺ Reset All
+                    </Button>
+                  </div>
+                )}
               </div>
 
               <Row className="g-3 mb-4">
@@ -990,7 +1458,6 @@ const ConfigTemplates = () => {
 
               {selectedModule === 'AG Tank' ? (
                 <div className="config-form-container scale-in">
-                  {/* TANK TYPE SELECTION & ASSET MAPPING */}
                   <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-4 overflow-hidden position-relative">
                     <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center justify-content-between">
                       <div className="d-flex align-items-center gap-2">
@@ -1058,10 +1525,10 @@ const ConfigTemplates = () => {
                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">Master Control</Form.Label>
                                   <div className="p-1 rounded bg-dark bg-opacity-40 border border-info border-opacity-10 d-flex align-items-center justify-content-between px-3" style={{ height: '38px' }}>
                                     <div className={`p-1 rounded-circle ${agMasterEnabled ? 'bg-info shadow-glow-blue' : 'bg-secondary'} transition-all`} style={{ width: '6px', height: '6px' }}></div>
-                                    <Form.Check 
-                                      type="switch" 
-                                      className="scada-switch success sm m-0" 
-                                      checked={agMasterEnabled} 
+                                    <Form.Check
+                                      type="switch"
+                                      className="scada-switch success sm m-0"
+                                      checked={agMasterEnabled}
                                       onChange={(e) => {
                                         const val = e.target.checked;
                                         setAgMasterEnabled(val);
@@ -1110,10 +1577,10 @@ const ConfigTemplates = () => {
                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">Master Control</Form.Label>
                                   <div className="p-1 rounded bg-dark bg-opacity-40 border border-primary border-opacity-10 d-flex align-items-center justify-content-between px-3" style={{ height: '38px' }}>
                                     <div className={`p-1 rounded-circle ${agMasterEnabled ? 'bg-primary shadow-glow-blue' : 'bg-secondary'} transition-all`} style={{ width: '6px', height: '6px' }}></div>
-                                    <Form.Check 
-                                      type="switch" 
-                                      className="scada-switch success sm m-0" 
-                                      checked={agMasterEnabled} 
+                                    <Form.Check
+                                      type="switch"
+                                      className="scada-switch success sm m-0"
+                                      checked={agMasterEnabled}
                                       onChange={(e) => {
                                         const val = e.target.checked;
                                         setAgMasterEnabled(val);
@@ -1130,7 +1597,6 @@ const ConfigTemplates = () => {
                     </div>
                   </div>
 
-                  {/* FULL HARDWARE MAPPING GRID BASED ON SKETCH */}
                   <div className="mb-5">
                     <Row className="g-4">
                       {[
@@ -1144,43 +1610,125 @@ const ConfigTemplates = () => {
                         { title: 'Close Valve Command', state: agCloseConfig, setter: setAgCloseConfig, icon: <X size={18} />, color: 'danger' },
                       ].map((section, idx) => (
                         <Col md={6} key={idx}>
-                          <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-white border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all ${agMasterEnabled ? 'hover-glow-blue' : 'opacity-25 grayscale'}`} style={{ pointerEvents: agMasterEnabled ? 'auto' : 'none' }}>
-                            <div className="card-inner-glow bg-white opacity-5"></div>
-                            <div className="mb-3 d-flex align-items-center justify-content-between">
-                              <div className="d-flex align-items-center gap-2">
-                                <div className={`icon-box-premium ${section.color} p-2`}>
+                          <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all ${agMasterEnabled ? `hover-glow-${section.color}` : 'opacity-25 grayscale'}`} style={{ pointerEvents: agMasterEnabled ? 'auto' : 'none' }}>
+                            <div className={`card-inner-glow bg-${section.color} opacity-5`}></div>
+
+                            {/* HEADER */}
+                            <div className="mb-4 d-flex align-items-center justify-content-between">
+                              <div className="d-flex align-items-center gap-3">
+                                <div className={`icon-box-premium ${section.color} p-2 shadow-glow-${section.color}`}>
                                   {section.icon}
                                 </div>
-                                <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                <div>
+                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                  <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>Sensor Mapping</small>
+                                </div>
                               </div>
-                              <Form.Check
-                                type="switch"
-                                className="scada-switch success"
-                                checked={section.state.enabled}
-                                onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })}
-                              />
+                              {!section.isAction && (
+                                <Form.Check
+                                  type="switch"
+                                  className={`scada-switch ${section.color}`}
+                                  checked={section.state.enabled}
+                                  onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })}
+                                />
+                              )}
+                              {section.isAction && (
+                                <Button variant={`outline-${section.color}`} size="sm" className="fw-black fs-11 px-3 py-1 rounded-pill" onClick={section.setter}>
+                                  CONFIGURE
+                                </Button>
+                              )}
                             </div>
-                            <Row className="g-2 position-relative z-1">
-                              {[
-                                { label: 'Location', key: 'location' },
-                                { label: 'Device_ID', key: 'device' },
-                                { label: 'Module_ID', key: 'module' },
-                                { label: 'Event_ Field', key: 'field' }
-                              ].map((f) => (
-                                <Col xs={6} key={f.key}>
-                                  <Form.Label className="fs-12 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.6rem' }}>{f.label}</Form.Label>
-                                    <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
-                                      value={section.state[f.key]} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}>
-                                      <option value="">SELECT {f.label.toUpperCase()}</option>
-                                      {getFieldList(f.key, section.state).map(opt => (
-                                        <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
-                                          {typeof opt === 'object' ? opt.label : opt}
-                                        </option>
-                                      ))}
-                                    </Form.Select>
-                                </Col>
-                              ))}
-                            </Row>
+
+                            {/* MAPPING BOXES */}
+                            {!section.isAction && (
+                              <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
+                                <Row className="g-3 position-relative z-1">
+                                  {!globalLocation.building ? (
+                                    <Col md={12}>
+                                      <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
+                                        <small className="text-warning fw-black uppercase tracking-widest fs-12">
+                                          <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                        </small>
+                                      </div>
+                                    </Col>
+                                  ) : (
+                                    <>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.building || globalLocation.building}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}
+                                        >
+                                          <option value="">SELECT OPTION</option>
+                                          {getFieldList('building', { ...globalLocation, ...section.state }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.device}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}
+                                        >
+                                          <option value="">SELECT DEVICE_ID</option>
+                                          {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">MODULE_ID</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.module}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'module', e.target.value)}
+                                        >
+                                          <option value="">SELECT MODULE_ID</option>
+                                          {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.field}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'field', e.target.value)}
+                                        >
+                                          <option value="">SELECT EVENT_FIELD</option>
+                                          {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                    </>
+                                  )}
+                                </Row>
+                              </div>
+                            )}
+
+                            {/* RULE ENGINE SHORTCUT FOR LIMITS */}
+                            {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
+                              <div className="mt-4 pt-3 border-top border-white border-opacity-5 d-flex justify-content-end">
+                                <Button
+                                  variant="link"
+                                  className={`p-0 text-${section.color} text-decoration-none fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 transition-all hover-opacity-100 opacity-70`}
+                                  onClick={() => setShowRuleEngineModal(true)}
+                                >
+                                  <Zap size={14} className="shadow-glow-blue" />
+                                  Rule Engine Configuration
+                                  <ChevronRight size={14} />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </Col>
                       ))}
@@ -1196,17 +1744,17 @@ const ConfigTemplates = () => {
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Pump Network Integration</h6>
                       </div>
                       <div className="d-flex align-items-center gap-3">
-                         <Form.Select 
-                            className="premium-input p-2 fs-10 fw-bold border-success border-opacity-20" 
-                            style={{ width: '150px' }}
-                            value={selectedUgPumpNo || ''}
-                            onChange={(e) => handleUgPumpNoChange(Number(e.target.value))}
-                         >
-                            <option value="">SELECT UNIT</option>
-                            <option value="1">PUMP 1</option>
-                            <option value="2">PUMP 2</option>
-                            <option value="3">PUMP 3</option>
-                         </Form.Select>
+                        <Form.Select
+                          className="premium-input p-2 fs-10 fw-bold border-success border-opacity-20"
+                          style={{ width: '150px' }}
+                          value={selectedUgPumpNo || ''}
+                          onChange={(e) => handleUgPumpNoChange(Number(e.target.value))}
+                        >
+                          <option value="">SELECT UNIT</option>
+                          <option value="1">PUMP 1</option>
+                          <option value="2">PUMP 2</option>
+                          <option value="3">PUMP 3</option>
+                        </Form.Select>
                       </div>
                     </div>
 
@@ -1225,43 +1773,101 @@ const ConfigTemplates = () => {
                           { title: 'Remote Mode', state: ugRemoteModeConfig, setter: setUgRemoteModeConfig, icon: <Activity size={18} />, color: 'primary' },
                         ].map((section, idx) => (
                           <Col md={6} key={idx}>
-                            <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-white border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-blue">
-                              <div className="card-inner-glow bg-white opacity-5"></div>
-                              <div className="mb-3 d-flex align-items-center justify-content-between">
-                                <div className="d-flex align-items-center gap-2">
-                                  <div className={`icon-box-premium ${section.color} p-2`}>
+                            <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-${section.color}`}>
+                              <div className={`card-inner-glow bg-${section.color} opacity-5`}></div>
+
+                              {/* HEADER */}
+                              <div className="mb-4 d-flex align-items-center justify-content-between">
+                                <div className="d-flex align-items-center gap-3">
+                                  <div className={`icon-box-premium ${section.color} p-2 shadow-glow-${section.color}`}>
                                     {section.icon}
                                   </div>
-                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                  <div>
+                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                    <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>UG Pump Mapping</small>
+                                  </div>
                                 </div>
                                 <Form.Check
                                   type="switch"
-                                  className="scada-switch success"
+                                  className={`scada-switch ${section.color}`}
                                   checked={section.state.enabled}
                                   onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })}
                                 />
                               </div>
-                              <Row className="g-2 position-relative z-1">
-                                {[
-                                  { label: 'Location', key: 'location' },
-                                  { label: 'Device_ID', key: 'device' },
-                                  { label: 'Module_ID', key: 'module' },
-                                  { label: 'Event_ Field', key: 'field' }
-                                ].map((f) => (
-                                  <Col xs={6} key={f.key}>
-                                    <Form.Label className="fs-12 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.6rem' }}>{f.label}</Form.Label>
-                                    <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
-                                      value={section.state[f.key]} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}>
-                                      <option value="">SELECT {f.label.toUpperCase()}</option>
-                                      {getFieldList(f.key, section.state).map(opt => (
-                                        <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
-                                          {typeof opt === 'object' ? opt.label : opt}
-                                        </option>
-                                      ))}
-                                    </Form.Select>
-                                  </Col>
-                                ))}
-                              </Row>
+
+                              {/* MAPPING BOXES */}
+                              <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
+                                <Row className="g-3 position-relative z-1">
+                                  {!globalLocation.building ? (
+                                    <Col md={12}>
+                                      <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
+                                        <small className="text-warning fw-black uppercase tracking-widest fs-12">
+                                          <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                        </small>
+                                      </div>
+                                    </Col>
+                                  ) : (
+                                    <>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.building || globalLocation.building}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}
+                                        >
+                                          <option value="">SELECT OPTION</option>
+                                          {getFieldList('building', { ...globalLocation, ...section.state }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.device}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}
+                                        >
+                                          <option value="">SELECT DEVICE_ID</option>
+                                          {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">MODULE_ID</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.module}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'module', e.target.value)}
+                                        >
+                                          <option value="">SELECT MODULE_ID</option>
+                                          {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.field}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'field', e.target.value)}
+                                        >
+                                          <option value="">SELECT EVENT_FIELD</option>
+                                          {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                    </>
+                                  )}
+                                </Row>
+                              </div>
                             </div>
                           </Col>
                         ))}
@@ -1278,16 +1884,16 @@ const ConfigTemplates = () => {
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">UG Tank Level Integration <span className="opacity-40">(Hydrostatic / Ultrasonic)</span></h6>
                       </div>
                       <div className="d-flex align-items-center gap-3">
-                         <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Target Asset:</Form.Label>
-                         <Form.Select 
-                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20" 
-                            style={{ width: '220px' }}
-                            value={ugTankRange.name}
-                            onChange={(e) => handleUgTankChange(e.target.value)}
-                         >
-                            <option value="">SELECT TANK UNIT</option>
-                            {ugPumpsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                         </Form.Select>
+                        <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Target Asset:</Form.Label>
+                        <Form.Select
+                          className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20"
+                          style={{ width: '220px' }}
+                          value={ugTankRange.name}
+                          onChange={(e) => handleUgTankChange(e.target.value)}
+                        >
+                          <option value="">SELECT TANK UNIT</option>
+                          {ugPumpsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                        </Form.Select>
                       </div>
                     </div>
 
@@ -1296,12 +1902,17 @@ const ConfigTemplates = () => {
                         <Col md={8}>
                           <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-blue">
                             <div className="card-inner-glow bg-info opacity-5"></div>
-                            <div className="mb-3 d-flex align-items-center justify-content-between">
-                              <div className="d-flex align-items-center gap-2">
-                                <div className="icon-box-premium info p-2">
-                                  <Layers size={18} />
+
+                            {/* HEADER */}
+                            <div className="mb-4 d-flex align-items-center justify-content-between">
+                              <div className="d-flex align-items-center gap-3">
+                                <div className="icon-box-premium info p-2 shadow-glow-blue">
+                                  <Layers size={20} />
                                 </div>
-                                <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">Water Level Mapping</h6>
+                                <div>
+                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">Water Level Mapping</h6>
+                                  <small className="text-info opacity-50 uppercase fs-12 fw-bold tracking-widest">Tank Depth Analytics</small>
+                                </div>
                               </div>
                               <Form.Check
                                 type="switch"
@@ -1310,27 +1921,80 @@ const ConfigTemplates = () => {
                                 onChange={(e) => setUgTankLevelConfig({ ...ugTankLevelConfig, enabled: e.target.checked })}
                               />
                             </div>
-                            <Row className="g-2 position-relative z-1">
-                              {[
-                                { label: 'Location', key: 'location' },
-                                { label: 'Device_ID', key: 'device' },
-                                { label: 'Module_ID', key: 'module' },
-                                { label: 'Event_ Field', key: 'field' }
-                              ].map((f) => (
-                                <Col xs={6} key={f.key}>
-                                  <Form.Label className="fs-12 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.6rem' }}>{f.label}</Form.Label>
-                                  <Form.Select className="premium-input p-2 fs-12 fw-bold border-white border-opacity-10" style={{ height: '32px', fontSize: '0.7rem' }}
-                                    value={ugTankLevelConfig[f.key]} onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, f.key, e.target.value)}>
-                                    <option value="">SELECT {f.label.toUpperCase()}</option>
-                                    {getFieldList(f.key, ugTankLevelConfig).map(opt => (
-                                      <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
-                                        {typeof opt === 'object' ? opt.label : opt}
-                                      </option>
-                                    ))}
-                                  </Form.Select>
-                                </Col>
-                              ))}
-                            </Row>
+
+                            {/* MAPPING GRID */}
+                            <div className={`transition-all ${!ugTankLevelConfig.enabled ? 'opacity-25 grayscale' : ''}`}>
+                              <Row className="g-3 position-relative z-1">
+                                {!globalLocation.building ? (
+                                  <Col md={12}>
+                                    <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
+                                      <small className="text-warning fw-black uppercase tracking-widest fs-12">
+                                        <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                      </small>
+                                    </div>
+                                  </Col>
+                                ) : (
+                                  <>
+                                    <Col md={3}>
+                                      <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                      <Form.Select
+                                        className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10 shadow-inner"
+                                        style={{ height: '45px' }}
+                                        value={ugTankLevelConfig.building || globalLocation.building}
+                                        onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, 'building', e.target.value)}
+                                      >
+                                        <option value="">SELECT OPTION</option>
+                                        {getFieldList('building', { ...globalLocation, ...ugTankLevelConfig }).map(opt => (
+                                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                        ))}
+                                      </Form.Select>
+                                    </Col>
+                                    <Col md={3}>
+                                      <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                      <Form.Select
+                                        className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10 shadow-inner"
+                                        style={{ height: '45px' }}
+                                        value={ugTankLevelConfig.device}
+                                        onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, 'device', e.target.value)}
+                                      >
+                                        <option value="">SELECT DEVICE_ID</option>
+                                        {getFieldList('device', { ...globalLocation, ...ugTankLevelConfig, building: ugTankLevelConfig.building || globalLocation.building }).map(opt => (
+                                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                        ))}
+                                      </Form.Select>
+                                    </Col>
+                                    <Col md={3}>
+                                      <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">MODULE_ID</Form.Label>
+                                      <Form.Select
+                                        className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10 shadow-inner"
+                                        style={{ height: '45px' }}
+                                        value={ugTankLevelConfig.module}
+                                        onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, 'module', e.target.value)}
+                                      >
+                                        <option value="">SELECT MODULE_ID</option>
+                                        {getFieldList('module', { ...globalLocation, ...ugTankLevelConfig, building: ugTankLevelConfig.building || globalLocation.building }).map(opt => (
+                                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                        ))}
+                                      </Form.Select>
+                                    </Col>
+                                    <Col md={3}>
+                                      <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
+                                      <Form.Select
+                                        className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10 shadow-inner"
+                                        style={{ height: '45px' }}
+                                        value={ugTankLevelConfig.field}
+                                        onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, 'field', e.target.value)}
+                                      >
+                                        <option value="">SELECT EVENT_FIELD</option>
+                                        {getFieldList('field', { ...globalLocation, ...ugTankLevelConfig, building: ugTankLevelConfig.building || globalLocation.building }).map(opt => (
+                                          <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                        ))}
+                                      </Form.Select>
+                                    </Col>
+                                  </>
+                                )}
+                              </Row>
+                            </div>
                           </div>
                         </Col>
                       </Row>
@@ -1348,60 +2012,106 @@ const ConfigTemplates = () => {
                       <Row className="g-4">
                         <Col md={12}>
                           <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card position-relative overflow-hidden transition-all hover-glow-blue">
-                            <div className="card-inner-glow bg-info opacity-20"></div>
+                            <div className="card-inner-glow bg-info opacity-5"></div>
+
+                            {/* HEADER */}
+                            <div className="mb-4 d-flex align-items-center justify-content-between">
                               <div className="d-flex align-items-center gap-3">
-                                <div className="icon-box-premium info p-2 shadow-glow-blue"><Zap size={20} /></div>
-                                <div className="flex-grow-1">
-                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-9">Pressure_Settings</h6>
-                                  <small className="text-info opacity-50 uppercase fs-12 fw-bold">Live Pressure Feedback Integration</small>
+                                <div className="icon-box-premium info p-2 shadow-glow-blue">
+                                  <Zap size={20} />
                                 </div>
+                                <div>
+                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">Pressure_Settings</h6>
+                                  <small className="text-info opacity-50 uppercase fs-12 fw-bold tracking-widest">Feedback Analytics</small>
+                                </div>
+                              </div>
+                              <div className="d-flex align-items-center gap-3">
                                 <div className="d-flex align-items-center gap-3 bg-dark bg-opacity-30 p-1 px-3 rounded-pill border border-info border-opacity-10">
-                                   <Form.Label className="mb-0 text-secondary fs-11 fw-black uppercase tracking-widest opacity-50">Sensor Unit:</Form.Label>
-                                   <Form.Select 
-                                      className="premium-input p-1 fs-11 fw-bold border-0 bg-transparent text-info" 
-                                      style={{ width: '180px', height: '30px !important' }}
-                                      value={pressureTarget}
-                                      onChange={(e) => setPressureTarget(e.target.value)}
-                                   >
-                                      <option value="">SELECT SENSOR</option>
-                                      {pressureSensorsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                                   </Form.Select>
+                                  <Form.Label className="mb-0 text-secondary fs-11 fw-black uppercase tracking-widest opacity-50">Sensor Unit:</Form.Label>
+                                  <Form.Select
+                                    className="premium-input p-1 fs-11 fw-bold border-0 bg-transparent text-info"
+                                    style={{ width: '180px', height: '30px' }}
+                                    value={pressureTarget}
+                                    onChange={(e) => setPressureTarget(e.target.value)}
+                                  >
+                                    <option value="">SELECT SENSOR</option>
+                                    {pressureSensorsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                                  </Form.Select>
                                 </div>
-                                <Form.Check 
-                                  type="switch" 
-                                  className="scada-switch success" 
-                                  checked={pressureConfig.enabled} 
+                                <Form.Check
+                                  type="switch"
+                                  className="scada-switch success"
+                                  checked={pressureConfig.enabled}
                                   onChange={(e) => setPressureConfig({ ...pressureConfig, enabled: e.target.checked })}
                                 />
                               </div>
                             </div>
+                            {/* HEADER END */}
+
                             <div className={`transition-all ${!pressureTarget ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: pressureTarget ? 'auto' : 'none' }}>
-                               {!pressureTarget && (
-                                  <div className="text-center py-2">
-                                     <small className="text-info fw-black uppercase tracking-widest opacity-50 fs-12"><Info size={14} className="me-2" /> Select a Pressure Sensor to Begin Mapping</small>
-                                  </div>
-                               )}
-                               <Row className="g-3">
-                              {[
-                                 { label: 'Location', key: 'location' },
-                                 { label: 'Device_ID', key: 'device' },
-                                 { label: 'Module_ID', key: 'module' },
-                                 { label: 'Event_ Field', key: 'field' }
-                               ].map((f) => (
-                                 <Col md={3} key={f.key} className="mb-3 position-relative z-1">
-                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">{f.label}</Form.Label>
-                                   <Form.Select className="premium-input p-2 fs-9 fw-bold border-info border-opacity-10"
-                                     value={pressureConfig[f.key]} onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, f.key, e.target.value)}>
-                                     <option value="">SELECT {f.label.toUpperCase()}</option>
-                                     {getFieldList(f.key, pressureConfig).map(opt => (
-                                       <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
-                                         {typeof opt === 'object' ? opt.label : opt}
-                                       </option>
-                                     ))}
-                                   </Form.Select>
-                                 </Col>
-                               ))}
-                             </Row>
+                              {!pressureTarget && (
+                                <div className="text-center py-2">
+                                  <small className="text-info fw-black uppercase tracking-widest opacity-50 fs-12"><Info size={14} className="me-2" /> Select a Pressure Sensor to Begin Mapping</small>
+                                </div>
+                              )}
+                              <Row className="g-3 position-relative z-1">
+                                {/* 1. LOCATION */}
+                                <Col md={6}>
+                                  <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                  <Form.Select className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10" style={{ height: '45px' }}
+                                    value={pressureConfig.building || globalLocation.building}
+                                    onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, 'building', e.target.value)}
+                                  >
+                                    <option value="">SELECT OPTION</option>
+                                    {getFieldList('building', { ...globalLocation, ...pressureConfig }).map(opt => (
+                                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                    ))}
+                                  </Form.Select>
+                                </Col>
+
+                                {/* 2. DEVICE_ID */}
+                                <Col md={6}>
+                                  <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                  <Form.Select className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10" style={{ height: '45px' }}
+                                    value={pressureConfig.device}
+                                    onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, 'device', e.target.value)}
+                                  >
+                                    <option value="">SELECT DEVICE_ID</option>
+                                    {getFieldList('device', { ...globalLocation, ...pressureConfig, building: pressureConfig.building || globalLocation.building }).map(opt => (
+                                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                    ))}
+                                  </Form.Select>
+                                </Col>
+
+                                {/* 3. MODULE_ID */}
+                                <Col md={6}>
+                                  <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">MODULE_ID</Form.Label>
+                                  <Form.Select className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10" style={{ height: '45px' }}
+                                    value={pressureConfig.module}
+                                    onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, 'module', e.target.value)}
+                                  >
+                                    <option value="">SELECT MODULE_ID</option>
+                                    {getFieldList('module', { ...globalLocation, ...pressureConfig, building: pressureConfig.building || globalLocation.building }).map(opt => (
+                                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                    ))}
+                                  </Form.Select>
+                                </Col>
+
+                                {/* 4. EVENT_FIELD */}
+                                <Col md={6}>
+                                  <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
+                                  <Form.Select className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10" style={{ height: '45px' }}
+                                    value={pressureConfig.field}
+                                    onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, 'field', e.target.value)}
+                                  >
+                                    <option value="">SELECT EVENT_FIELD</option>
+                                    {getFieldList('field', { ...globalLocation, ...pressureConfig, building: pressureConfig.building || globalLocation.building }).map(opt => (
+                                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                    ))}
+                                  </Form.Select>
+                                </Col>
+                              </Row>
+                            </div>
                           </div>
                         </Col>
                       </Row>
@@ -1417,133 +2127,131 @@ const ConfigTemplates = () => {
                         <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">Power Meter Integration <span className="opacity-40">(RS-485 / Modbus)</span></h6>
                       </div>
                       <div className="d-flex align-items-center gap-3">
-                         <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Select Meter Unit:</Form.Label>
-                         <Form.Select 
-                            className="premium-input p-2 fs-10 fw-bold border-warning border-opacity-20" 
-                            style={{ width: '220px' }}
-                            value={electricalTarget}
-                            onChange={(e) => setElectricalTarget(e.target.value)}
-                         >
-                            <option value="">SELECT METER</option>
-                            {electricalMetersList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
-                         </Form.Select>
+                        <Form.Label className="mb-0 text-secondary fs-10 fw-black uppercase tracking-widest opacity-50">Select Meter Unit:</Form.Label>
+                        <Form.Select
+                          className="premium-input p-2 fs-10 fw-bold border-warning border-opacity-20"
+                          style={{ width: '220px' }}
+                          value={electricalTarget}
+                          onChange={(e) => setElectricalTarget(e.target.value)}
+                        >
+                          <option value="">SELECT METER</option>
+                          {electricalMetersList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
+                        </Form.Select>
                       </div>
                     </div>
 
                     <div className={`p-4 bg-dark bg-opacity-20 ${!electricalTarget ? 'opacity-25 grayscale' : ''}`} style={{ pointerEvents: electricalTarget ? 'auto' : 'none' }}>
                       {!electricalTarget && (
                         <div className="position-absolute top-50 start-50 translate-middle z-3 text-center w-100">
-                           <div className="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-20 px-4 py-2 rounded-pill fs-11 fw-black tracking-widest">
-                             <Info size={14} className="me-2" /> SELECT AN ELECTRICAL METER TO BEGIN MAPPING
-                           </div>
+                          <div className="badge bg-warning bg-opacity-10 text-warning border border-warning border-opacity-20 px-4 py-2 rounded-pill fs-11 fw-black tracking-widest">
+                            <Info size={14} className="me-2" /> SELECT AN ELECTRICAL METER TO BEGIN MAPPING
+                          </div>
                         </div>
                       )}
                       <Row className="g-4">
                         {[
-                          { 
-                            title: 'Avg Voltage (L-L)', 
-                            state: elecVoltageConfig, 
-                            setter: setElecVoltageConfig, 
-                            icon: <Zap size={18} />, 
-                            color: 'warning',
-                            fields: [
-                              { label: 'RY Voltage', key: 'ry' },
-                              { label: 'YB Voltage', key: 'yb' },
-                              { label: 'BR Voltage', key: 'br' }
-                            ]
-                          },
-                          { 
-                            title: 'Current per Phase', 
-                            state: elecCurrentConfig, 
-                            setter: setElecCurrentConfig, 
-                            icon: <Activity size={18} />, 
-                            color: 'info',
-                            fields: [
-                              { label: 'R Phase', key: 'r' },
-                              { label: 'Y Phase', key: 'y' },
-                              { label: 'B Phase', key: 'b' }
-                            ]
-                          },
-                          { 
-                            title: 'System Metrics', 
-                            state: elecSystemConfig, 
-                            setter: setElecSystemConfig, 
-                            icon: <Database size={18} />, 
-                            color: 'success',
-                            fields: [
-                              { label: 'Power Factor', key: 'pf' },
-                              { label: 'Frequency', key: 'freq' },
-                              { label: 'Total Load', key: 'load' }
-                            ]
-                          },
-                          { 
-                            title: 'Power Consumption', 
-                            state: elecConsumptionConfig, 
-                            setter: setElecConsumptionConfig, 
-                            icon: <Zap size={18} />, 
-                            color: 'primary',
-                            fields: [
-                              { label: 'KVA', key: 'kva' },
-                              { label: 'KWH', key: 'kwh' },
-                              { label: 'KVAH', key: 'kvah' }
-                            ]
-                          }
+                          { title: 'Avg Voltage (L-L)', state: elecVoltageConfig, setter: setElecVoltageConfig, icon: <Zap size={18} />, color: 'warning', fields: [{ label: 'RY', key: 'ry' }, { label: 'YB', key: 'yb' }, { label: 'BR', key: 'br' }] },
+                          { title: 'Current per Phase', state: elecCurrentConfig, setter: setElecCurrentConfig, icon: <Activity size={18} />, color: 'info', fields: [{ label: 'R', key: 'r' }, { label: 'Y', key: 'y' }, { label: 'B', key: 'b' }] },
+                          { title: 'System Metrics', state: elecSystemConfig, setter: setElecSystemConfig, icon: <Database size={18} />, color: 'success', fields: [{ label: 'PF', key: 'pf' }, { label: 'FREQ', key: 'freq' }, { label: 'LOAD', key: 'load' }] },
+                          { title: 'Power Consumption', state: elecConsumptionConfig, setter: setElecConsumptionConfig, icon: <Zap size={18} />, color: 'primary', fields: [{ label: 'KVA', key: 'kva' }, { label: 'KWH', key: 'kwh' }, { label: 'KVAH', key: 'kvah' }] }
                         ].map((section, idx) => (
                           <Col md={6} key={idx}>
-                            <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-white border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-blue">
-                              <div className="card-inner-glow bg-white opacity-5"></div>
+                            <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-${section.color}`}>
+                              <div className={`card-inner-glow bg-${section.color} opacity-5`}></div>
+
+                              {/* HEADER */}
                               <div className="mb-4 d-flex align-items-center justify-content-between">
-                                <div className="d-flex align-items-center gap-2">
-                                  <div className={`icon-box-premium ${section.color} p-2`}>
+                                <div className="d-flex align-items-center gap-3">
+                                  <div className={`icon-box-premium ${section.color} p-2 shadow-glow-${section.color}`}>
                                     {section.icon}
                                   </div>
-                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                  <div>
+                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                    <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>Power Meter Mapping</small>
+                                  </div>
                                 </div>
-                                <Form.Check 
-                                  type="switch" 
-                                  className="scada-switch success" 
-                                  checked={section.state.enabled} 
-                                  onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })}
-                                />
+                                <Form.Check type="switch" className={`scada-switch ${section.color}`} checked={section.state.enabled} onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })} />
                               </div>
 
-                              <Row className="g-2 mb-3 pb-3 border-bottom border-white border-opacity-5">
-                                {[
-                                  { label: 'Location', key: 'location' },
-                                  { label: 'Device_ID', key: 'device' },
-                                  { label: 'Module_ID', key: 'module' }
-                                ].map((f) => (
-                                  <Col xs={4} key={f.key}>
-                                    <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block" style={{ fontSize: '0.55rem' }}>{f.label}</Form.Label>
-                                    <Form.Select className="premium-input p-2 fs-11 fw-bold border-white border-opacity-10" style={{ height: '30px', fontSize: '0.65rem' }}
-                                      value={section.state[f.key]} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}>
-                                      <option value="">{f.label.split('_')[0]}</option>
-                                      {getFieldList(f.key, section.state).map(opt => (
-                                        <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
-                                          {typeof opt === 'object' ? opt.label : opt}
-                                        </option>
-                                      ))}
-                                    </Form.Select>
-                                  </Col>
-                                ))}
-                              </Row>
-
-                               <Row className="g-2">
-                                 {section.fields.map((field) => (
-                                   <Col xs={4} key={field.key}>
-                                     <Form.Label className="fs-11 text-white fw-bold uppercase tracking-wider mb-1 d-block" style={{ fontSize: '0.6rem' }}>{field.label}</Form.Label>
-                                     <Form.Select className={`premium-input p-2 fs-11 fw-bold border-${section.color} border-opacity-20`} style={{ height: '30px', fontSize: '0.65rem' }}
-                                       value={section.state[field.key]} onChange={(e) => section.setter({ ...section.state, [field.key]: e.target.value })}>
-                                       <option value="">FIELD ID</option>
-                                       {getFieldList('field', section.state).map(opt => (
-                                         <option key={typeof opt === 'object' ? opt.id : opt} value={typeof opt === 'object' ? opt.id : opt}>
-                                           {typeof opt === 'object' ? opt.label : opt}
-                                         </option>
-                                       ))}
-                                     </Form.Select>
-                                   </Col>
-                                 ))}
-                               </Row>
+                              {/* MAPPING GRID */}
+                              <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
+                                <Row className="g-3 position-relative z-1">
+                                  {!globalLocation.building ? (
+                                    <Col md={12}>
+                                      <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
+                                        <small className="text-warning fw-black uppercase tracking-widest fs-12">
+                                          <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                        </small>
+                                      </div>
+                                    </Col>
+                                  ) : (
+                                    <>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.building || globalLocation.building}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}
+                                        >
+                                          <option value="">SELECT OPTION</option>
+                                          {getFieldList('building', { ...globalLocation, ...section.state }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.device}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}
+                                        >
+                                          <option value="">SELECT DEVICE</option>
+                                          {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">MODULE_ID</Form.Label>
+                                        <Form.Select
+                                          className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                          style={{ height: '45px' }}
+                                          value={section.state.module}
+                                          onChange={(e) => handleConfigChange(section.state, section.setter, 'module', e.target.value)}
+                                        >
+                                          <option value="">SELECT MODULE</option>
+                                          {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={3}>
+                                        <div className="d-flex flex-column gap-2">
+                                          {section.fields.map((f, fIdx) => (
+                                            <div key={fIdx}>
+                                              <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
+                                              <Form.Select
+                                                className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                style={{ height: '35px' }}
+                                                value={section.state[f.key]}
+                                                onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
+                                              >
+                                                <option value="">SELECT {f.label}</option>
+                                                {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                                ))}
+                                              </Form.Select>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </Col>
+                                    </>
+                                  )}
+                                </Row>
+                              </div>
                             </div>
                           </Col>
                         ))}
@@ -1580,16 +2288,16 @@ const ConfigTemplates = () => {
               </div>
             </div>
             <div className="d-flex align-items-center gap-3">
-               <Form.Check 
-                  type="checkbox"
-                  className="scada-checkbox info"
-                  label={<span className="text-secondary fs-12 fw-bold uppercase tracking-widest">Select All</span>}
-                  checked={selectedTemplates.length === savedTemplates.length && savedTemplates.length > 0}
-                  onChange={(e) => {
-                    if (e.target.checked) setSelectedTemplates(savedTemplates.map(t => t.id));
-                    else setSelectedTemplates([]);
-                  }}
-               />
+              <Form.Check
+                type="checkbox"
+                className="scada-checkbox info"
+                label={<span className="text-secondary fs-12 fw-bold uppercase tracking-widest">Select All</span>}
+                checked={selectedTemplates.length === savedTemplates.length && savedTemplates.length > 0}
+                onChange={(e) => {
+                  if (e.target.checked) setSelectedTemplates(savedTemplates.map(t => t.id));
+                  else setSelectedTemplates([]);
+                }}
+              />
             </div>
           </div>
 
@@ -1615,7 +2323,7 @@ const ConfigTemplates = () => {
                       <div className="p-3 position-relative z-1 flex-grow-1">
                         <div className="d-flex justify-content-between align-items-center mb-3">
                           <div className="d-flex align-items-center gap-3">
-                            <Form.Check 
+                            <Form.Check
                               type="checkbox"
                               className="scada-checkbox info m-0"
                               checked={selectedTemplates.includes(template.id)}
@@ -1687,7 +2395,7 @@ const ConfigTemplates = () => {
                             <span className="fs-13 opacity-75 fw-black tracking-tighter">{template.timestamp.split(',')[0]}</span>
                           </div>
                         </div>
-                        </div>
+                      </div>
                       <div className="card-action-bar-premium p-2 d-flex justify-content-between align-items-center mt-auto position-relative z-1">
                         <Button variant="link" className="text-info fs-11 fw-black text-decoration-none p-2 uppercase tracking-widest hover-glow-text cursor-pointer" onClick={() => handleEdit(template)}>EDIT CONFIG</Button>
                         <Button variant="link" className="text-danger fs-11 fw-black text-decoration-none p-2 uppercase tracking-widest hover-glow-text cursor-pointer" onClick={() => handleRemove(template.id)}>REMOVE</Button>
@@ -1740,7 +2448,7 @@ const ConfigTemplates = () => {
                             <Droplets size={16} /> UG Tank Level Configuration
                           </h6>
                           <div className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-20 px-3 py-1 rounded-pill fs-11 fw-black tracking-widest">
-                             {previewTemplate.mapping.ugTankRange?.name || 'UG TANK'}
+                            {previewTemplate.mapping.ugTankRange?.name || 'UG TANK'}
                           </div>
                         </div>
                         <Row className="g-3">
@@ -1790,7 +2498,7 @@ const ConfigTemplates = () => {
                           <Col md={12}>
                             <div className="fs-11 text-secondary uppercase fw-black mb-2 opacity-50">Tank Unit Assignment</div>
                             <div className="p-2 rounded bg-dark bg-opacity-40 border border-success border-opacity-20 text-success fw-black fs-9 text-center shadow-inner">
-                               {previewTemplate.mapping.ugPumpRange?.name || 'NOT ASSIGNED'}
+                              {previewTemplate.mapping.ugPumpRange?.name || 'NOT ASSIGNED'}
                             </div>
                           </Col>
                           <Col md={12} className="mt-2">
@@ -1817,7 +2525,7 @@ const ConfigTemplates = () => {
                                 { title: 'Stop Press', key: 'ugStopPressConfig' },
                                 { title: 'Local Mode', key: 'ugLocalModeConfig' },
                                 { title: 'Remote Mode', key: 'ugRemoteModeConfig' }
-                              ].map((section, idx) => (
+                              ].filter(section => previewTemplate.mapping[section.key]?.field).map((section, idx) => (
                                 <Col md={4} key={idx}>
                                   <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                     <span className="fs-13 text-success fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">{section.title}</span>
@@ -1949,7 +2657,7 @@ const ConfigTemplates = () => {
                             { title: 'Level Cmd', key: 'agLevelConfig' },
                             { title: 'Open Valve', key: 'agOpenConfig' },
                             { title: 'Close Valve', key: 'agCloseConfig' }
-                          ].map((section, idx) => (
+                          ].filter(section => previewTemplate.mapping[section.key]?.field).map((section, idx) => (
                             <Col md={4} key={idx}>
                               <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                 <div className="d-flex justify-content-between align-items-center mb-1 border-bottom border-white border-opacity-5 pb-1">
@@ -1996,6 +2704,265 @@ const ConfigTemplates = () => {
               </div>
             </div>
           )}
+        </Modal.Body>
+      </Modal>
+
+      {/* RULE ENGINE SETTINGS MODAL */}
+      <Modal
+        show={showRuleEngineModal}
+        onHide={() => setShowRuleEngineModal(false)}
+        centered
+        size="xl"
+        className="scada-modal premium-modal"
+      >
+        <Modal.Body className="bg-dark rounded-4 border-0 overflow-hidden shadow-2xl p-0 premium-figma-card">
+          <div className="card-inner-glow bg-warning opacity-20"></div>
+          <div className="p-4 position-relative z-1">
+            <div className="d-flex justify-content-between align-items-center mb-4">
+              <div className="d-flex align-items-center gap-3">
+                <div className="p-2 rounded-3 bg-warning bg-opacity-10 text-warning border border-warning border-opacity-10 shadow-glow-warning">
+                  <Zap size={24} />
+                </div>
+                <div>
+                  <h4 className="text-white fw-black uppercase tracking-tighter mb-0">RULE ENGINE <span className="text-warning">CONFIGURATION</span></h4>
+                  <p className="text-secondary fs-12 fw-bold uppercase tracking-widest opacity-50 mb-0">Define logic for automated tank responses</p>
+                </div>
+              </div>
+            </div>
+
+            <Row className="g-5">
+              {/* CONDITION SECTION */}
+              <Col lg={7}>
+                <div className="p-4 rounded-4 bg-dark bg-opacity-30 border border-info border-opacity-10 h-100 position-relative">
+                  <div className="position-absolute top-0 end-0 p-3 opacity-10">
+                  </div>
+
+                  <h6 className="text-info fw-black uppercase tracking-widest mb-4 fs-10 d-flex align-items-center gap-2 position-relative z-1">
+                    <Activity size={16} /> 1. CONDITION
+                  </h6>
+
+                  <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 shadow-inner position-relative z-1">
+                    <div className="mb-4 d-flex align-items-center justify-content-between border-bottom border-info border-opacity-10 pb-2">
+                      <div className="d-flex align-items-center gap-2">
+                        <Database size={16} className="text-info" />
+                        <span className="text-info fw-black fs-12 uppercase tracking-widest">CONFIGURATION PARAMETERS</span>
+                      </div>
+                      <Form.Check 
+                        type="switch"
+                        id="schedule-toggle"
+                        label={ruleEngineConfig.condition.isScheduleEnabled ? "SCHEDULE ENABLED" : "SCHEDULE DISABLED"}
+                        className="scada-switch premium-switch fs-9 fw-black text-info mb-0"
+                        checked={ruleEngineConfig.condition.isScheduleEnabled}
+                        onChange={(e) => setRuleEngineConfig({
+                          ...ruleEngineConfig,
+                          condition: { ...ruleEngineConfig.condition, isScheduleEnabled: e.target.checked }
+                        })}
+                      />
+                    </div>
+
+                    <Row className="g-4">
+                      {/* SCHEDULE PART */}
+                      <Col md={6} style={{ opacity: ruleEngineConfig.condition.isScheduleEnabled ? 1 : 0.4, pointerEvents: ruleEngineConfig.condition.isScheduleEnabled ? 'all' : 'none' }}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">CONDITION DATE & TIME</Form.Label>
+                        <Form.Control
+                          type="datetime-local"
+                          disabled={!ruleEngineConfig.condition.isScheduleEnabled}
+                          className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.condition.timeDate}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            condition: { ...ruleEngineConfig.condition, timeDate: e.target.value }
+                          })}
+                        />
+                      </Col>
+                      <Col md={6} style={{ opacity: ruleEngineConfig.condition.isScheduleEnabled ? 1 : 0.4, pointerEvents: ruleEngineConfig.condition.isScheduleEnabled ? 'all' : 'none' }}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">REPEAT DAYS</Form.Label>
+                        <div className="d-flex flex-wrap gap-2">
+                          {['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map(day => (
+                            <div
+                              key={day}
+                              onClick={() => {
+                                if (!ruleEngineConfig.condition.isScheduleEnabled) return;
+                                const current = ruleEngineConfig.condition.repeatDays;
+                                const next = current.includes(day) ? current.filter(d => d !== day) : [...current, day];
+                                setRuleEngineConfig({ ...ruleEngineConfig, condition: { ...ruleEngineConfig.condition, repeatDays: next } });
+                              }}
+                              className={`px-3 py-2 rounded-3 fs-10 fw-black cursor-pointer transition-all border ${ruleEngineConfig.condition.repeatDays.includes(day) ? 'bg-info text-dark border-info shadow-glow-blue' : 'bg-dark bg-opacity-50 text-secondary border-white border-opacity-5 hover-border-info'}`}
+                            >
+                              {day}
+                            </div>
+                          ))}
+                        </div>
+                      </Col>
+
+                      <Col md={12} className="border-top border-white border-opacity-5 pt-4">
+                        <div className="d-flex align-items-center gap-2 mb-3">
+                          <Activity size={14} className="text-info opacity-50" />
+                          <span className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50">Logic Source & Comparison</span>
+                        </div>
+                      </Col>
+
+                      <Col md={6}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">CONDITION TYPE</Form.Label>
+                        <Form.Select
+                          className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.condition.type}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            condition: { ...ruleEngineConfig.condition, type: e.target.value }
+                          })}
+                        >
+                          <option value="NA">NA</option>
+                          <option value="INPUT_1">INPUT_1</option>
+                          <option value="INPUT_2">INPUT_2</option>
+                          <option value="ANALOG_1">ANALOG_1</option>
+                          <option value="ANALOG_2">ANALOG_2</option>
+                          <option value="DATE_TIME_ONCE">DATE_TIME_ONCE</option>
+                          <option value="DATE_TIME_REPEAT">DATE_TIME_REPEAT</option>
+                          <option value="MODBUS">MODBUS</option>
+                        </Form.Select>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">CONDITION MODBUS</Form.Label>
+                        <Form.Control
+                          type="text"
+                          placeholder="(DeviceID),Address"
+                          className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.condition.modbus}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            condition: { ...ruleEngineConfig.condition, modbus: e.target.value }
+                          })}
+                        />
+                      </Col>
+                      <Col md={6}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">COMPARISON TYPE</Form.Label>
+                        <Form.Select
+                          className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.condition.comparisonType}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            condition: { ...ruleEngineConfig.condition, comparisonType: e.target.value }
+                          })}
+                        >
+                          <option value="LESS_THAN">LESS_THAN</option>
+                          <option value="EQUAL">EQUAL</option>
+                          <option value="MORE_THAN">MORE_THAN</option>
+                        </Form.Select>
+                      </Col>
+                      <Col md={6}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">COMPARISON VALUE</Form.Label>
+                        <Form.Control
+                          type="text"
+                          placeholder="500"
+                          className="premium-input bg-dark bg-opacity-40 border-info border-opacity-20 text-info fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.condition.comparisonValue}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            condition: { ...ruleEngineConfig.condition, comparisonValue: e.target.value }
+                          })}
+                        />
+                      </Col>
+                    </Row>
+                  </div>
+                </div>
+              </Col>
+
+              {/* CONSEQUENCE SECTION */}
+              <Col lg={5}>
+                <div className="p-4 rounded-4 bg-dark bg-opacity-30 border border-success border-opacity-10 h-100 position-relative">
+                  <div className="position-absolute top-0 end-0 p-3 opacity-10">
+                  </div>
+
+                  <h6 className="text-success fw-black uppercase tracking-widest mb-4 fs-10 d-flex align-items-center gap-2 position-relative z-1">
+                    <Zap size={16} /> CONSEQUENCE ACTIONS
+                  </h6>
+
+                  <div className="p-4 rounded-4 bg-dark bg-opacity-40 border border-success border-opacity-10 mb-4 shadow-inner position-relative z-1">
+                    <div className="mb-4 d-flex align-items-center gap-2 border-bottom border-success border-opacity-10 pb-2">
+                      <Settings size={16} className="text-success" />
+                      <span className="text-success fw-black fs-12 uppercase tracking-widest">3. AUTOMATED RESPONSE</span>
+                    </div>
+
+                    <Row className="g-4">
+                      <Col md={12}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">CONSEQUENCE TYPE</Form.Label>
+                        <Form.Select
+                          className="premium-input bg-dark bg-opacity-40 border-success border-opacity-20 text-success fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.consequence.type}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            consequence: { ...ruleEngineConfig.consequence, type: e.target.value }
+                          })}
+                        >
+                          <option value="OUTPUT_1">OUTPUT_1</option>
+                          <option value="OUTPUT_2">OUTPUT_2</option>
+                          <option value="MODBUS">MODBUS</option>
+                        </Form.Select>
+                        <small className="text-success opacity-70 fs-10 fw-bold mt-2 d-block italic">➔ Target channel for output</small>
+                      </Col>
+                      <Col md={12}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">CONSEQUENCE MODBUS</Form.Label>
+                        <Form.Control
+                          type="text"
+                          placeholder="(DeviceID),Address"
+                          className="premium-input bg-dark bg-opacity-40 border-success border-opacity-20 text-success fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.consequence.modbus}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            consequence: { ...ruleEngineConfig.consequence, modbus: e.target.value }
+                          })}
+                        />
+                        <small className="text-success opacity-70 fs-10 fw-bold mt-2 d-block italic">➔ Format: (247),40001</small>
+                      </Col>
+                      <Col md={12}>
+                        <Form.Label className="fs-11 text-white fw-bold mb-2">CONSEQUENCE VALUE</Form.Label>
+                        <Form.Control
+                          type="text"
+                          placeholder="0"
+                          className="premium-input bg-dark bg-opacity-40 border-success border-opacity-20 text-success fw-bold fs-12 p-3"
+                          value={ruleEngineConfig.consequence.value}
+                          onChange={(e) => setRuleEngineConfig({
+                            ...ruleEngineConfig,
+                            consequence: { ...ruleEngineConfig.consequence, value: e.target.value }
+                          })}
+                        />
+                        <small className="text-success opacity-70 fs-10 fw-bold mt-2 d-block italic">➔ Value written to the Modbus register</small>
+                      </Col>
+                    </Row>
+                  </div>
+
+                </div>
+              </Col>
+            </Row>
+
+            <div className="mt-4 pt-4 border-top border-white border-opacity-5 d-flex justify-content-end gap-3">
+              <Button
+                variant="outline-secondary"
+                className="fw-black px-4 py-2 fs-11 uppercase tracking-widest border-opacity-20"
+                onClick={() => setShowRuleEngineModal(false)}
+              >
+                Discard
+              </Button>
+              <Button 
+                className="btn-info fw-black px-4 py-2 fs-11 uppercase tracking-widest shadow-glow border-0 d-flex align-items-center gap-2"
+                onClick={handleApplyRules}
+                disabled={isSendingRules}
+              >
+                {isSendingRules ? (
+                  <>
+                    <div className="spinner-border spinner-border-sm" role="status"></div>
+                    Sending...
+                  </>
+                ) : (
+                  <>
+                    <Zap size={16} />
+                    Apply Rules
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </Modal.Body>
       </Modal>
 

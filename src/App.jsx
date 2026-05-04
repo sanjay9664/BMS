@@ -29,7 +29,7 @@ function App() {
         {/* LOGIN ROUTE */}
         <Route 
           path="/login" 
-          element={!isAuthenticated ? <Login /> : <Navigate to="/dashboard" replace />} 
+          element={!isAuthenticated ? <Login /> : <Navigate to={localStorage.getItem('userRole') === 'SUPER_ADMIN' ? "/super-admin" : "/dashboard"} replace />} 
         />
 
         {/* PROTECTED ROUTES */}
