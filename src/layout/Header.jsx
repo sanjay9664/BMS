@@ -46,10 +46,12 @@ const Header = ({ collapsed, toggleSidebar }) => {
             </div>
             <div className="user-info d-none d-sm-block text-start">
               <p className="mb-0 text-white fw-bold" style={{ fontSize: '11px', lineHeight: '1.1' }}>
-                {localStorage.getItem('userRole') === 'admin' ? 'Administrator' : 'Field User'}
+                {localStorage.getItem('userRole')?.toUpperCase() === 'SUPER_ADMIN' ? 'Super Admin' : 
+                 localStorage.getItem('userRole')?.toLowerCase() === 'admin' ? 'Administrator' : 'Field User'}
               </p>
               <p className="mb-0 text-muted uppercase tracking-tighter" style={{ fontSize: '9px', lineHeight: '1.1' }}>
-                {localStorage.getItem('userRole') === 'admin' ? 'System Engineer' : 'Operator'}
+                {localStorage.getItem('userRole')?.toUpperCase() === 'SUPER_ADMIN' ? 'Global Overseer' :
+                 localStorage.getItem('userRole')?.toLowerCase() === 'admin' ? 'System Engineer' : 'Operator'}
               </p>
             </div>
           </Dropdown.Toggle>

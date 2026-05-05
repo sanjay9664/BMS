@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Row, Col, Card, Tooltip, OverlayTrigger, Form, Button, Modal, Badge } from 'react-bootstrap';
-import { Home, Waves, LayoutGrid, Settings, Save, AlertCircle, CheckCircle2, XCircle, Activity, X, Droplets, ToggleRight, ToggleLeft, Maximize, Minimize, ShieldCheck, ArrowUp, ArrowDown } from 'lucide-react';
+import { Home, Waves, LayoutGrid, Settings, Save, AlertCircle, CheckCircle2, XCircle, Activity, X, Droplets, ToggleRight, ToggleLeft, Maximize, Minimize, ShieldCheck, ArrowUp, ArrowDown, Zap } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
 
 const AgTank = () => {
@@ -45,9 +45,88 @@ const AgTank = () => {
     else document.exitFullscreen();
   };
 
+  const handleSendRuleToEngine = async (limitType) => {
+    if (!selectedTank) return;
+    
+    // 1. Identify Tank Name
+    const tankName = `${selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${selectedTank.localId}`;
+    
+    // 2. Fetch Template
+    const saved = localStorage.getItem('scada_templates');
+    if (!saved) {
+      setActionFeedback("ERROR: NO TEMPLATES FOUND");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
+    
+    const templates = JSON.parse(saved);
+    const template = templates.find(t => 
+      t.module === 'AG Tank' && 
+      (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
+    );
+
+    if (!template) {
+      setActionFeedback("ERROR: TANK NOT MAPPED");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
+
+    // 3. Prepare Config
+    const config = limitType === 'LOWER' ? template.mapping.rule1Config : template.mapping.rule2Config;
+    const moduleId = limitType === 'LOWER' ? template.mapping.agLowerConfig?.module : template.mapping.agUpperConfig?.module;
+
+    if (!moduleId) {
+      setActionFeedback("ERROR: RULE NOT CONFIGURED");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
+
+    // 4. Update Consequence Value to current UI limit
+    const updatedValue = limitType === 'LOWER' ? selectedTank.minLevel : selectedTank.maxLevel;
+    
+    // 5. Send to API
+    setActionFeedback("SENDING RULE...");
+    try {
+      const apiURL = import.meta.env.VITE_RULE_ENGINE_API;
+      const payload = {
+        moduleId: moduleId,
+        settingFields: [
+          { fieldName: "condition_date_time", currentValue: config?.condition?.timeDate || "" },
+          { fieldName: "condition_date_time_repeat_days", currentValue: config?.condition?.repeatDays?.join(',') || "" },
+          { fieldName: "consequence_value", currentValue: String(updatedValue) }, 
+          { fieldName: "condition_type", currentValue: config?.condition?.type || "MODBUS" },
+          { fieldName: "condition_modbus", currentValue: config?.condition?.modbus || "" },
+          { fieldName: "comparison_type", currentValue: config?.condition?.comparisonType || "LESS_THAN" },
+          { fieldName: "comparison_value", currentValue: config?.condition?.comparisonValue || "" },
+          { fieldName: "consequence_type", currentValue: config?.consequence?.type || "OUTPUT_2" },
+          { fieldName: "consequence_modbus", currentValue: config?.consequence?.modbus || "" }
+        ]
+      };
+
+      const token = localStorage.getItem('sochiot_token');
+      const response = await fetch(apiURL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) throw new Error('API request failed');
+
+      setActionFeedback("RULE UPDATED SUCCESS");
+      setTimeout(() => setActionFeedback(null), 2000);
+    } catch (error) {
+      console.error("Error sending rules:", error);
+      setActionFeedback("FAILED TO UPDATE RULE");
+      setTimeout(() => setActionFeedback(null), 2000);
+    }
+  };
+
   const updateTankValve = (globalId, updates) => {
-    const userRole = localStorage.getItem('userRole') || 'user';
-    if (userRole !== 'admin') {
+    const userRole = (localStorage.getItem('userRole') || 'user').toUpperCase();
+    if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
       setActionFeedback("ACCESS DENIED: ADMIN ONLY");
       setTimeout(() => setActionFeedback(null), 1500);
       return;
@@ -711,6 +790,14 @@ const AgTank = () => {
                             className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
                          />
                          <span className="text-info fw-black fs-5">%</span>
+                         <Button 
+                            variant="outline-info" 
+                            size="sm" 
+                            className="ms-2 fw-black fs-11 px-2 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow"
+                            onClick={() => handleSendRuleToEngine('LOWER')}
+                         >
+                            <Zap size={10} /> SEND
+                         </Button>
                       </div>
                    </div>
                 </Col>
@@ -728,6 +815,14 @@ const AgTank = () => {
                             className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
                          />
                          <span className="text-danger fw-black fs-5">%</span>
+                         <Button 
+                            variant="outline-danger" 
+                            size="sm" 
+                            className="ms-2 fw-black fs-11 px-2 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow"
+                            onClick={() => handleSendRuleToEngine('UPPER')}
+                         >
+                            <Zap size={10} /> SEND
+                         </Button>
                       </div>
                    </div>
                 </Col>
