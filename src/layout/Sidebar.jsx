@@ -242,26 +242,27 @@ const Sidebar = ({ collapsed }) => {
         )}
 
         {/* Admin Top Links */}
-        {isAdmin && (
+        {(isAdmin || isSuperAdmin) && (
            <NavLink to="/admin/manage-users" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
               <User size={20} className="text-success" />
               {!collapsed && <span className="ms-3 text-success">Manage Users</span>}
            </NavLink>
         )}
 
-        {/* Operational Modules (Hidden for Super Admin unless Impersonating) */}
-        {(!isSuperAdmin || isImpersonating) && menuItems.filter(item => !item.adminOnly || isAdmin || isSuperAdmin).map((item, index) => (
-          item.subItems ? (
+        {/* Operational Modules */}
+        {menuItems.filter(item => !item.adminOnly || isAdmin || isSuperAdmin).map((item, index) => {
+          const effectiveDisabled = isSuperAdmin ? false : item.disabled;
+          return item.subItems ? (
             <Accordion key={index} className="sidebar-accordion">
-              <Accordion.Item eventKey={index.toString()} className={`bg-transparent border-0 ${item.disabled ? 'sidebar-disabled-item' : ''}`}>
-                <Accordion.Header className={`sidebar-link ${collapsed ? 'collapsed-header' : ''} ${item.disabled ? 'pe-none' : ''}`}>
+              <Accordion.Item eventKey={index.toString()} className={`bg-transparent border-0 ${effectiveDisabled ? 'sidebar-disabled-item' : ''}`}>
+                <Accordion.Header className={`sidebar-link ${collapsed ? 'collapsed-header' : ''} ${effectiveDisabled ? 'pe-none' : ''}`}>
                   <div className="d-flex align-items-center w-100 position-relative">
                     <span className="sidebar-icon">{item.icon}</span>
                     {!collapsed && <span className="sidebar-text ms-3 flex-grow-1">{item.title}</span>}
-                    {item.disabled && !collapsed && <Lock size={12} className="text-secondary opacity-50 ms-2" />}
+                    {effectiveDisabled && !collapsed && <Lock size={12} className="text-secondary opacity-50 ms-2" />}
                   </div>
                 </Accordion.Header>
-                {!collapsed && !item.disabled && (
+                {!collapsed && !effectiveDisabled && (
                   <Accordion.Body className="p-0 ps-4">
                     {item.subItems.map((sub, subIdx) => (
                       <NavLink 
@@ -277,8 +278,8 @@ const Sidebar = ({ collapsed }) => {
               </Accordion.Item>
             </Accordion>
           ) : (
-            <div key={index} className={item.disabled ? 'sidebar-disabled-item' : ''}>
-               {item.disabled ? (
+            <div key={index} className={effectiveDisabled ? 'sidebar-disabled-item' : ''}>
+               {effectiveDisabled ? (
                  <div className="sidebar-link pe-none opacity-50 d-flex align-items-center">
                     <span className="sidebar-icon">{item.icon}</span>
                     {!collapsed && <span className="sidebar-text ms-3 flex-grow-1">{item.title}</span>}
@@ -294,11 +295,11 @@ const Sidebar = ({ collapsed }) => {
                 </NavLink>
                )}
             </div>
-          )
-        ))}
+          );
+        })}
 
         {/* Generic Bottom Links (For Admins only) */}
-        {isAdmin && (
+        {(isAdmin || isSuperAdmin) && (
             <NavLink to="/settings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
               <Settings size={20} />
               {!collapsed && <span className="ms-3">Settings</span>}

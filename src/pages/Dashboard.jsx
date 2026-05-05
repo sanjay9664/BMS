@@ -35,8 +35,8 @@ const Dashboard = () => {
   const StatusCard = ({ title, value, unit, icon, color, trend, trendValue, path }) => {
     const handleNavigate = () => {
       if (!path) return; // Disable navigation if path is null
-      const userRole = localStorage.getItem('userRole') || 'user';
-      if (path === '/settings' && userRole !== 'admin') {
+      const userRole = (localStorage.getItem('userRole') || 'user').toUpperCase();
+      if (path === '/settings' && userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
         return;
       }
       navigate(path);

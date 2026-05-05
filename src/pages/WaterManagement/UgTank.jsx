@@ -181,8 +181,8 @@ const UgTank = () => {
   }, [masterPressureValue]);
 
   const handlePumpControl = (id, updates) => {
-    const userRole = localStorage.getItem('userRole') || 'user';
-    if (userRole !== 'admin') {
+    const userRole = (localStorage.getItem('userRole') || 'user').toUpperCase();
+    if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
       setActionFeedback("ACCESS DENIED: ADMIN ONLY");
       setTimeout(() => setActionFeedback(null), 1500);
       return;

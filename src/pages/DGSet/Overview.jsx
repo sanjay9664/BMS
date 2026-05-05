@@ -29,8 +29,8 @@ const SiemensStyleDG = () => {
   const [activeDG, setActiveDG] = useState('DG1');
   const [showToast, setShowToast] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
-  const userRole = localStorage.getItem('userRole') || 'user';
-  const isAdmin = userRole === 'admin';
+  const userRole = (localStorage.getItem('userRole') || 'user').toUpperCase();
+  const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
 
   const [data, setData] = useState({
     voltage: { ry: 415.7, yb: 416.1, br: 414.9, rn: 239.8, yn: 239.5, bn: 241.2 },

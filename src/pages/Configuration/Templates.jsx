@@ -16,7 +16,8 @@ const ConfigTemplates = () => {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [showRuleEngineModal, setShowRuleEngineModal] = useState(false);
-  const [ruleEngineConfig, setRuleEngineConfig] = useState({
+  const initialRuleState = {
+    moduleId: '',
     condition: {
       isScheduleEnabled: false,
       timeDate: '',
@@ -31,7 +32,11 @@ const ConfigTemplates = () => {
       modbus: '',
       value: ''
     }
-  });
+  };
+  const [rule1Config, setRule1Config] = useState(initialRuleState);
+  const [rule2Config, setRule2Config] = useState(initialRuleState);
+  const [currentRuleTarget, setCurrentRuleTarget] = useState('RULE1'); // 'RULE1' or 'RULE2'
+  const [ruleEngineConfig, setRuleEngineConfig] = useState(initialRuleState);
   const [templateName, setTemplateName] = useState('');
   const [filterModule, setFilterModule] = useState('ALL');
   const [selectedTemplates, setSelectedTemplates] = useState([]);
@@ -40,55 +45,32 @@ const ConfigTemplates = () => {
   const [hierarchyData, setHierarchyData] = useState([]);
   const [isSendingRules, setIsSendingRules] = useState(false);
 
-  const handleApplyRules = async () => {
+  const handleSendRule = async (config) => {
+    if (!config || !config.moduleId) {
+      setToastMessage({ type: 'error', text: "Module ID not detected for Rule Engine. Please configure mapping first." });
+      setTimeout(() => setToastMessage(null), 3000);
+      return;
+    }
+
     setIsSendingRules(true);
     try {
       const apiURL = import.meta.env.VITE_RULE_ENGINE_API;
-
       const payload = {
-        moduleId: agLowerConfig.module || "", // Using agLowerConfig.module as the moduleId
+        moduleId: config.moduleId,
         settingFields: [
-          {
-            fieldName: "condition_date_time",
-            currentValue: ruleEngineConfig.condition.timeDate || ""
-          },
-          {
-            fieldName: "condition_date_time_repeat_days",
-            currentValue: ruleEngineConfig.condition.repeatDays.join(',')
-          },
-          {
-            fieldName: "consequence_value",
-            currentValue: ruleEngineConfig.consequence.value || ""
-          },
-          {
-            fieldName: "condition_type",
-            currentValue: ruleEngineConfig.condition.type || ""
-          },
-          {
-            fieldName: "condition_modbus",
-            currentValue: ruleEngineConfig.condition.modbus || ""
-          },
-          {
-            fieldName: "comparison_type",
-            currentValue: ruleEngineConfig.condition.comparisonType || ""
-          },
-          {
-            fieldName: "comparison_value",
-            currentValue: ruleEngineConfig.condition.comparisonValue || ""
-          },
-          {
-            fieldName: "consequence_type",
-            currentValue: ruleEngineConfig.consequence.type || ""
-          },
-          {
-            fieldName: "consequence_modbus",
-            currentValue: ruleEngineConfig.consequence.modbus || ""
-          }
+          { fieldName: "condition_date_time", currentValue: config.condition.timeDate || "" },
+          { fieldName: "condition_date_time_repeat_days", currentValue: config.condition.repeatDays.join(',') },
+          { fieldName: "consequence_value", currentValue: config.consequence.value || "" },
+          { fieldName: "condition_type", currentValue: config.condition.type || "" },
+          { fieldName: "condition_modbus", currentValue: config.condition.modbus || "" },
+          { fieldName: "comparison_type", currentValue: config.condition.comparisonType || "" },
+          { fieldName: "comparison_value", currentValue: config.condition.comparisonValue || "" },
+          { fieldName: "consequence_type", currentValue: config.consequence.type || "" },
+          { fieldName: "consequence_modbus", currentValue: config.consequence.modbus || "" }
         ]
       };
 
       const token = localStorage.getItem('sochiot_token');
-
       const response = await fetch(apiURL, {
         method: 'POST',
         headers: {
@@ -98,24 +80,30 @@ const ConfigTemplates = () => {
         body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error('API request failed');
-      }
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to send rules');
 
-      setToastMessage({
-        type: 'success',
-        text: 'successfully send rule'
-      });
-
-      setTimeout(() => setShowRuleEngineModal(false), 2000);
+      setToastMessage({ type: 'success', text: "Rules Applied Successfully!" });
+      setTimeout(() => setToastMessage(null), 3000);
+      return true;
     } catch (error) {
-      console.error("Error sending rules:", error);
-      setToastMessage({
-        type: 'error',
-        text: 'Failed to send rules. Please check connection.'
-      });
+      console.error('Error sending rules:', error);
+      setToastMessage({ type: 'error', text: "Failed to send rules. Please check connection." });
+      setTimeout(() => setToastMessage(null), 3000);
+      return false;
     } finally {
       setIsSendingRules(false);
+    }
+  };
+
+  const handleApplyRules = async () => {
+    // Save to target rule config
+    if (currentRuleTarget === 'RULE1') setRule1Config(ruleEngineConfig);
+    else setRule2Config(ruleEngineConfig);
+
+    const success = await handleSendRule(ruleEngineConfig);
+    if (success) {
+      setShowRuleEngineModal(false);
     }
   };
 
@@ -218,6 +206,41 @@ const ConfigTemplates = () => {
     { name: 'PUMP 01 METER', id: 'EM-P1' },
     { name: 'PUMP 02 METER', id: 'EM-P2' }
   ];
+
+  const usedModules = useMemo(() => {
+    if (selectedModule === 'AG Tank') {
+      return [
+        agLowerConfig.module, agUpperConfig.module, agAutoConfig.module, 
+        agManualConfig.module, agBypassConfig.module, agLevelConfig.module, 
+        agOpenConfig.module, agCloseConfig.module
+      ].filter(m => m);
+    }
+    if (selectedModule === 'UG Pump') {
+      return [
+        ugLowerConfig.module, ugUpperConfig.module, ugAutoConfig.module,
+        ugManualConfig.module, ugStartCmdConfig.module, ugStopCmdConfig.module,
+        ugStartPressConfig.module, ugStopPressConfig.module,
+        ugLocalModeConfig.module, ugRemoteModeConfig.module
+      ].filter(m => m);
+    }
+    if (selectedModule === 'UG Tank') {
+      return [ugTankLevelConfig.module].filter(m => m);
+    }
+    if (selectedModule === 'Pressure') {
+      return [pressureConfig.module].filter(m => m);
+    }
+    return [];
+  }, [
+    selectedModule, 
+    agLowerConfig.module, agUpperConfig.module, agAutoConfig.module, 
+    agManualConfig.module, agBypassConfig.module, agLevelConfig.module, 
+    agOpenConfig.module, agCloseConfig.module,
+    ugLowerConfig.module, ugUpperConfig.module, ugAutoConfig.module,
+    ugManualConfig.module, ugStartCmdConfig.module, ugStopCmdConfig.module,
+    ugStartPressConfig.module, ugStopPressConfig.module,
+    ugLocalModeConfig.module, ugRemoteModeConfig.module,
+    ugTankLevelConfig.module, pressureConfig.module
+  ]);
 
   const handleUgPumpNoChange = (no) => {
     setSelectedUgPumpNo(no);
@@ -359,16 +382,7 @@ const ConfigTemplates = () => {
   }, []);
 
   // Rule Engine Auto-Popup Logic
-  useEffect(() => {
-    if (selectedModule === 'AG Tank' && viewMode === 'FORM') {
-      const isLowerFilled = agLowerConfig.enabled && agLowerConfig.device && agLowerConfig.module && agLowerConfig.field;
-      const isUpperFilled = agUpperConfig.enabled && agUpperConfig.device && agUpperConfig.module && agUpperConfig.field;
-
-      if (isLowerFilled && isUpperFilled && !showRuleEngineModal && !ruleEngineConfig.condition.moduleId) {
-        setShowRuleEngineModal(true);
-      }
-    }
-  }, [agLowerConfig, agUpperConfig, selectedModule, viewMode]);
+  // Auto-open rule engine modal removed to allow manual configuration via shortcuts
 
   const fetchLocationDetails = async (locationName) => {
     if (locationDetails[locationName]) return;
@@ -921,7 +935,7 @@ const ConfigTemplates = () => {
         agLowerConfig, agUpperConfig, agTankRange,
         agAutoConfig, agManualConfig, agBypassConfig,
         agLevelConfig, agOpenConfig, agCloseConfig,
-        agTankType, agMasterEnabled, ruleEngineConfig
+        agTankType, agMasterEnabled, rule1Config, rule2Config, ruleEngineConfig
       };
     } else if (selectedModule === 'UG Pump') {
       mapping = {
@@ -929,7 +943,7 @@ const ConfigTemplates = () => {
         ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
         ugLocalModeConfig, ugRemoteModeConfig,
         ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo },
-        ugConfig
+        ugConfig, rule1Config, rule2Config
       };
     } else if (selectedModule === 'UG Tank') {
       mapping = {
@@ -1090,6 +1104,9 @@ const ConfigTemplates = () => {
     setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
     setTemplateName('');
+    setRule1Config(initialRuleState);
+    setRule2Config(initialRuleState);
+    setRuleEngineConfig(initialRuleState);
     setUgConfig({
       integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
       electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
@@ -1172,6 +1189,18 @@ const ConfigTemplates = () => {
       setUgTankLevelConfig(template.mapping.ugTankLevelConfig || createDefaultConfig());
       setUgTankRange(template.mapping.ugTankRange || { name: '', id: '' });
       setTemplateName(template.name || '');
+      if (template.mapping.rule1Config) {
+        setRule1Config(template.mapping.rule1Config);
+      } else if (template.mapping.ruleEngineConfig) {
+        setRule1Config(template.mapping.ruleEngineConfig);
+      }
+
+      if (template.mapping.rule2Config) {
+        setRule2Config(template.mapping.rule2Config);
+      } else if (template.mapping.ruleEngineConfig) {
+        setRule2Config(template.mapping.ruleEngineConfig);
+      }
+
       if (template.mapping.ruleEngineConfig) {
         setRuleEngineConfig(template.mapping.ruleEngineConfig);
       }
@@ -1644,6 +1673,19 @@ const ConfigTemplates = () => {
                                   <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>Sensor Mapping</small>
                                 </div>
                               </div>
+                              {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
+                                <Button 
+                                  variant={`outline-${section.color}`} 
+                                  size="sm" 
+                                  className="ms-auto fw-black fs-11 px-3 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow me-2"
+                                  onClick={() => {
+                                    const config = section.title === 'Lower Limits' ? rule1Config : rule2Config;
+                                    handleSendRule({ ...config, moduleId: section.state.module });
+                                  }}
+                                >
+                                  <Zap size={12} /> SEND
+                                </Button>
+                              )}
                               {!section.isAction && (
                                 <Form.Check
                                   type="switch"
@@ -1710,9 +1752,14 @@ const ConfigTemplates = () => {
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'module', e.target.value)}
                                         >
                                           <option value="">SELECT MODULE_ID</option>
-                                          {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
-                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                          ))}
+                                          {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => {
+                                             const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
+                                             return (
+                                               <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
+                                                 {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
+                                               </option>
+                                             );
+                                           })}
                                         </Form.Select>
                                       </Col>
                                       <Col md={3}>
@@ -1738,15 +1785,21 @@ const ConfigTemplates = () => {
                             {/* RULE ENGINE SHORTCUT FOR LIMITS */}
                             {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
                               <div className="mt-4 pt-3 border-top border-white border-opacity-5 d-flex justify-content-end">
-                                <Button
-                                  variant="link"
-                                  className={`p-0 text-${section.color} text-decoration-none fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 transition-all hover-opacity-100 opacity-70`}
-                                  onClick={() => setShowRuleEngineModal(true)}
-                                >
-                                  <Zap size={14} className="shadow-glow-blue" />
-                                  Rule Engine Configuration
-                                  <ChevronRight size={14} />
-                                </Button>
+                                  <Button
+                                    variant="link"
+                                    className={`p-0 text-${section.color} text-decoration-none fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 transition-all hover-opacity-100 opacity-70`}
+                                    onClick={() => {
+                                      const target = section.title === 'Lower Limits' ? 'RULE1' : 'RULE2';
+                                      const config = target === 'RULE1' ? rule1Config : rule2Config;
+                                      setCurrentRuleTarget(target);
+                                      setRuleEngineConfig({ ...config, moduleId: section.state.module });
+                                      setShowRuleEngineModal(true);
+                                    }}
+                                  >
+                                    <Zap size={14} className="shadow-glow-blue" />
+                                    Rule Engine Configuration
+                                    <ChevronRight size={14} />
+                                  </Button>
                               </div>
                             )}
                           </div>
@@ -1807,6 +1860,19 @@ const ConfigTemplates = () => {
                                     <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>UG Pump Mapping</small>
                                   </div>
                                 </div>
+                                {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
+                                  <Button 
+                                    variant={`outline-${section.color}`} 
+                                    size="sm" 
+                                    className="ms-auto fw-black fs-11 px-3 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow me-2"
+                                    onClick={() => {
+                                      const config = section.title === 'Lower Limits' ? rule1Config : rule2Config;
+                                      handleSendRule({ ...config, moduleId: section.state.module });
+                                    }}
+                                  >
+                                    <Zap size={12} /> SEND
+                                  </Button>
+                                )}
                                 <Form.Check
                                   type="switch"
                                   className={`scada-switch ${section.color}`}
@@ -1865,9 +1931,14 @@ const ConfigTemplates = () => {
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'module', e.target.value)}
                                         >
                                           <option value="">SELECT MODULE_ID</option>
-                                          {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
-                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                          ))}
+                                          {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => {
+                                             const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
+                                             return (
+                                               <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
+                                                 {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
+                                               </option>
+                                             );
+                                           })}
                                         </Form.Select>
                                       </Col>
                                       <Col md={3}>
@@ -1992,9 +2063,14 @@ const ConfigTemplates = () => {
                                         onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, 'module', e.target.value)}
                                       >
                                         <option value="">SELECT MODULE_ID</option>
-                                        {getFieldList('module', { ...globalLocation, ...ugTankLevelConfig, building: ugTankLevelConfig.building || globalLocation.building }).map(opt => (
-                                          <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                        ))}
+                                        {getFieldList('module', { ...globalLocation, ...ugTankLevelConfig, building: ugTankLevelConfig.building || globalLocation.building }).map(opt => {
+                                          const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== ugTankLevelConfig.module;
+                                          return (
+                                            <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
+                                              {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
+                                            </option>
+                                          );
+                                        })}
                                       </Form.Select>
                                     </Col>
                                     <Col md={3}>
@@ -2111,9 +2187,14 @@ const ConfigTemplates = () => {
                                     onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, 'module', e.target.value)}
                                   >
                                     <option value="">SELECT MODULE_ID</option>
-                                    {getFieldList('module', { ...globalLocation, ...pressureConfig, building: pressureConfig.building || globalLocation.building }).map(opt => (
-                                      <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                    ))}
+                                    {getFieldList('module', { ...globalLocation, ...pressureConfig, building: pressureConfig.building || globalLocation.building }).map(opt => {
+                                      const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== pressureConfig.module;
+                                      return (
+                                        <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
+                                          {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
+                                        </option>
+                                      );
+                                    })}
                                   </Form.Select>
                                 </Col>
 
@@ -2745,7 +2826,12 @@ const ConfigTemplates = () => {
                 </div>
                 <div>
                   <h4 className="text-white fw-black uppercase tracking-tighter mb-0">RULE ENGINE <span className="text-warning">CONFIGURATION</span></h4>
-                  <p className="text-secondary fs-12 fw-bold uppercase tracking-widest opacity-50 mb-0">Define logic for automated tank responses</p>
+                  <div className="d-flex align-items-center gap-2">
+                    <p className="text-secondary fs-12 fw-bold uppercase tracking-widest opacity-50 mb-0">Target Module:</p>
+                    <Badge bg="warning" className="bg-opacity-10 text-warning border border-warning border-opacity-25 fs-10 px-2 py-1">
+                      {ruleEngineConfig.moduleId || 'NOT DETECTED'}
+                    </Badge>
+                  </div>
                 </div>
               </div>
             </div>
