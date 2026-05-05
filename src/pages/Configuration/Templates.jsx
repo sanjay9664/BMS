@@ -44,26 +44,51 @@ const ConfigTemplates = () => {
     setIsSendingRules(true);
     try {
       const apiURL = import.meta.env.VITE_RULE_ENGINE_API;
-      
+
       const payload = {
-        condition: {
-          date_time: ruleEngineConfig.condition.timeDate,
-          repeat_days: ruleEngineConfig.condition.repeatDays,
-          type: ruleEngineConfig.condition.type,
-          modbus: ruleEngineConfig.condition.modbus,
-          comparison_type: ruleEngineConfig.condition.comparisonType,
-          comparison_value: ruleEngineConfig.condition.comparisonValue
-        },
-        consequence: {
-          type: ruleEngineConfig.consequence.type,
-          modbus: ruleEngineConfig.consequence.modbus,
-          value: ruleEngineConfig.consequence.value
-        },
-        timestamp: new Date().toISOString()
+        moduleId: agLowerConfig.module || "", // Using agLowerConfig.module as the moduleId
+        settingFields: [
+          {
+            fieldName: "condition_date_time",
+            currentValue: ruleEngineConfig.condition.timeDate || ""
+          },
+          {
+            fieldName: "condition_date_time_repeat_days",
+            currentValue: ruleEngineConfig.condition.repeatDays.join(',')
+          },
+          {
+            fieldName: "consequence_value",
+            currentValue: ruleEngineConfig.consequence.value || ""
+          },
+          {
+            fieldName: "condition_type",
+            currentValue: ruleEngineConfig.condition.type || ""
+          },
+          {
+            fieldName: "condition_modbus",
+            currentValue: ruleEngineConfig.condition.modbus || ""
+          },
+          {
+            fieldName: "comparison_type",
+            currentValue: ruleEngineConfig.condition.comparisonType || ""
+          },
+          {
+            fieldName: "comparison_value",
+            currentValue: ruleEngineConfig.condition.comparisonValue || ""
+          },
+          {
+            fieldName: "consequence_type",
+            currentValue: ruleEngineConfig.consequence.type || ""
+          },
+          {
+            fieldName: "consequence_modbus",
+            currentValue: ruleEngineConfig.consequence.modbus || ""
+          }
+        ]
       };
 
       const token = localStorage.getItem('sochiot_token');
-      
+
       const response = await fetch(apiURL, {
         method: 'POST',
         headers: {
@@ -81,7 +106,7 @@ const ConfigTemplates = () => {
         type: 'success',
         text: 'successfully send rule'
       });
-      
+
       setTimeout(() => setShowRuleEngineModal(false), 2000);
     } catch (error) {
       console.error("Error sending rules:", error);
@@ -2742,7 +2767,7 @@ const ConfigTemplates = () => {
                         <Database size={16} className="text-info" />
                         <span className="text-info fw-black fs-12 uppercase tracking-widest">CONFIGURATION PARAMETERS</span>
                       </div>
-                      <Form.Check 
+                      <Form.Check
                         type="switch"
                         id="schedule-toggle"
                         label={ruleEngineConfig.condition.isScheduleEnabled ? "SCHEDULE ENABLED" : "SCHEDULE DISABLED"}
@@ -2939,7 +2964,7 @@ const ConfigTemplates = () => {
               >
                 Discard
               </Button>
-              <Button 
+              <Button
                 className="btn-info fw-black px-4 py-2 fs-11 uppercase tracking-widest shadow-glow border-0 d-flex align-items-center gap-2"
                 onClick={handleApplyRules}
                 disabled={isSendingRules}
