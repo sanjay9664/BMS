@@ -334,7 +334,10 @@ const SuperAdminConfig = () => {
               </div>
             </div>
           </Col>
-          <Col md={4} className="text-md-end mt-3 mt-md-0">
+          <Col md={4} className="text-md-end mt-3 mt-md-0 d-flex gap-2 justify-content-md-end">
+            <Button variant="outline-info" className="rounded-pill px-3" onClick={fetchInitialData}>
+              <RefreshCcw size={18} className={loading ? 'animate-spin' : ''} />
+            </Button>
             <Button variant="info" className="rounded-pill px-4" onClick={() => { setTenantFormData({ name: '', description: '', adminName: '', adminEmail: '', adminPassword: '' }); setShowTenantModal(true); }}>
               <Building2 size={18} className="me-2" /> Add New Tenant
             </Button>
