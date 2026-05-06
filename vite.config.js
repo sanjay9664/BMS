@@ -9,6 +9,16 @@ export default defineConfig({
       '/api': {
         target: 'https://backend-7vd2.vercel.app',
         changeOrigin: true,
+      },
+      '/sochiot-auth': {
+        target: 'https://app.sochiot.com/api/auth-engine',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/sochiot-auth/, '')
+      },
+      '/sochiot-config': {
+        target: 'https://app.sochiot.com/api/config-engine',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/sochiot-config/, '')
       }
     }
   }
