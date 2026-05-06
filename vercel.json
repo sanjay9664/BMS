@@ -5,10 +5,15 @@
       "destination": "https://backend-7vd2.vercel.app/api/:path*"
     },
     {
-      "handle": "filesystem"
+      "source": "/sochiot-auth/:path*",
+      "destination": "https://app.sochiot.com/api/auth-engine/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/sochiot-config/:path*",
+      "destination": "https://app.sochiot.com/api/config-engine/:path*"
+    },
+    {
+      "source": "/((?!api/|sochiot-auth/|sochiot-config/).*)",
       "destination": "/index.html"
     }
   ]

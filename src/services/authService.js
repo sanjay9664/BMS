@@ -1,4 +1,4 @@
-const EXTERNAL_API_URL = import.meta.env.VITE_EXTERNAL_API_URL;
+const EXTERNAL_API_URL = '/sochiot-auth';
 
 export const loginToSochiot = async (email, password) => {
   try {
@@ -51,7 +51,7 @@ export const getSochiotUserMe = async () => {
   }
 };
 
-const CONFIG_API_URL = import.meta.env.VITE_CONFIG_API_URL;
+const CONFIG_API_URL = '/sochiot-config';
 
 export const getSochiotLocationData = async (locationId) => {
   const token = localStorage.getItem('sochiot_token');

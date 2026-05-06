@@ -54,7 +54,7 @@ const ConfigTemplates = () => {
 
     setIsSendingRules(true);
     try {
-      const apiURL = import.meta.env.VITE_RULE_ENGINE_API;
+      const apiURL = '/api/rule-engine/apply';
       const payload = {
         moduleId: config.moduleId,
         settingFields: [

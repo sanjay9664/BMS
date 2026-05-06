@@ -104,7 +104,7 @@ const AgTank = () => {
     setActionFeedback("SENDING RULES...");
 
     try {
-      const apiURL = import.meta.env.VITE_RULE_ENGINE_API;
+      const apiURL = '/api/rule-engine/apply';
       const token = localStorage.getItem('sochiot_token');
 
       for (const type of typesToSend) {
