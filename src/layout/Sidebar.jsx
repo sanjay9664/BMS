@@ -24,6 +24,48 @@ const Sidebar = ({ collapsed }) => {
   const isImpersonating = !!localStorage.getItem('impersonator_backup_role');
 
   useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/super-admin/config');
+        if (response.ok) {
+          const config = await response.json();
+          
+          // Map backend keys to sidebar labels
+          const moduleMap = {
+            showDashboard: 'Dashboard',
+            showWaterManagement: 'Water Management',
+            showMotors: 'Motors',
+            showDGSet: 'DG Set',
+            showSettingTemplates: 'Setting Templates',
+            showAlarms: 'Alarm System',
+            showLTPanel: 'LT Panel',
+            showTransformers: 'Transformer',
+            showFirePumps: 'Fire Pumps',
+            showTicketing: 'Ticketing',
+            showMaintenance: 'Maintenance',
+            showServiceHistory: 'Service History',
+            showDailyDPR: 'Daily DPR'
+          };
+
+          const sidebarModules = {};
+          Object.entries(moduleMap).forEach(([key, label]) => {
+            sidebarModules[label] = config[key];
+          });
+
+          setModulesConfig(sidebarModules);
+          setSubmodulesConfig(config.submoduleVisibility || {});
+          
+          // Also update localStorage so it's ready for next reload
+          localStorage.setItem('scada_modules_config', JSON.stringify(sidebarModules));
+          localStorage.setItem('scada_submodules_config', JSON.stringify(config.submoduleVisibility || {}));
+        }
+      } catch (error) {
+        console.error('Failed to fetch sidebar config:', error);
+      }
+    };
+
+    fetchConfig();
+
     const updateConfig = () => {
       const savedModules = localStorage.getItem('scada_modules_config');
       const savedSubmodules = localStorage.getItem('scada_submodules_config');

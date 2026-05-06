@@ -1959,6 +1959,27 @@ const ConfigTemplates = () => {
                                   )}
                                 </Row>
                               </div>
+
+                              {/* RULE ENGINE SHORTCUT FOR LIMITS */}
+                              {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
+                                <div className="mt-4 pt-3 border-top border-white border-opacity-5 d-flex justify-content-end">
+                                  <Button
+                                    variant="link"
+                                    className={`p-0 text-${section.color} text-decoration-none fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 transition-all hover-opacity-100 opacity-70`}
+                                    onClick={() => {
+                                      const target = section.title === 'Lower Limits' ? 'RULE1' : 'RULE2';
+                                      const config = target === 'RULE1' ? rule1Config : rule2Config;
+                                      setCurrentRuleTarget(target);
+                                      setRuleEngineConfig({ ...config, moduleId: section.state.module });
+                                      setShowRuleEngineModal(true);
+                                    }}
+                                  >
+                                    <Zap size={14} className="shadow-glow-blue" />
+                                    Rule Engine Configuration
+                                    <ChevronRight size={14} />
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           </Col>
                         ))}

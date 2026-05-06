@@ -41,6 +41,7 @@ const UgTank = () => {
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [limitForm, setLimitForm] = useState({ start: 0, stop: 0 });
   const [actionFeedback, setActionFeedback] = useState(null);
+  const [isSendingRules, setIsSendingRules] = useState(false);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) pageRef.current.requestFullscreen();
@@ -75,7 +76,7 @@ const UgTank = () => {
         });
         
         const modulesQuery = Array.from(moduleIds).join(',');
-        const url = modulesQuery ? `http://localhost:5000/api/templates/stats?modules=${modulesQuery}` : 'http://localhost:5000/api/templates/stats';
+        const url = modulesQuery ? `/api/templates/stats?modules=${modulesQuery}` : '/api/templates/stats';
 
         const response = await fetch(url);
         if (response.ok) {
@@ -211,6 +212,110 @@ const UgTank = () => {
     setSelectedPump(p);
     setLimitForm({ start: p.startLimit, stop: p.stopLimit });
     setShowLimitModal(true);
+  };
+
+  const handleSendRuleToEngine = async (limitType) => {
+    if (!selectedPump) return;
+    
+    // 1. Fetch Template for this specific pump
+    const saved = localStorage.getItem('scada_templates');
+    if (!saved) {
+      setActionFeedback("ERROR: NO TEMPLATES FOUND");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
+    
+    const templates = JSON.parse(saved);
+    // Find the template for "UG Pump" that matches this pump ID
+    const templateIndex = templates.findIndex(t => 
+      t.module === 'UG Pump' && 
+      Number(t.mapping?.ugPumpRange?.pumpNo) === Number(selectedPump.id)
+    );
+
+    if (templateIndex === -1) {
+      setActionFeedback("ERROR: PUMP NOT MAPPED");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
+
+    const template = templates[templateIndex];
+    const typesToSend = limitType === 'BOTH' ? ['LOWER', 'UPPER'] : [limitType];
+    
+    setIsSendingRules(true);
+    setActionFeedback("SENDING RULES...");
+
+    try {
+      const apiURL = '/api/rule-engine/apply';
+      const token = localStorage.getItem('sochiot_token');
+
+      for (const type of typesToSend) {
+        // 2. Identify Config (Rule 1 for Lower, Rule 2 for Upper)
+        const config = type === 'LOWER' ? template.mapping.rule1Config : template.mapping.rule2Config;
+        const moduleId = type === 'LOWER' ? template.mapping.ugLowerConfig?.module : template.mapping.ugUpperConfig?.module;
+
+        if (!moduleId) {
+          console.warn(`Module ID missing for ${type} limit`);
+          continue;
+        }
+
+        // 3. Update Consequence Value to current UI limit
+        const updatedValue = type === 'LOWER' ? limitForm.start : limitForm.stop;
+        
+        // 4. Send to API
+        const payload = {
+          moduleId: moduleId,
+          settingFields: [
+            { fieldName: "condition_date_time", currentValue: config?.condition?.timeDate || "" },
+            { fieldName: "condition_date_time_repeat_days", currentValue: config?.condition?.repeatDays?.join(',') || "" },
+            { fieldName: "consequence_value", currentValue: String(updatedValue) }, 
+            { fieldName: "condition_type", currentValue: config?.condition?.type || "MODBUS" },
+            { fieldName: "condition_modbus", currentValue: config?.condition?.modbus || "" },
+            { fieldName: "comparison_type", currentValue: config?.condition?.comparisonType || (type === 'LOWER' ? "LESS_THAN" : "GREATER_THAN") },
+            { fieldName: "comparison_value", currentValue: config?.condition?.comparisonValue || "" },
+            { fieldName: "consequence_type", currentValue: config?.consequence?.type || "OUTPUT_2" },
+            { fieldName: "consequence_modbus", currentValue: config?.consequence?.modbus || "" }
+          ]
+        };
+
+        const response = await fetch(apiURL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`${type} API request failed`);
+
+        // Update local template object for persistence
+        if (type === 'LOWER') {
+          template.mapping.rule1Config = { 
+            ...template.mapping.rule1Config, 
+            consequence: { ...template.mapping.rule1Config?.consequence, value: String(updatedValue) } 
+          };
+        } else {
+          template.mapping.rule2Config = { 
+            ...template.mapping.rule2Config, 
+            consequence: { ...template.mapping.rule2Config?.consequence, value: String(updatedValue) } 
+          };
+        }
+      }
+
+      // 5. Save updated templates to localStorage
+      templates[templateIndex] = template;
+      localStorage.setItem('scada_templates', JSON.stringify(templates));
+      window.dispatchEvent(new Event('storage'));
+
+      setActionFeedback("SETTINGS APPLIED SUCCESS");
+      setTimeout(() => setActionFeedback(null), 2000);
+    } catch (error) {
+      console.error("Error sending rules:", error);
+      setActionFeedback("FAILED TO UPDATE RULES");
+      setTimeout(() => setActionFeedback(null), 2000);
+    } finally {
+      setIsSendingRules(false);
+    }
   };
 
   const handleApplyLimits = () => {
@@ -656,9 +761,21 @@ const UgTank = () => {
                 <small className="text-secondary opacity-50 fs-10 mt-1 d-block">PUMP WILL TERMINATE ABOVE THIS PRESSURE</small>
               </Form.Group>
             </div>
-            <div className="d-flex gap-3 mt-4">
-              <Button variant="outline-secondary" className="w-100 py-2 fw-bold" onClick={() => setShowLimitModal(false)}>CANCEL</Button>
-              <Button variant="info" className="w-100 py-2 fw-bold" onClick={handleApplyLimits}>APPLY CONFIG</Button>
+            <div className="d-flex flex-column gap-2 mt-4">
+               <div className="d-flex gap-3">
+                 <Button variant="outline-secondary" className="w-100 py-2 fw-bold" onClick={() => setShowLimitModal(false)}>CANCEL</Button>
+                 <Button variant="info" className="w-100 py-2 fw-bold" onClick={handleApplyLimits}>APPLY CONFIG</Button>
+               </div>
+               <Button 
+                variant="primary" 
+                className="w-100 py-3 fw-black tracking-widest d-flex align-items-center justify-content-center gap-2 shadow-glow-blue border-0"
+                style={{ background: 'linear-gradient(45deg, #2563eb, #3b82f6)' }}
+                disabled={isSendingRules}
+                onClick={() => handleSendRuleToEngine('BOTH')}
+              >
+                {isSendingRules ? <Spinner size="sm" animation="border" className="me-2" /> : <Zap size={18} />}
+                SYNC WITH RULE ENGINE
+              </Button>
             </div>
           </Modal.Body>
         )}
