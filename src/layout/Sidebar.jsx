@@ -94,20 +94,13 @@ const Sidebar = ({ collapsed }) => {
     {
       title: "DG Set",
       icon: <Database size={20} />,
-      disabled: modulesConfig ? !modulesConfig["DG Monitoring"] : false,
+      disabled: modulesConfig ? !modulesConfig["DG Set"] : false,
       subItems: [
         { title: "Overview", path: "/dg-set/overview" },
         { title: "DG Set-1", path: "/dg-set/dg1" },
         { title: "DG Set-2", path: "/dg-set/dg2" },
         { title: "DG Set-3", path: "/dg-set/dg3" }
       ].filter((subItem) => submodulesConfig.showDGSet?.[subItem.title] ?? true)
-    },
-    {
-      title: "Setting Templates",
-      icon: <Settings size={20} />,
-      path: "/config/templates",
-      disabled: modulesConfig ? !modulesConfig["Setting Templates"] : false,
-      adminOnly: true  // Only visible to ADMIN and above
     },
     {
       title: "Alarm System",
@@ -223,34 +216,50 @@ const Sidebar = ({ collapsed }) => {
           </div>
         )}
 
-        {/* Super Admin Top Links */}
-        {isSuperAdmin && !isImpersonating && (
-          <>
+        {/* Management & Admin Links */}
+        <div className="mb-2">
+          {isSuperAdmin && !isImpersonating && (
             <NavLink to="/super-admin" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
               <ShieldAlert size={20} className="text-info" />
               {!collapsed && <span className="ms-3 text-info">Super Admin Console</span>}
             </NavLink>
-            <NavLink to="/config/templates" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-              <Settings size={20} />
-              {!collapsed && <span className="ms-3">Setting Templates</span>}
-            </NavLink>
-            <NavLink to="/settings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-              <Settings size={20} />
-              {!collapsed && <span className="ms-3">Global Settings</span>}
-            </NavLink>
-          </>
-        )}
+          )}
 
-        {/* Admin Top Links */}
-        {(isAdmin || isSuperAdmin) && (
-           <NavLink to="/admin/manage-users" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
+          {isAdmin && (
+            <NavLink to="/admin/manage-users" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
               <User size={20} className="text-success" />
               {!collapsed && <span className="ms-3 text-success">Manage Users</span>}
-           </NavLink>
-        )}
+            </NavLink>
+          )}
+
+          {(isAdmin || isSuperAdmin) && (
+            <Accordion className="sidebar-accordion">
+                <Accordion.Item eventKey="admin-config" className="bg-transparent border-0">
+                  <Accordion.Header className={`sidebar-link ${collapsed ? 'collapsed-header' : ''}`}>
+                    <div className="d-flex align-items-center w-100 position-relative">
+                      <span className="sidebar-icon"><Settings size={20} /></span>
+                      {!collapsed && <span className="sidebar-text ms-3 flex-grow-1">Advanced Settings</span>}
+                    </div>
+                  </Accordion.Header>
+                  {!collapsed && (
+                    <Accordion.Body className="p-0 ps-4">
+                      {(!modulesConfig || modulesConfig["Setting Templates"] !== false) && (
+                        <NavLink to="/config/templates" className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}>
+                          Setting Templates
+                        </NavLink>
+                      )}
+                      <NavLink to="/settings" className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}>
+                        Global Settings
+                      </NavLink>
+                    </Accordion.Body>
+                  )}
+                </Accordion.Item>
+              </Accordion>
+          )}
+        </div>
 
         {/* Operational Modules */}
-        {menuItems.filter(item => !item.adminOnly || isAdmin || isSuperAdmin).map((item, index) => {
+        {menuItems.filter(item => (!item.adminOnly || isAdmin || isSuperAdmin) && (!modulesConfig || modulesConfig[item.title] !== false)).map((item, index) => {
           const effectiveDisabled = isSuperAdmin ? false : item.disabled;
           return item.subItems ? (
             <Accordion key={index} className="sidebar-accordion">
@@ -298,13 +307,6 @@ const Sidebar = ({ collapsed }) => {
           );
         })}
 
-        {/* Generic Bottom Links (For Admins only) */}
-        {(isAdmin || isSuperAdmin) && (
-            <NavLink to="/settings" className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}>
-              <Settings size={20} />
-              {!collapsed && <span className="ms-3">Settings</span>}
-            </NavLink>
-        )}
       </div>
 
       <style dangerouslySetInnerHTML={{ __html: `
