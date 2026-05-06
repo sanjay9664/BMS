@@ -55,7 +55,7 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrl = '/api';
       const response = await fetch(`${apiUrl}/admin/users/${tenantId}`);
       const data = await response.json();
       setUsers(data);
@@ -95,7 +95,7 @@ const UserManagement = () => {
         setShowModal(true);
     } else if (action === 'delete') {
         if(window.confirm(`Delete user ${user.name}?`)) {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const apiUrl = '/api';
             await fetch(`${apiUrl}/admin/users/${user.id}`, { method: 'DELETE' });
             fetchUsers();
         }
@@ -104,7 +104,7 @@ const UserManagement = () => {
 
   const handleSavePermissions = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrl = '/api';
       const response = await fetch(`${apiUrl}/admin/users/${selectedUser.id}/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -222,7 +222,7 @@ const UserManagement = () => {
         <Modal.Header closeButton className="border-secondary border-opacity-25"><Modal.Title className="text-white">{formData.id ? 'Modify Operator' : 'Register New Operator'}</Modal.Title></Modal.Header>
         <Form onSubmit={async (e) => {
             e.preventDefault();
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+            const apiUrl = '/api';
             const method = formData.id ? 'PUT' : 'POST';
             const endpoint = formData.id ? `${apiUrl}/admin/users/${formData.id}` : `${apiUrl}/admin/users`;
             await fetch(endpoint, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({...formData, tenantId}) });

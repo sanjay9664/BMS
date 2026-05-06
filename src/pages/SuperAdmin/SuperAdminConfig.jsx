@@ -130,7 +130,7 @@ const SuperAdminConfig = () => {
 
   const fetchTenants = async (returnOnly = false) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrl = '/api';
       const response = await fetch(`${apiUrl}/super-admin/tenants`);
       const data = await response.json();
       if (returnOnly) return data;
@@ -142,7 +142,7 @@ const SuperAdminConfig = () => {
 
   const fetchGlobalConfig = async (returnOnly = false) => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrl = '/api';
       const response = await fetch(`${apiUrl}/super-admin/config`);
       const data = await response.json();
       if (returnOnly) return data;
@@ -183,7 +183,7 @@ const SuperAdminConfig = () => {
   const handleSaveConfig = async () => {
     setSaving(true);
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrl = '/api';
       const endpoint = selectedTenant
         ? `${apiUrl}/super-admin/tenants/${selectedTenant.id}/config`
         : `${apiUrl}/super-admin/config`;
@@ -260,7 +260,7 @@ const SuperAdminConfig = () => {
     } else if (action === 'delete') {
       if (window.confirm(`Are you sure you want to delete ${tenant.name}? This will remove all users and settings.`)) {
         try {
-          const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          const apiUrl = '/api';
           await fetch(`${apiUrl}/super-admin/tenants/${tenant.id}`, { method: 'DELETE' });
           fetchTenants();
         } catch (error) {
@@ -283,7 +283,7 @@ const SuperAdminConfig = () => {
   const handleTenantSubmit = async (e) => {
     e.preventDefault();
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const apiUrl = '/api';
       const method = tenantFormData.id ? 'PUT' : 'POST';
       const endpoint = tenantFormData.id
         ? `${apiUrl}/super-admin/tenants/${tenantFormData.id}`
