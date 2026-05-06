@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://backend-7vd2.vercel.app',
+        target: 'http://localhost:5000',
         changeOrigin: true,
       },
       '/sochiot-auth': {
