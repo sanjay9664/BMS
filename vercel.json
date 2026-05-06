@@ -1,8 +1,8 @@
 {
   "rewrites": [
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "source": "/api/:path*",
+      "destination": "https://backend-yhu7-git-master-guptaji30749-6020s-projects.vercel.app/api/:path*"
     }
   ]
 }
