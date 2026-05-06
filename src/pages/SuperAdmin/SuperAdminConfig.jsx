@@ -43,14 +43,14 @@ const defaultConfig = {
 const moduleDetails = {
   showDashboard: { label: 'Dashboard', icon: <LayoutDashboard size={18} />, subItems: [] },
   showWaterManagement: { label: 'Water Management', icon: <Droplets size={18} />, subItems: ['Overview', 'AG TANK', 'UG TANK'] },
-  showMotors: { label: 'Motors Module', icon: <Activity size={18} />, subItems: ['Overview', 'Pump Room 1', 'Pump Room 2', 'VFD / DOL Status', 'PDF Report'] },
-  showDGSet: { label: 'DG Set Module', icon: <Database size={18} />, subItems: ['Overview', 'DG Set-1', 'DG Set-2', 'DG Set-3'] },
+  showMotors: { label: 'Motors', icon: <Activity size={18} />, subItems: ['Overview', 'Pump Room 1', 'Pump Room 2', 'VFD / DOL Status', 'PDF Report'] },
+  showDGSet: { label: 'DG Set', icon: <Database size={18} />, subItems: ['Overview', 'DG Set-1', 'DG Set-2', 'DG Set-3'] },
   showSettingTemplates: { label: 'Setting Templates', icon: <Settings size={18} />, subItems: [] },
   showAlarms: { label: 'Alarm System', icon: <Bell size={18} />, subItems: ['Overview', 'Active Alarms', 'Inactive Alarms', 'ACK (Acknowledge)', 'Alarm History', 'PDF Report'] },
   showLTPanel: { label: 'LT Panel', icon: <LayoutDashboard size={18} />, subItems: ['Overview', 'LT Room-1', 'LT Room-2', 'LT Room-3', 'Incoming / Outgoing', 'Breaker Status', 'PDF Report'] },
   showTransformers: { label: 'Transformer', icon: <Zap size={18} />, subItems: ['Overview', 'Transformer-1', 'Transformer-2', 'Load / Temp', 'PDF Report'] },
   showFirePumps: { label: 'Fire Pumps', icon: <ShieldAlert size={18} />, subItems: ['Overview', 'Pump Status', 'Header Pressure', 'Jockey / Main', 'PDF Report'] },
-  showTicketing: { label: 'Ticketing System', icon: <ClipboardList size={18} />, subItems: [] },
+  showTicketing: { label: 'Ticketing', icon: <ClipboardList size={18} />, subItems: [] },
   showMaintenance: { label: 'Maintenance', icon: <PenTool size={18} />, subItems: ['Scheduled', 'Pending Tasks', 'PDF Report'] },
   showServiceHistory: { label: 'Service History', icon: <History size={18} />, subItems: ['Equipment-wise', 'Service Records', 'PDF Report'] },
   showDailyDPR: { label: 'Daily DPR', icon: <Gauge size={18} />, subItems: ['Data Aggregation', 'Daily Logs', 'PDF Report'] }
@@ -117,9 +117,14 @@ const SuperAdminConfig = () => {
         localStorage.setItem('cache_tenants', JSON.stringify(tenantsData));
       }
 
-      if (configData) {
-        setConfig(mergeConfig(configData));
+      if (configData && !configData.error) {
+        console.log('Global Config Loaded:', configData);
+        const merged = mergeConfig(configData);
+        setConfig(merged);
         localStorage.setItem('cache_global_config', JSON.stringify(configData));
+      } else {
+        console.warn('Using default config due to fetch error:', configData?.error);
+        setConfig(mergeConfig({}));
       }
     } catch (err) {
       console.error('Fetch error:', err);
@@ -180,6 +185,14 @@ const SuperAdminConfig = () => {
     }));
   };
 
+  const handleToggleAllModules = (enabled) => {
+    const newConfig = { ...config };
+    Object.keys(moduleDetails).forEach(key => {
+      newConfig[key] = enabled;
+    });
+    setConfig(newConfig);
+  };
+
   const handleSaveConfig = async () => {
     setSaving(true);
     try {
@@ -197,6 +210,24 @@ const SuperAdminConfig = () => {
       });
 
       if (response.ok) {
+        const updatedConfig = await response.json();
+        
+        // Synchronize with Sidebar IMMEDIATELY
+        if (!selectedTenant) {
+          const sidebarModules = {};
+          Object.entries(moduleDetails).forEach(([key, mod]) => {
+            sidebarModules[mod.label] = updatedConfig[key];
+          });
+          
+          localStorage.setItem('scada_modules_config', JSON.stringify(sidebarModules));
+          localStorage.setItem('scada_submodules_config', JSON.stringify(updatedConfig.submoduleVisibility));
+          localStorage.setItem('cache_global_config', JSON.stringify(updatedConfig));
+          
+          // Ensure immediate reload for sidebar components
+          window.dispatchEvent(new Event('storage-update'));
+          window.dispatchEvent(new Event('storage'));
+        }
+
         setMessage({ type: 'success', text: selectedTenant ? `Permissions updated for ${selectedTenant.name}` : 'Global configuration saved' });
         setTimeout(() => setMessage(null), 3000);
       }
@@ -421,7 +452,15 @@ const SuperAdminConfig = () => {
                         <Form.Control placeholder="Search modules..." className="bg-transparent border-0 text-white shadow-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                       </InputGroup>
                     </Col>
-                    <Col md={6} className="d-flex justify-content-md-end gap-2">
+                    <Col md={6} className="d-flex justify-content-md-end gap-2 align-items-center">
+                      <div className="d-flex gap-2 me-3 border-end border-light border-opacity-10 pe-3">
+                         <Button variant="outline-success" size="sm" className="rounded-pill px-3 fw-bold fs-10" onClick={() => handleToggleAllModules(true)}>
+                           ENABLE ALL
+                         </Button>
+                         <Button variant="outline-danger" size="sm" className="rounded-pill px-3 fw-bold fs-10" onClick={() => handleToggleAllModules(false)}>
+                           DISABLE ALL
+                         </Button>
+                      </div>
                       {['all', 'enabled', 'disabled'].map(s => (
                         <Button key={s} variant={filterStatus === s ? 'info' : 'outline-secondary'} size="sm" className="rounded-pill px-3" onClick={() => setFilterStatus(s)}>
                           {s.charAt(0).toUpperCase() + s.slice(1)}

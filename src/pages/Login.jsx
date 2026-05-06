@@ -41,7 +41,7 @@ const Login = () => {
           "Dashboard": data.config.showDashboard,
           "Water Management": data.config.showWaterManagement,
           "Motors": data.config.showMotors,
-          "DG Monitoring": data.config.showDGSet,
+          "DG Set": data.config.showDGSet,
           "Setting Templates": data.config.showSettingTemplates,
           "Alarm System": data.config.showAlarms,
           "LT Panel": data.config.showLTPanel,
