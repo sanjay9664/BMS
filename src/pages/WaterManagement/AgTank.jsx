@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Row, Col, Card, Tooltip, OverlayTrigger, Form, Button, Modal, Badge } from 'react-bootstrap';
+import { Row, Col, Card, Tooltip, OverlayTrigger, Form, Button, Modal, Badge, Spinner } from 'react-bootstrap';
 import { Home, Waves, LayoutGrid, Settings, Save, AlertCircle, CheckCircle2, XCircle, Activity, X, Droplets, ToggleRight, ToggleLeft, Maximize, Minimize, ShieldCheck, ArrowUp, ArrowDown, Zap } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
 
@@ -24,8 +24,8 @@ const AgTank = () => {
   
 
   // Initialize tanks with valve states
-  const [allTanks, setAllTanks] = useState(() =>
-    Array.from({ length: totalTanks }, (_, i) => ({
+  const [allTanks, setAllTanks] = useState(() => {
+    const initial = Array.from({ length: totalTanks }, (_, i) => ({
       globalId: i + 1,
       localId: i < 24 ? i + 1 : i - 23,
       type: i < 24 ? 'DOMESTIC' : 'FLUSHING',
@@ -35,8 +35,34 @@ const AgTank = () => {
       valveStatus: 'CLOSE',
       minLevel: 20,
       maxLevel: 90
-    }))
-  );
+    }));
+
+    // Initial Sync from LocalStorage templates
+    const saved = localStorage.getItem('scada_templates');
+    if (saved) {
+      try {
+        const templates = JSON.parse(saved);
+        return initial.map(tank => {
+          const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
+          const template = templates.find(t => 
+            t.module === 'AG Tank' && 
+            (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
+          );
+          if (template && template.mapping) {
+            return {
+              ...tank,
+              minLevel: template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : tank.minLevel,
+              maxLevel: template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : tank.maxLevel
+            };
+          }
+          return tank;
+        });
+      } catch (e) { console.error("Initial Tank Sync Error:", e); }
+    }
+    return initial;
+  });
+
+  const [isSendingRules, setIsSendingRules] = useState(false);
 
   const [controlMode, setControlMode] = useState('REMOTE');
 
@@ -60,67 +86,94 @@ const AgTank = () => {
     }
     
     const templates = JSON.parse(saved);
-    const template = templates.find(t => 
+    const templateIndex = templates.findIndex(t => 
       t.module === 'AG Tank' && 
       (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
     );
 
-    if (!template) {
+    if (templateIndex === -1) {
       setActionFeedback("ERROR: TANK NOT MAPPED");
       setTimeout(() => setActionFeedback(null), 2000);
       return;
     }
 
-    // 3. Prepare Config
-    const config = limitType === 'LOWER' ? template.mapping.rule1Config : template.mapping.rule2Config;
-    const moduleId = limitType === 'LOWER' ? template.mapping.agLowerConfig?.module : template.mapping.agUpperConfig?.module;
-
-    if (!moduleId) {
-      setActionFeedback("ERROR: RULE NOT CONFIGURED");
-      setTimeout(() => setActionFeedback(null), 2000);
-      return;
-    }
-
-    // 4. Update Consequence Value to current UI limit
-    const updatedValue = limitType === 'LOWER' ? selectedTank.minLevel : selectedTank.maxLevel;
+    const template = templates[templateIndex];
+    const typesToSend = limitType === 'BOTH' ? ['LOWER', 'UPPER'] : [limitType];
     
-    // 5. Send to API
-    setActionFeedback("SENDING RULE...");
+    setIsSendingRules(true);
+    setActionFeedback("SENDING RULES...");
+
     try {
       const apiURL = import.meta.env.VITE_RULE_ENGINE_API;
-      const payload = {
-        moduleId: moduleId,
-        settingFields: [
-          { fieldName: "condition_date_time", currentValue: config?.condition?.timeDate || "" },
-          { fieldName: "condition_date_time_repeat_days", currentValue: config?.condition?.repeatDays?.join(',') || "" },
-          { fieldName: "consequence_value", currentValue: String(updatedValue) }, 
-          { fieldName: "condition_type", currentValue: config?.condition?.type || "MODBUS" },
-          { fieldName: "condition_modbus", currentValue: config?.condition?.modbus || "" },
-          { fieldName: "comparison_type", currentValue: config?.condition?.comparisonType || "LESS_THAN" },
-          { fieldName: "comparison_value", currentValue: config?.condition?.comparisonValue || "" },
-          { fieldName: "consequence_type", currentValue: config?.consequence?.type || "OUTPUT_2" },
-          { fieldName: "consequence_modbus", currentValue: config?.consequence?.modbus || "" }
-        ]
-      };
-
       const token = localStorage.getItem('sochiot_token');
-      const response = await fetch(apiURL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
 
-      if (!response.ok) throw new Error('API request failed');
+      for (const type of typesToSend) {
+        // 3. Prepare Config
+        const config = type === 'LOWER' ? template.mapping.rule1Config : template.mapping.rule2Config;
+        const moduleId = type === 'LOWER' ? template.mapping.agLowerConfig?.module : template.mapping.agUpperConfig?.module;
 
-      setActionFeedback("RULE UPDATED SUCCESS");
+        if (!moduleId) {
+          console.warn(`Module ID missing for ${type} limit`);
+          continue;
+        }
+
+        // 4. Update Consequence Value to current UI limit
+        const updatedValue = type === 'LOWER' ? selectedTank.minLevel : selectedTank.maxLevel;
+        
+        // 5. Send to API
+        const payload = {
+          moduleId: moduleId,
+          settingFields: [
+            { fieldName: "condition_date_time", currentValue: config?.condition?.timeDate || "" },
+            { fieldName: "condition_date_time_repeat_days", currentValue: config?.condition?.repeatDays?.join(',') || "" },
+            { fieldName: "consequence_value", currentValue: String(updatedValue) }, 
+            { fieldName: "condition_type", currentValue: config?.condition?.type || "MODBUS" },
+            { fieldName: "condition_modbus", currentValue: config?.condition?.modbus || "" },
+            { fieldName: "comparison_type", currentValue: config?.condition?.comparisonType || "LESS_THAN" },
+            { fieldName: "comparison_value", currentValue: config?.condition?.comparisonValue || "" },
+            { fieldName: "consequence_type", currentValue: config?.consequence?.type || "OUTPUT_2" },
+            { fieldName: "consequence_modbus", currentValue: config?.consequence?.modbus || "" }
+          ]
+        };
+
+        const response = await fetch(apiURL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`${type} API request failed`);
+
+        // Update local template object for persistence
+        if (type === 'LOWER') {
+          template.mapping.rule1Config = { 
+            ...template.mapping.rule1Config, 
+            consequence: { ...template.mapping.rule1Config?.consequence, value: String(updatedValue) } 
+          };
+        } else {
+          template.mapping.rule2Config = { 
+            ...template.mapping.rule2Config, 
+            consequence: { ...template.mapping.rule2Config?.consequence, value: String(updatedValue) } 
+          };
+        }
+      }
+
+      // 6. Save updated templates to localStorage for persistence
+      templates[templateIndex] = template;
+      localStorage.setItem('scada_templates', JSON.stringify(templates));
+      window.dispatchEvent(new Event('storage'));
+
+      setActionFeedback("SETTINGS APPLIED SUCCESS");
       setTimeout(() => setActionFeedback(null), 2000);
     } catch (error) {
       console.error("Error sending rules:", error);
-      setActionFeedback("FAILED TO UPDATE RULE");
+      setActionFeedback("FAILED TO UPDATE RULES");
       setTimeout(() => setActionFeedback(null), 2000);
+    } finally {
+      setIsSendingRules(false);
     }
   };
 
@@ -292,6 +345,26 @@ const AgTank = () => {
               let newTank = { ...tank };
 
               if (template && template.mapping) {
+                // Sync Rules Limits for visualization (Grid markers)
+                // Avoid overwriting if this tank is currently being edited in modal
+                const isEditing = showValveModal && selectedTank?.globalId === tank.globalId;
+                if (!isEditing) {
+                   if (template.mapping.rule1Config?.consequence?.value) {
+                      const newMin = Number(template.mapping.rule1Config.consequence.value);
+                      if (newTank.minLevel !== newMin) {
+                        newTank.minLevel = newMin;
+                        updated = true;
+                      }
+                   }
+                   if (template.mapping.rule2Config?.consequence?.value) {
+                      const newMax = Number(template.mapping.rule2Config.consequence.value);
+                      if (newTank.maxLevel !== newMax) {
+                        newTank.maxLevel = newMax;
+                        updated = true;
+                      }
+                   }
+                }
+
                 // Level Config
                 if (template.mapping.agLevelConfig?.field && template.mapping.agLevelConfig?.module) {
                   const config = template.mapping.agLevelConfig;
@@ -343,7 +416,7 @@ const AgTank = () => {
     fetchDynamicLevels();
     const interval = setInterval(fetchDynamicLevels, 5000); // Fetch every 5s for realtime UI
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedTank, showValveModal]);
 
   const isTankDisabled = (tank) => {
     const name = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
@@ -356,7 +429,38 @@ const AgTank = () => {
       setTimeout(() => setActionFeedback(null), 2000);
       return;
     }
-    setSelectedTank(tank);
+
+    // Refresh limits from localStorage templates before opening
+    const saved = localStorage.getItem('scada_templates');
+    if (saved) {
+      try {
+        const templates = JSON.parse(saved);
+        const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
+        const template = templates.find(t => 
+          t.module === 'AG Tank' && 
+          (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
+        );
+        if (template && template.mapping) {
+          const min = template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : tank.minLevel;
+          const max = template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : tank.maxLevel;
+          
+          // Update local tank object for the modal
+          const syncedTank = { ...tank, minLevel: min, maxLevel: max };
+          
+          // Update in master list to sync markers
+          setAllTanks(prev => prev.map(t => t.globalId === tank.globalId ? syncedTank : t));
+          setSelectedTank(syncedTank);
+        } else {
+          setSelectedTank(tank);
+        }
+      } catch (e) {
+        console.error("Tank Click Sync Error:", e);
+        setSelectedTank(tank);
+      }
+    } else {
+      setSelectedTank(tank);
+    }
+    
     setShowValveModal(true);
   };
 
@@ -774,93 +878,118 @@ const AgTank = () => {
                 </div>
               </div>
 
-              {/* Thresholds Section */}
-              <Row className="g-3 mb-3">
-                <Col md={6}>
-                   <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
-                      <div className="d-flex align-items-center gap-2 mb-2">
-                        <div className="p-1 px-2 rounded bg-info bg-opacity-10 text-info border border-info border-opacity-20"><ArrowDown size={12} /></div>
-                        <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Lower Limit</Form.Label>
-                      </div>
-                      <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
-                         <Form.Control 
-                            type="number" 
-                            value={selectedTank.minLevel} 
-                            onChange={(e) => updateTankValve(selectedTank.globalId, { minLevel: parseInt(e.target.value) })}
-                            className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
-                         />
-                         <span className="text-info fw-black fs-5">%</span>
-                         <Button 
-                            variant="outline-info" 
-                            size="sm" 
-                            className="ms-2 fw-black fs-11 px-2 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow"
-                            onClick={() => handleSendRuleToEngine('LOWER')}
-                         >
-                            <Zap size={10} /> SEND
-                         </Button>
-                      </div>
-                   </div>
-                </Col>
-                <Col md={6}>
-                   <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
-                      <div className="d-flex align-items-center gap-2 mb-2">
-                        <div className="p-1 px-2 rounded bg-danger bg-opacity-10 text-danger border border-danger border-opacity-20"><ArrowUp size={12} /></div>
-                        <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Upper Limit</Form.Label>
-                      </div>
-                      <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
-                         <Form.Control 
-                            type="number" 
-                            value={selectedTank.maxLevel} 
-                            onChange={(e) => updateTankValve(selectedTank.globalId, { maxLevel: parseInt(e.target.value) })}
-                            className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
-                         />
-                         <span className="text-danger fw-black fs-5">%</span>
-                         <Button 
-                            variant="outline-danger" 
-                            size="sm" 
-                            className="ms-2 fw-black fs-11 px-2 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow"
-                            onClick={() => handleSendRuleToEngine('UPPER')}
-                         >
-                            <Zap size={10} /> SEND
-                         </Button>
-                      </div>
-                   </div>
-                </Col>
-              </Row>
+              {/* Thresholds Section - Only visible in AUTO */}
+              {selectedTank.valveMode === 'AUTO' && (
+                <Row className="g-3 mb-3">
+                  <Col md={6}>
+                     <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                          <div className="p-1 px-2 rounded bg-info bg-opacity-10 text-info border border-info border-opacity-20"><ArrowDown size={12} /></div>
+                          <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Lower Limit</Form.Label>
+                        </div>
+                        <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
+                           <Form.Control 
+                              type="number" 
+                              value={selectedTank.minLevel} 
+                              onChange={(e) => updateTankValve(selectedTank.globalId, { minLevel: parseInt(e.target.value) })}
+                              className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
+                           />
+                           <span className="text-info fw-black fs-5">%</span>
+                        </div>
+                     </div>
+                  </Col>
+                  <Col md={6}>
+                     <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                          <div className="p-1 px-2 rounded bg-danger bg-opacity-10 text-danger border border-danger border-opacity-20"><ArrowUp size={12} /></div>
+                          <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Upper Limit</Form.Label>
+                        </div>
+                        <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
+                           <Form.Control 
+                              type="number" 
+                              value={selectedTank.maxLevel} 
+                              onChange={(e) => updateTankValve(selectedTank.globalId, { maxLevel: parseInt(e.target.value) })}
+                              className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
+                           />
+                           <span className="text-danger fw-black fs-5">%</span>
+                        </div>
+                     </div>
+                  </Col>
+                </Row>
+              )}
 
               {/* Action Section */}
               <div className="mb-2">
-                <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-2 uppercase">Supply Override Commands</Form.Label>
-                <Row className="g-3">
-                  <Col xs={6}>
-                    <button 
-                      className={`premium-action-btn open w-100 ${selectedTank.valveStatus === 'OPEN' ? 'active' : ''}`}
-                      disabled={selectedTank.valveMode === 'AUTO' || selectedTank.valveMode === 'BYPASS'}
-                      style={{ padding: '12px' }}
-                      onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'OPEN' })}>
-                      <div className="d-flex align-items-center justify-content-center gap-2">
-                         <Droplets size={16} />
-                         <div>
-                            <div className="btn-label">OPEN SUPPLY</div>
-                         </div>
+                {selectedTank.valveMode === 'AUTO' ? (
+                   <>
+                    <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-3 uppercase">Automation Settings Control</Form.Label>
+                    <Button 
+                      variant="info" 
+                      className="w-100 py-3 rounded-4 fw-black tracking-widest d-flex align-items-center justify-content-center gap-3 shadow-lg border-0"
+                      style={{ background: 'linear-gradient(45deg, #0ea5e9, #2563eb)', transition: 'all 0.3s ease' }}
+                      onClick={() => handleSendRuleToEngine('BOTH')}
+                      disabled={isSendingRules}
+                    >
+                      {isSendingRules ? (
+                        <Spinner size="sm" animation="border" />
+                      ) : (
+                        <Zap size={18} className="pulse-icon" />
+                      )}
+                      {isSendingRules ? 'SYNCHRONIZING...' : 'APPLY LIMIT SETTINGS'}
+                    </Button>
+                   </>
+                ) : selectedTank.valveMode === 'MANUAL' ? (
+                  <>
+                    <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-2 uppercase">Supply Override Commands</Form.Label>
+                    <Row className="g-3">
+                      <Col xs={6}>
+                        <button 
+                          className={`premium-action-btn open w-100 ${selectedTank.valveStatus === 'OPEN' ? 'active' : ''}`}
+                          style={{ padding: '12px' }}
+                          onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'OPEN' })}>
+                          <div className="d-flex align-items-center justify-content-center gap-2">
+                             <Droplets size={16} />
+                             <div>
+                                <div className="btn-label">OPEN SUPPLY</div>
+                             </div>
+                          </div>
+                        </button>
+                      </Col>
+                      <Col xs={6}>
+                        <button 
+                          className={`premium-action-btn close w-100 ${selectedTank.valveStatus === 'CLOSE' ? 'active' : ''}`}
+                          style={{ padding: '12px' }}
+                          onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'CLOSE' })}>
+                          <div className="d-flex align-items-center justify-content-center gap-2">
+                             <X size={16} />
+                             <div>
+                                <div className="btn-label">CLOSE SUPPLY</div>
+                             </div>
+                          </div>
+                        </button>
+                      </Col>
+                    </Row>
+                  </>
+                ) : (
+                  <div className="text-center p-3 rounded-4 position-relative overflow-hidden" 
+                       style={{ 
+                         background: 'rgba(251, 191, 36, 0.05)', 
+                         border: '1px solid rgba(251, 191, 36, 0.2)'
+                       }}>
+                    <div className="position-absolute top-0 start-0 w-100 h-1 bg-warning opacity-30"></div>
+                    <div className="d-flex align-items-center justify-content-center gap-3">
+                      <ShieldCheck size={24} className="text-warning opacity-80" />
+                      <div className="text-start">
+                        <h4 className="fw-black text-warning tracking-widest mb-0" style={{ textTransform: 'uppercase', fontSize: '13px' }}>
+                          System Bypass Active
+                        </h4>
+                        <div className="text-secondary fs-10 fw-bold opacity-60 uppercase tracking-tighter">
+                          Automation & Manual Controls Suspended
+                        </div>
                       </div>
-                    </button>
-                  </Col>
-                  <Col xs={6}>
-                    <button 
-                      className={`premium-action-btn close w-100 ${selectedTank.valveStatus === 'CLOSE' ? 'active' : ''}`}
-                      disabled={selectedTank.valveMode === 'AUTO' || selectedTank.valveMode === 'BYPASS'}
-                      style={{ padding: '12px' }}
-                      onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'CLOSE' })}>
-                      <div className="d-flex align-items-center justify-content-center gap-2">
-                         <X size={16} />
-                         <div>
-                            <div className="btn-label">CLOSE SUPPLY</div>
-                         </div>
-                      </div>
-                    </button>
-                  </Col>
-                </Row>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

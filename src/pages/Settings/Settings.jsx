@@ -8,7 +8,7 @@ const Settings = () => {
     "Dashboard": true,
     "Water Management": true,
     "Motors": true,
-    "DG Monitoring": true,
+    "DG Set": true,
     "Setting Templates": true,
     "Alarm System": true,
     "LT Panel": true,
@@ -63,81 +63,38 @@ const Settings = () => {
       </div>
 
       <Row className="g-4">
-        <Col lg={5}>
+        <Col lg={12}>
           <Card className="scada-card border-0 shadow-lg h-100" style={{ background: '#0f172a' }}>
             <Card.Body className="p-4">
               <h6 className="mb-4 d-flex align-items-center text-info fw-black uppercase tracking-widest fs-12">
                 <Shield size={18} className="me-2" /> Application Module Control
               </h6>
               
-              <div className="module-list-container custom-scrollbar pe-2" style={{ maxHeight: '600px', overflowY: 'auto' }}>
-                {Object.keys(modules).map((name) => (
-                    <div key={name} className={`d-flex justify-content-between align-items-center mb-2 p-3 rounded-4 border transition-all ${modules[name] ? 'border-info border-opacity-10 bg-black bg-opacity-40' : 'border-secondary border-opacity-5 bg-dark bg-opacity-10 opacity-40'}`}>
-                    <div className="d-flex align-items-center gap-3">
-                        <div className={`p-2 rounded-circle ${modules[name] ? 'bg-info text-dark' : 'bg-secondary text-white opacity-10'}`}>
+              <div className="module-list-container pe-2">
+                <Row className="g-3">
+                  {Object.keys(modules).map((name) => (
+                    <Col key={name} md={6} lg={4} xl={3}>
+                      <div className={`d-flex justify-content-between align-items-center h-100 p-3 rounded-4 border transition-all ${modules[name] ? 'border-info border-opacity-10 bg-black bg-opacity-40' : 'border-secondary border-opacity-5 bg-dark bg-opacity-10 opacity-40'}`}>
+                        <div className="d-flex align-items-center gap-3">
+                          <div className={`p-2 rounded-circle ${modules[name] ? 'bg-info text-dark' : 'bg-secondary text-white opacity-10'}`}>
                             <SettingsIcon size={14} />
+                          </div>
+                          <span className={`fw-bold fs-11 ${modules[name] ? 'text-white' : 'text-muted'}`}>{name}</span>
                         </div>
-                        <span className={`fw-bold ${modules[name] ? 'text-white' : 'text-muted'}`}>{name}</span>
-                    </div>
-                    <Form.Check 
-                        type="switch"
-                        id={`switch-${name}`}
-                        checked={modules[name]}
-                        onChange={() => toggleModule(name)}
-                        className="scada-switch custom-switch-large"
-                    />
-                    </div>
-                ))}
+                        <Form.Check 
+                          type="switch"
+                          id={`switch-${name}`}
+                          checked={modules[name]}
+                          onChange={() => toggleModule(name)}
+                          className="scada-switch custom-switch-large"
+                        />
+                      </div>
+                    </Col>
+                  ))}
+                </Row>
               </div>
             </Card.Body>
           </Card>
-        </Col>
-
-        <Col lg={7}>
-            <Row className="g-4">
-                <Col md={12}>
-                    <Card className="scada-card border-0 shadow-lg" style={{ background: '#0f172a' }}>
-                        <Card.Body className="p-4">
-                            <h6 className="mb-4 d-flex align-items-center text-warning fw-black uppercase tracking-widest fs-12">
-                                <Users size={18} className="me-2" /> Role Management
-                            </h6>
-                            <Row className="g-4">
-                                <Col md={6}>
-                                    <label className="text-secondary fs-11 fw-bold uppercase mb-2 d-block">System Roles</label>
-                                    <Form.Select className="scada-select p-2 rounded-3">
-                                        <option className="bg-dark text-white">Admin</option>
-                                        <option className="bg-dark text-white">User</option>
-                                    </Form.Select>
-                                </Col>
-                                <Col md={6}>
-                                    <label className="text-secondary fs-11 fw-bold uppercase mb-2 d-block">Auth Protocol</label>
-                                    <div className="d-flex flex-column gap-2">
-                                        <div className="d-flex justify-content-between align-items-center p-2 bg-black bg-opacity-30 rounded-3 border border-white border-opacity-5">
-                                            <span className="text-muted fs-11 fw-bold">Multi-Factor (MFA)</span>
-                                            <Form.Check type="switch" defaultChecked className="scada-switch" />
-                                        </div>
-                                        <div className="d-flex justify-content-between align-items-center p-2 bg-black bg-opacity-30 rounded-3 border border-white border-opacity-5">
-                                            <span className="text-muted fs-11 fw-bold">Auto-Lock Idle</span>
-                                            <Form.Check type="switch" defaultChecked className="scada-switch" />
-                                        </div>
-                                    </div>
-                                </Col>
-                            </Row>
-                        </Card.Body>
-                    </Card>
-                </Col>
-
-                <Col md={12}>
-                    <Card className="scada-card border-0 shadow-lg" style={{ background: '#0f172a' }}>
-                        <Card.Body className="p-4 text-center py-5">
-                            <Eye size={40} className="text-info opacity-25 mb-3" />
-                            <h5 className="text-white fw-black uppercase tracking-tight">Advanced System HUD</h5>
-                            <p className="text-muted fs-11 mx-auto max-w-sm">HUD overlays and real-time telemetry visualization settings are managed remotely by the master supervisor node.</p>
-                            <button className="btn-scada-primary px-5 py-2 mt-2">CONFIGURE VISUALS</button>
-                        </Card.Body>
-                    </Card>
-                </Col>
-            </Row>
         </Col>
       </Row>
 
