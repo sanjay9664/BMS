@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://backend-yhu7-git-master-guptaji30749-6020s-projects.vercel.app',
         changeOrigin: true,
       }
     }
