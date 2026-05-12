@@ -1013,19 +1013,24 @@ const ConfigTemplates = () => {
     const cleaned = {};
     Object.keys(obj).forEach(key => {
       let newKey = key;
-      // Fix 'Water Level' corruption back to 'COMMAND' or 'MODE'
+      // Fix 'Water Level' corruption in internal keys by removing the suffix
       if (key.includes('Water Level') && key !== 'agLevelConfig' && key !== 'ugTankLevelConfig' && key !== 'Water Level' && key !== 'agLevel' && key !== 'waterLevel') {
-        // Only replace if it looks like a suffix corruption
-        newKey = key.replace('Water Level', (key.startsWith('START') || key.startsWith('STOP')) ? ' COMMAND' : ' MODE');
+        newKey = key.replace('Water Level', '').trim();
       }
       
       let value = obj[key];
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         value = cleanCorruptedMapping(value);
       } else if (typeof value === 'string' && value.includes('Water Level')) {
-        // Fix string values if needed (e.g. titles)
+        // Fix string values (titles/labels) by restoring correct terminology
         if (value.includes('STARTWater Level')) value = value.replace('STARTWater Level', 'START COMMAND');
-        if (value.includes('STOPWater Level')) value = value.replace('STOPWater Level', 'STOP COMMAND');
+        else if (value.includes('STOPWater Level')) value = value.replace('STOPWater Level', 'STOP COMMAND');
+        else if (value.includes('Water Level')) {
+           // For other titles, determine if it should be COMMAND or MODE
+           const upper = value.toUpperCase();
+           const replacement = (upper.includes('START') || upper.includes('STOP') || upper.includes('OPEN') || upper.includes('CLOSE') || upper.includes('COMMAND')) ? 'COMMAND' : 'MODE';
+           value = value.replace('Water Level', replacement);
+        }
       }
       
       cleaned[newKey] = value;

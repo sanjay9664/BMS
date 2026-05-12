@@ -13,8 +13,21 @@ const AgTank = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const pageRef = useRef(null);
 
-
-  // Status Filter Sync
+  // Helper to clean corrupted template keys
+  const cleanCorruptedMapping = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const cleaned = {};
+    Object.keys(obj).forEach(key => {
+      let newKey = key;
+      if (key.includes('Water Level') && key !== 'agLevelConfig' && key !== 'ugTankLevelConfig' && key !== 'Water Level' && key !== 'agLevel' && key !== 'waterLevel') {
+        newKey = key.replace('Water Level', '').trim();
+      }
+      let value = obj[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) value = cleanCorruptedMapping(value);
+      cleaned[newKey] = value;
+    });
+    return cleaned;
+  };
   useEffect(() => {
     const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFsChange);
@@ -98,7 +111,10 @@ const AgTank = () => {
     const saved = localStorage.getItem('scada_templates');
     if (saved) {
       try {
-        const templates = JSON.parse(saved);
+        const templates = JSON.parse(saved).map(t => ({
+          ...t,
+          mapping: cleanCorruptedMapping(t.mapping)
+        }));
         return initial.map(tank => {
           const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
           const template = templates.find(t =>
@@ -437,7 +453,10 @@ const AgTank = () => {
       try {
         const saved = localStorage.getItem('scada_templates');
         if (!saved) return;
-        const templates = JSON.parse(saved);
+        const templates = JSON.parse(saved).map(t => ({
+          ...t,
+          mapping: cleanCorruptedMapping(t.mapping)
+        }));
 
         const moduleIds = new Set();
         templates.forEach(t => {
@@ -578,7 +597,7 @@ const AgTank = () => {
                       }
                     }
 
-                    const currentVal = Number(stat.meta[startCfg.field]);
+                    const currentVal = stat.meta[startCfg.field];
                     const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
 
                     if (isStartMet) {
@@ -599,7 +618,7 @@ const AgTank = () => {
                 if (!conditionMet && stopCfg?.field && stopCfg?.module) {
                   const stat = stats.find(s => String(s.moduleId) === String(stopCfg.module) || String(s.meta?.module_id) === String(stopCfg.module));
                   if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
-                    const currentVal = Number(stat.meta[stopCfg.field]);
+                    const currentVal = stat.meta[stopCfg.field];
                     const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
 
                     if (isStopMet) {
@@ -624,7 +643,7 @@ const AgTank = () => {
                   const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
                   if (stat && stat.meta && stat.meta[config.field] !== undefined) {
                     updated = true;
-                    const val = Number(stat.meta[config.field]);
+                    const val = stat.meta[config.field];
                     if (val > 0) {
                       newTank.valveStatus = 'OPEN';
                       newTank.status = 'Running';
