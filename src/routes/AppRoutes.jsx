@@ -109,9 +109,10 @@ const AppRoutes = () => {
       <Route path="/settings" element={<Settings />} />
 
       {/* Super Admin Routes */}
-      {userRole === 'SUPER_ADMIN' && (
-        <Route path="/super-admin" element={<SuperAdminConfig />} />
-      )}
+      <Route 
+        path="/super-admin" 
+        element={userRole === 'SUPER_ADMIN' ? <SuperAdminConfig /> : <Navigate to="/dashboard" replace />} 
+      />
 
       {/* Admin Routes */}
       {userRole === 'ADMIN' && (

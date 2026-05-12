@@ -73,7 +73,7 @@ const mergeConfig = (rawConfig = {}) => ({
 const SuperAdminConfig = () => {
   const [activeTab, setActiveTab] = useState('tenants');
   const [tenants, setTenants] = useState([]);
-  const [config, setConfig] = useState(null);
+  const [config, setConfig] = useState(defaultConfig);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -539,7 +539,7 @@ const SuperAdminConfig = () => {
                   </Card.Header>
                   <Card.Body className="p-0">
                     <div className="mini-sidebar-preview p-4" style={{ background: '#0f172a', minHeight: '300px' }}>
-                      {Object.entries(moduleDetails).map(([key, module]) => config[key] && (
+                      {Object.entries(moduleDetails).map(([key, module]) => config?.[key] && (
                         <div key={key} className="preview-item mb-2 p-2 rounded" style={{ background: 'rgba(255,255,255,0.02)' }}>
                           <div className="d-flex align-items-center gap-2 small">
                             <span className="text-info">{module.icon}</span>

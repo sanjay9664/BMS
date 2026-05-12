@@ -71,6 +71,25 @@ export const getSochiotLocationData = async (locationId) => {
     throw error;
   }
 };
+
+export const getSochiotZoneData = async (zoneId) => {
+  const token = localStorage.getItem('sochiot_token');
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${CONFIG_API_URL}/entity/ZONE/${zoneId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) throw new Error('Failed to fetch zone data');
+    return await response.json();
+  } catch (error) {
+    console.error('Fetch Zone Error:', error);
+    throw error;
+  }
+};
 export const getSochiotDeviceDetails = async (deviceId) => {
   const token = localStorage.getItem('sochiot_token');
   if (!token) return null;

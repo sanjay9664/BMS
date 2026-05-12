@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Row, Col, Card, Form, Button, Badge, Modal } from 'react-bootstrap';
 import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
-import { loginToSochiot, getSochiotUserMe, getSochiotLocationData, getSochiotDeviceDetails } from '../../services/authService';
+import { loginToSochiot, getSochiotUserMe, getSochiotLocationData, getSochiotDeviceDetails, getSochiotZoneData } from '../../services/authService';
 
 const ConfigTemplates = () => {
   const [selectedCategory, setSelectedCategory] = useState('Water Management');
@@ -12,7 +12,15 @@ const ConfigTemplates = () => {
   });
   const [viewMode, setViewMode] = useState('FORM'); // 'FORM' or 'LIST'
   const [editingTemplateId, setEditingTemplateId] = useState(null);
-  const [globalLocation, setGlobalLocation] = useState({ organization: '', client: '', zone: '', subZone: '', building: '' });
+  const [globalLocation, setGlobalLocation] = useState(() => {
+    const saved = localStorage.getItem('global_hierarchy_selection');
+    return saved ? JSON.parse(saved) : { organization: '', client: '', zone: '', subZone: '', building: '' };
+  });
+
+  // Persist Global Location to localStorage
+  useEffect(() => {
+    localStorage.setItem('global_hierarchy_selection', JSON.stringify(globalLocation));
+  }, [globalLocation]);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [showRuleEngineModal, setShowRuleEngineModal] = useState(false);
@@ -33,8 +41,10 @@ const ConfigTemplates = () => {
       value: ''
     }
   };
-  const [rule1Config, setRule1Config] = useState(initialRuleState);
-  const [rule2Config, setRule2Config] = useState(initialRuleState);
+  const [agRule1Config, setAgRule1Config] = useState(initialRuleState);
+  const [agRule2Config, setAgRule2Config] = useState(initialRuleState);
+  const [ugRule1Config, setUgRule1Config] = useState(initialRuleState);
+  const [ugRule2Config, setUgRule2Config] = useState(initialRuleState);
   const [currentRuleTarget, setCurrentRuleTarget] = useState('RULE1'); // 'RULE1' or 'RULE2'
   const [ruleEngineConfig, setRuleEngineConfig] = useState(initialRuleState);
   const [templateName, setTemplateName] = useState('');
@@ -97,9 +107,14 @@ const ConfigTemplates = () => {
   };
 
   const handleApplyRules = async () => {
-    // Save to target rule config
-    if (currentRuleTarget === 'RULE1') setRule1Config(ruleEngineConfig);
-    else setRule2Config(ruleEngineConfig);
+    // Save to target rule config based on current module
+    if (selectedModule === 'AG Tank') {
+      if (currentRuleTarget === 'RULE1') setAgRule1Config(ruleEngineConfig);
+      else setAgRule2Config(ruleEngineConfig);
+    } else if (selectedModule === 'UG Pump') {
+      if (currentRuleTarget === 'RULE1') setUgRule1Config(ruleEngineConfig);
+      else setUgRule2Config(ruleEngineConfig);
+    }
 
     const success = await handleSendRule(ruleEngineConfig);
     if (success) {
@@ -118,6 +133,8 @@ const ConfigTemplates = () => {
       device: '',
       module: '',
       field: '',
+      operator: '=',
+      value: '10',
       enabled: true
     };
     return withMode ? { ...base, mode: 'read' } : base;
@@ -132,6 +149,9 @@ const ConfigTemplates = () => {
   const [agLevelConfig, setAgLevelConfig] = useState(createDefaultConfig());
   const [agOpenConfig, setAgOpenConfig] = useState(createDefaultConfig());
   const [agCloseConfig, setAgCloseConfig] = useState(createDefaultConfig());
+  const [agStatusStartConfig, setAgStatusStartConfig] = useState(createDefaultConfig());
+  const [agStatusStopConfig, setAgStatusStopConfig] = useState(createDefaultConfig());
+  const [agAmpsConfig, setAgAmpsConfig] = useState(createDefaultConfig());
   const [agTankRange, setAgTankRange] = useState({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
   const [agTankType, setAgTankType] = useState('DOMESTIC'); // 'DOMESTIC' or 'FLUSHING'
   const [agMasterEnabled, setAgMasterEnabled] = useState(true);
@@ -145,9 +165,12 @@ const ConfigTemplates = () => {
   const [ugStopPressConfig, setUgStopPressConfig] = useState(createDefaultConfig());
   const [ugLocalModeConfig, setUgLocalModeConfig] = useState(createDefaultConfig());
   const [ugRemoteModeConfig, setUgRemoteModeConfig] = useState(createDefaultConfig());
+  const [ugStatusStartConfig, setUgStatusStartConfig] = useState(createDefaultConfig());
+  const [ugStatusStopConfig, setUgStatusStopConfig] = useState(createDefaultConfig());
   const [ugPumpRange, setUgPumpRange] = useState({ name: '', id: '' });
   const [ugTankLevelConfig, setUgTankLevelConfig] = useState(createDefaultConfig());
   const [ugTankRange, setUgTankRange] = useState({ name: '', id: '' });
+  const [ugAmpsConfig, setUgAmpsConfig] = useState(createDefaultConfig());
   const [pressureConfig, setPressureConfig] = useState(createDefaultConfig());
   const [elecVoltageConfig, setElecVoltageConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
   const [elecCurrentConfig, setElecCurrentConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
@@ -207,6 +230,10 @@ const ConfigTemplates = () => {
     { name: 'PUMP 02 METER', id: 'EM-P2' }
   ];
 
+  const isHierarchyUnlocked = useMemo(() => {
+    return !!(globalLocation.organization || globalLocation.client || globalLocation.zone || globalLocation.subZone || globalLocation.building);
+  }, [globalLocation]);
+
   const usedModules = useMemo(() => {
     if (selectedModule === 'AG Tank') {
       return [
@@ -244,6 +271,8 @@ const ConfigTemplates = () => {
 
   const handleUgPumpNoChange = (no) => {
     setSelectedUgPumpNo(no);
+    setTemplateName('');
+    
     // Find if a template already exists for this specific pump number
     const existing = savedTemplates.find(t =>
       t.module === 'UG Pump' &&
@@ -262,6 +291,22 @@ const ConfigTemplates = () => {
       setUgStopPressConfig(existing.mapping.ugStopPressConfig || createDefaultConfig());
       setUgLocalModeConfig(existing.mapping.ugLocalModeConfig || createDefaultConfig());
       setUgRemoteModeConfig(existing.mapping.ugRemoteModeConfig || createDefaultConfig());
+      setUgStatusStartConfig(existing.mapping.ugStatusStartConfig || createDefaultConfig());
+      setUgStatusStopConfig(existing.mapping.ugStatusStopConfig || createDefaultConfig());
+      setUgAmpsConfig(existing.mapping.ugAmpsConfig || createDefaultConfig());
+      setUgRule1Config(existing.mapping.rule1Config || existing.mapping.ruleEngineConfig || initialRuleState);
+      setUgRule2Config(existing.mapping.rule2Config || existing.mapping.ruleEngineConfig || initialRuleState);
+      
+      // Restore Hierarchy
+      const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.ugLowerConfig?.building ? {
+        organization: existing.mapping.ugLowerConfig.organization || '',
+        client: existing.mapping.ugLowerConfig.client || '',
+        zone: existing.mapping.ugLowerConfig.zone || '',
+        subZone: existing.mapping.ugLowerConfig.subZone || '',
+        building: existing.mapping.ugLowerConfig.building || ''
+      } : null);
+
+      if (restoredLoc) setGlobalLocation(restoredLoc);
     } else {
       // Clear for a new pump if no template exists
       setUgLowerConfig(createDefaultConfig(true));
@@ -274,6 +319,66 @@ const ConfigTemplates = () => {
       setUgStopPressConfig(createDefaultConfig());
       setUgLocalModeConfig(createDefaultConfig());
       setUgRemoteModeConfig(createDefaultConfig());
+      setUgStatusStartConfig(createDefaultConfig());
+      setUgStatusStopConfig(createDefaultConfig());
+      setUgAmpsConfig(createDefaultConfig());
+      setUgRule1Config(initialRuleState);
+      setUgRule2Config(initialRuleState);
+    }
+  };
+
+  const handlePressureTargetChange = (name) => {
+    setPressureTarget(name);
+    setTemplateName('');
+    
+    const existing = savedTemplates.find(t =>
+      t.module === 'Pressure' &&
+      t.mapping.pressureTarget === name
+    );
+
+    if (existing) {
+      setPressureConfig(existing.mapping.pressureConfig || createDefaultConfig());
+      const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.pressureConfig?.building ? {
+        organization: existing.mapping.pressureConfig.organization || '',
+        client: existing.mapping.pressureConfig.client || '',
+        zone: existing.mapping.pressureConfig.zone || '',
+        subZone: existing.mapping.pressureConfig.subZone || '',
+        building: existing.mapping.pressureConfig.building || ''
+      } : null);
+      if (restoredLoc) setGlobalLocation(restoredLoc);
+    } else {
+      setPressureConfig(createDefaultConfig());
+    }
+  };
+
+  const handleElectricalTargetChange = (name) => {
+    setElectricalTarget(name);
+    setTemplateName('');
+    
+    const existing = savedTemplates.find(t =>
+      t.module === 'Electrical Parameter' &&
+      t.mapping.electricalTarget === name
+    );
+
+    if (existing) {
+      setElecVoltageConfig(existing.mapping.elecVoltageConfig || createDefaultConfig());
+      setElecCurrentConfig(existing.mapping.elecCurrentConfig || createDefaultConfig());
+      setElecSystemConfig(existing.mapping.elecSystemConfig || createDefaultConfig());
+      setElecConsumptionConfig(existing.mapping.elecConsumptionConfig || createDefaultConfig());
+      
+      const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.elecVoltageConfig?.building ? {
+        organization: existing.mapping.elecVoltageConfig.organization || '',
+        client: existing.mapping.elecVoltageConfig.client || '',
+        zone: existing.mapping.elecVoltageConfig.zone || '',
+        subZone: existing.mapping.elecVoltageConfig.subZone || '',
+        building: existing.mapping.elecVoltageConfig.building || ''
+      } : null);
+      if (restoredLoc) setGlobalLocation(restoredLoc);
+    } else {
+      setElecVoltageConfig(createDefaultConfig());
+      setElecCurrentConfig(createDefaultConfig());
+      setElecSystemConfig(createDefaultConfig());
+      setElecConsumptionConfig(createDefaultConfig());
     }
   };
 
@@ -299,6 +404,14 @@ const ConfigTemplates = () => {
 
       if (existing) {
         setUgTankLevelConfig(existing.mapping.ugTankLevelConfig || createDefaultConfig());
+        const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.ugTankLevelConfig?.building ? {
+          organization: existing.mapping.ugTankLevelConfig.organization || '',
+          client: existing.mapping.ugTankLevelConfig.client || '',
+          zone: existing.mapping.ugTankLevelConfig.zone || '',
+          subZone: existing.mapping.ugTankLevelConfig.subZone || '',
+          building: existing.mapping.ugTankLevelConfig.building || ''
+        } : null);
+        if (restoredLoc) setGlobalLocation(restoredLoc);
       } else {
         setUgTankLevelConfig(createDefaultConfig());
       }
@@ -309,6 +422,7 @@ const ConfigTemplates = () => {
   };
 
   const [locationIdMap, setLocationIdMap] = useState({});
+  const [zoneIdMap, setZoneIdMap] = useState({});
   const [locationDetails, setLocationDetails] = useState({}); // { locationName: { deviceList: [{label, id}] } }
   const [deviceDetails, setDeviceDetails] = useState({}); // { deviceId: { modules: { name: [fields] } } }
   const [dynamicOptions, setDynamicOptions] = useState({
@@ -338,34 +452,65 @@ const ConfigTemplates = () => {
           const locations = [];
 
           const lMap = {};
-
-          const traverseZones = (zList) => {
-            zList.forEach(z => {
-              zones.push(z.name);
-              if (z.locations) {
-                z.locations.forEach(l => {
-                  locations.push(l.name);
-                  lMap[l.name] = l.id;
-                });
-              }
-              if (z.subZones) traverseZones(z.subZones);
-            });
-          };
+          const zMap = {};
 
           if (userData.userZoneLocationVO?.companyList) {
-            setHierarchyData(userData.userZoneLocationVO.companyList);
-            userData.userZoneLocationVO.companyList.forEach(comp => {
+            const rawData = userData.userZoneLocationVO.companyList;
+            
+            const normalize = (list) => {
+              return (list || []).map(org => ({
+                name: org.name,
+                id: org.id,
+                clients: (org.consumers || org.customerVOS || org.clients || []).map(client => ({
+                  name: client.name,
+                  id: client.id,
+                  zones: (client.zoneVOS || client.zones || []).map(zone => ({
+                    name: zone.name,
+                    id: zone.id,
+                    subZones: (zone.subZoneVOS || zone.subZoneVos || zone.subZones || []).map(sz => ({
+                      name: sz.name,
+                      id: sz.id,
+                      locations: (sz.locationVOS || sz.locationVos || sz.locations || []).map(loc => ({
+                        name: loc.name,
+                        id: loc.id,
+                        type: loc.locationType
+                      }))
+                    })),
+                    locations: (zone.locationVOS || zone.locationVos || zone.locations || []).map(loc => ({
+                      name: loc.name,
+                      id: loc.id,
+                      type: loc.locationType
+                    }))
+                  }))
+                }))
+              }));
+            };
+
+            const normalized = normalize(rawData);
+            setHierarchyData(normalized);
+
+            normalized.forEach(comp => {
               companies.push(comp.name);
-              if (comp.consumers) {
-                comp.consumers.forEach(client => {
-                  clients.push(client.name);
-                  if (client.zoneVOS) traverseZones(client.zoneVOS);
+              (comp.clients || []).forEach(client => {
+                clients.push(client.name);
+                (client.zones || []).forEach(zone => {
+                  const traverse = (z) => {
+                    zones.push(z.name);
+                    zMap[z.name] = z.id;
+                    (z.locations || []).forEach(l => {
+                      locations.push(l.name);
+                      lMap[l.name] = l.id;
+                    });
+                    (z.subZones || []).forEach(traverse);
+                  };
+                  traverse(zone);
                 });
-              }
+              });
             });
           }
 
           setLocationIdMap(lMap);
+          setZoneIdMap(zMap);
           setDynamicOptions({
             locations: locations.length > 0 ? [...new Set(locations)] : dynamicOptions.locations,
             devices: zones.length > 0 ? [...new Set(zones)] : dynamicOptions.devices,
@@ -381,13 +526,82 @@ const ConfigTemplates = () => {
     initDynamicData();
   }, []);
 
+  // Effect to auto-fetch details for restored hierarchy path
+  useEffect(() => {
+    if (hierarchyData.length > 0 && Object.keys(locationIdMap).length > 0) {
+      const restoreHierarchyDetails = async () => {
+        const { zone, subZone, building } = globalLocation;
+        
+        // 1. If zone is set, fetch its details
+        if (zone && zoneIdMap[zone] && !hierarchyData.some(org => org.clients.some(c => c.zones.some(z => z.id === zoneIdMap[zone] && z.locations.length > 0)))) {
+           await fetchZoneDetails(zone, zoneIdMap[zone]);
+        }
+        
+        // 2. If building is set, fetch its details
+        if (building && !locationDetails[building]) {
+          await fetchLocationDetails(building);
+        }
+        
+        // 3. If subZone is set (it might be a location too), fetch its details
+        if (subZone && !locationDetails[subZone]) {
+          await fetchLocationDetails(subZone);
+        }
+      };
+      
+      restoreHierarchyDetails();
+    }
+  }, [hierarchyData, locationIdMap, zoneIdMap]);
+
   // Rule Engine Auto-Popup Logic
   // Auto-open rule engine modal removed to allow manual configuration via shortcuts
 
-  const fetchLocationDetails = async (locationName) => {
+  const fetchZoneDetails = async (zoneName, zoneId) => {
+    if (!zoneId) return;
+    try {
+      const data = await getSochiotZoneData(zoneId);
+      if (data?.locationVOS) {
+        setHierarchyData(prev => {
+          const next = JSON.parse(JSON.stringify(prev)); // Deep clone to ensure reactivity
+          next.forEach(org => {
+            (org.clients || []).forEach(client => {
+              (client.zones || []).forEach(zone => {
+                const updateNode = (node) => {
+                  if (String(node.id) === String(zoneId) || node.name === zoneName) {
+                    node.locations = data.locationVOS.map(loc => ({
+                      name: loc.name,
+                      id: loc.id,
+                      type: loc.locationType
+                    }));
+                    if (data.locationVOS.length > 0) {
+                       // Update global locations list for dynamic options
+                       setDynamicOptions(prev => ({
+                         ...prev,
+                         locations: [...new Set([...prev.locations, ...data.locationVOS.map(l => l.name)])]
+                       }));
+                       // Update ID map
+                       data.locationVOS.forEach(l => {
+                          setLocationIdMap(prevMap => ({ ...prevMap, [l.name]: l.id }));
+                       });
+                    }
+                  }
+                  (node.subZones || []).forEach(updateNode);
+                };
+                updateNode(zone);
+              });
+            });
+          });
+          return next;
+        });
+      }
+    } catch (e) {
+      console.error("Failed to fetch zone details:", e);
+    }
+  };
+
+  const fetchLocationDetails = async (locationName, providedId = null) => {
     if (locationDetails[locationName]) return;
 
-    const locId = locationIdMap[locationName];
+    const locId = providedId || locationIdMap[locationName];
     if (!locId) return;
 
     try {
@@ -419,6 +633,38 @@ const ConfigTemplates = () => {
       console.error('Error fetching location details:', error);
     }
   };
+
+  // Effect to ensure details are fetched for all active configurations (especially during Edit/Autofill)
+  useEffect(() => {
+    const configsToWatch = [
+      agLowerConfig, agUpperConfig, agAutoConfig, agManualConfig, agBypassConfig, 
+      agLevelConfig, agOpenConfig, agCloseConfig, agStatusStartConfig, agStatusStopConfig,
+      ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig, 
+      ugStartCmdConfig, ugStopCmdConfig, ugStatusStartConfig, ugStatusStopConfig,
+      ugStartPressConfig, ugStopPressConfig, ugLocalModeConfig, ugRemoteModeConfig,
+      ugTankLevelConfig, pressureConfig, 
+      elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig
+    ];
+
+    configsToWatch.forEach(config => {
+      if (config.building && !locationDetails[config.building]) {
+        const locId = locationIdMap[config.building];
+        if (locId) fetchLocationDetails(config.building, locId);
+      }
+      if (config.device && !deviceDetails[config.device]) {
+        fetchDeviceDetails(config.device);
+      }
+    });
+  }, [
+    agLowerConfig, agUpperConfig, agAutoConfig, agManualConfig, agBypassConfig,
+    agLevelConfig, agOpenConfig, agCloseConfig, agStatusStartConfig, agStatusStopConfig,
+    ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
+    ugStartCmdConfig, ugStopCmdConfig, ugStatusStartConfig, ugStatusStopConfig,
+    ugStartPressConfig, ugStopPressConfig, ugLocalModeConfig, ugRemoteModeConfig,
+    ugTankLevelConfig, pressureConfig,
+    elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig,
+    locationIdMap, locationDetails, deviceDetails
+  ]);
 
   const fetchDeviceDetails = async (deviceId) => {
     console.log('Fetching details for device:', deviceId);
@@ -523,33 +769,35 @@ const ConfigTemplates = () => {
       updated[levels[i]] = '';
     }
 
-    if (key === 'subZone' && value) {
-      // Find the rawId from the options to fetch details
-      const org = hierarchyData.find(o => o.name === updated.organization);
-      const client = org?.consumers?.find(c => c.name === updated.client);
-      const zone = client?.zoneVOS?.find(z => z.name === updated.zone);
-      const subZoneOptions = (zone?.subZones || []).map(sz => ({ id: sz.name, type: 'subZone' }))
-        .concat((zone?.locations || []).map(l => ({ id: l.name, rawId: l.id, type: 'location' })));
+    setGlobalLocation(updated);
 
-      const b = subZoneOptions.find(o => o.id === value);
-      if (b && b.type === 'location' && b.rawId) {
-        fetchLocationDetails(value, b.rawId);
+    if (key === 'zone' && value) {
+      const zoneId = zoneIdMap[value];
+      if (zoneId) fetchZoneDetails(value, zoneId);
+    }
+
+    if (key === 'subZone' && value) {
+      const org = hierarchyData.find(o => o.name === updated.organization);
+      const client = org?.clients?.find(c => c.name === updated.client);
+      const zone = client?.zones?.find(z => z.name === updated.zone);
+      
+      // Check if the selected "subZone" is actually a location at the zone level
+      const loc = zone?.locations?.find(l => l.name === value);
+      if (loc && loc.id) {
+        fetchLocationDetails(value, loc.id);
       }
     }
 
     if (key === 'building' && value) {
-      // For level 5, we need to find the location's rawId to fetch devices
       const org = hierarchyData.find(o => o.name === updated.organization);
-      const client = org?.consumers?.find(c => c.name === updated.client);
-      const zone = client?.zoneVOS?.find(z => z.name === updated.zone);
+      const client = org?.clients?.find(c => c.name === updated.client);
+      const zone = client?.zones?.find(z => z.name === updated.zone);
+      
       const targetZone = (zone?.subZones || []).find(sz => sz.name === updated.subZone) || zone;
-      const buildingOptions = (targetZone?.locations || []).map(l => ({ id: l.name, rawId: l.id }));
-
-      const b = buildingOptions.find(o => o.id === value);
-      if (b && b.rawId) fetchLocationDetails(value, b.rawId);
+      const loc = targetZone?.locations?.find(l => l.name === value);
+      
+      if (loc && loc.id) fetchLocationDetails(value, loc.id);
     }
-
-    setGlobalLocation(updated);
   };
 
   const handleGlobalLocationChange = (value) => {
@@ -602,119 +850,142 @@ const ConfigTemplates = () => {
     return null;
   };
 
-  const getFieldList = (key, rowState) => {
+  const getFieldList = (key, rowState = {}) => {
     if (!hierarchyData || hierarchyData.length === 0) return [];
-
-    if (key === 'location_hierarchical') {
-      if (!rowState.organization) return getFieldList('organization', rowState);
-      if (!rowState.client) return [{ label: '← BACK', id: '__BACK__' }, ...getFieldList('client', rowState)];
-      if (!rowState.zone) return [{ label: '← BACK', id: '__BACK__' }, ...getFieldList('zone', rowState)];
-      if (!rowState.subZone) {
-        const subZones = getFieldList('subZone', rowState);
-        if (subZones.length > 0) return [{ label: '← BACK', id: '__BACK__' }, ...subZones];
-        // If no subzones, skip to building
-        return [{ label: '← BACK', id: '__BACK__' }, ...getFieldList('building', rowState)];
-      }
-      if (!rowState.building) {
-        const buildings = getFieldList('building', rowState);
-        if (buildings.length === 0) return [{ label: '← CHANGE LOCATION (RESET)', id: '__RESET__' }];
-        return [{ label: '← BACK', id: '__BACK__' }, ...buildings];
-      }
-      return [{ label: '← CHANGE LOCATION (RESET)', id: '__RESET__' }];
-    }
-
+    
     const getSafeVal = (k) => rowState[k] || globalLocation[k];
+    
+    const orgName = getSafeVal('organization');
+    const clientName = getSafeVal('client');
+    const zoneName = getSafeVal('zone');
+    const subZoneName = getSafeVal('subZone');
+    const buildingName = getSafeVal('building');
 
-    // 1. Organization Level
     if (key === 'organization') {
       return hierarchyData.map(org => ({ label: org.name, id: org.name }));
     }
 
-    const orgName = getSafeVal('organization');
-    const org = hierarchyData.find(o => o.name === orgName);
-    if (!org) return [];
-
-    // 2. Client Level
     if (key === 'client') {
-      return (org.consumers || []).map(c => ({ label: c.name, id: c.name }));
+      const org = hierarchyData.find(o => o.name === orgName);
+      if (!org) return [];
+      return (org.clients || []).map(c => ({ label: c.name, id: c.name }));
     }
 
-    const clientName = getSafeVal('client');
-    const client = (org.consumers || []).find(c => c.name === clientName);
-    if (!client) return [];
-
-    // 3. Zone Level
     if (key === 'zone') {
-      return (client.zoneVOS || []).map(z => ({ label: z.name, id: z.name }));
+      const org = hierarchyData.find(o => o.name === orgName);
+      if (!org) return [];
+      let clients = org.clients || [];
+      if (clientName) clients = clients.filter(c => c.name === clientName);
+      
+      const zones = [];
+      clients.forEach(c => {
+        if (c.zones) zones.push(...c.zones);
+      });
+      return zones.map(z => ({ label: z.name, id: z.name }));
     }
 
-    const zoneName = getSafeVal('zone');
-
-    // Helper to find a zone by name in a nested structure
-    const findZone = (zones, name) => {
-      for (const z of zones) {
-        if (z.name === name) return z;
-        if (z.subZones) {
-          const found = findZone(z.subZones, name);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    const zone = findZone(client.zoneVOS || [], zoneName);
-    if (!zone) return [];
-
-    // 4. Sub Zone / Building Level
     if (key === 'subZone') {
-      const szList = (zone.subZones || []).map(sz => ({ label: sz.name, id: sz.name, type: 'subZone' }));
-      const locList = (zone.locations || []).map(l => ({ label: l.name, id: l.name, rawId: l.id, type: 'location' }));
-      return [...szList, ...locList];
+      const org = hierarchyData.find(o => o.name === orgName);
+      if (!org) return [];
+      let clients = org.clients || [];
+      if (clientName) clients = clients.filter(c => c.name === clientName);
+      
+      const zones = [];
+      clients.forEach(c => {
+        if (c.zones) zones.push(...c.zones);
+      });
+      
+      let filteredZones = zones;
+      if (zoneName) filteredZones = zones.filter(z => z.name === zoneName);
+      
+      const results = [];
+      filteredZones.forEach(z => {
+        const collect = (node) => {
+          if (node.subZones) {
+            results.push(...node.subZones.map(sz => ({ label: sz.name, id: sz.name, type: 'subZone' })));
+          }
+          if (node.locations) {
+            results.push(...node.locations.map(l => ({ label: l.name, id: l.name, rawId: l.id, type: 'location' })));
+          }
+          // Only recurse if no subzone is selected yet, or to find nested subzones?
+          // For the dropdown, we usually only show immediate children of the selected Zone.
+        };
+        collect(z);
+      });
+      return results;
     }
 
-    const subZoneName = getSafeVal('subZone');
-
-    // 5. Building / Gateway Level (Final Selection)
     if (key === 'building') {
-      const subZoneList = getFieldList('subZone', rowState);
-      const selectedSZ = subZoneList.find(s => s.id === subZoneName);
+      // DUAL MODE: If Sub-Zone level is actually a Location, show Gateways. 
+      // Otherwise show Buildings in that Sub-Zone.
+      const szOptions = getFieldList('subZone', rowState);
+      const selectedSZ = szOptions.find(o => o.id === subZoneName);
 
       if (selectedSZ && selectedSZ.type === 'location') {
         const locInfo = locationDetails[subZoneName];
-        return locInfo ? (locInfo.gatewayList || []) : [];
+        return (locInfo?.gatewayList || []).map(g => ({ label: g.label, id: g.label, rawId: g.id }));
       }
 
-      const targetZone = (zone.subZones || []).find(sz => sz.name === subZoneName) || zone;
-      return (targetZone.locations || []).map(l => ({ label: l.name, id: l.name, rawId: l.id }));
+      const org = hierarchyData.find(o => o.name === orgName);
+      if (!org) return [];
+      let clients = org.clients || [];
+      if (clientName) clients = clients.filter(c => c.name === clientName);
+      
+      const zones = [];
+      clients.forEach(c => {
+        if (c.zones) zones.push(...c.zones);
+      });
+      
+      let filteredZones = zones;
+      if (zoneName) filteredZones = zones.filter(z => z.name === zoneName);
+      
+      const buildings = [];
+      filteredZones.forEach(z => {
+        const collect = (node) => {
+          if (node.locations) buildings.push(...node.locations);
+          if (node.subZones) {
+            let szToSearch = node.subZones;
+            if (subZoneName && node.name === zoneName) {
+               const target = node.subZones.find(sz => sz.name === subZoneName);
+               if (target) szToSearch = [target];
+               else {
+                 // If not found at top level, maybe it's deeper. 
+                 // But for now, if it's selected but not found in immediate subzones, 
+                 // we skip filtering to show everything.
+               }
+            }
+            szToSearch.forEach(collect);
+          }
+        };
+        collect(z);
+      });
+      
+      return buildings.map(l => ({ label: l.name, id: l.name, rawId: l.id }));
     }
 
-    const buildingName = getSafeVal('building');
-
-    // 6. Device ID Level
     if (key === 'device') {
-      const subZoneList = getFieldList('subZone', rowState);
-      const selectedSZ = subZoneList.find(s => s.id === subZoneName);
-
       let locName = buildingName;
-      let gatewayIdFilter = null;
-
+      const szOptions = getFieldList('subZone', rowState);
+      const selectedSZ = szOptions.find(o => o.id === subZoneName);
       if (selectedSZ && selectedSZ.type === 'location') {
         locName = subZoneName;
-        gatewayIdFilter = buildingName;
       }
-
+      
       const locInfo = locationDetails[locName];
       if (!locInfo) return [];
 
-      if (gatewayIdFilter) {
-        return locInfo.deviceList.filter(d => String(d.gatewayId) === String(gatewayIdFilter));
+      // If buildingName (Level 5) is a specific Gateway, filter devices
+      if (buildingName && buildingName !== locName) {
+         // Check if buildingName is a gateway label
+         return (locInfo.deviceList || []).filter(d => d.label.startsWith(buildingName) || d.gatewayId === buildingName);
       }
-      return locInfo.deviceList;
+      
+      return (locInfo.deviceList || []).map(d => ({ label: d.label, id: d.id, rawId: d.id }));
     }
 
     const deviceId = getSafeVal('device');
 
-    // 7. Module & Field Levels
+    // Module & Field Levels
     const devInfo = deviceDetails[deviceId];
     if (!devInfo) return [];
 
@@ -825,18 +1096,30 @@ const ConfigTemplates = () => {
         setAgLevelConfig(existing.mapping.agLevelConfig || createDefaultConfig());
         setAgOpenConfig(existing.mapping.agOpenConfig || createDefaultConfig());
         setAgCloseConfig(existing.mapping.agCloseConfig || createDefaultConfig());
+        setAgStatusStartConfig(existing.mapping.agStatusStartConfig || existing.mapping.agStatusConfig || createDefaultConfig());
+        setAgStatusStopConfig(existing.mapping.agStatusStopConfig || createDefaultConfig());
+        setAgAmpsConfig(existing.mapping.agAmpsConfig || createDefaultConfig());
+        setAgRule1Config(existing.mapping.rule1Config || existing.mapping.ruleEngineConfig || initialRuleState);
+        setAgRule2Config(existing.mapping.rule2Config || existing.mapping.ruleEngineConfig || initialRuleState);
 
-        // Restore Global Location from this existing template
-        setGlobalLocation({
-          organization: existing.mapping.agLowerConfig?.organization || '',
-          client: existing.mapping.agLowerConfig?.client || '',
-          zone: existing.mapping.agLowerConfig?.zone || '',
-          subZone: existing.mapping.agLowerConfig?.subZone || '',
-          building: existing.mapping.agLowerConfig?.building || ''
-        });
+        // Restore Global Location from this existing template ONLY if it has a valid building
+        const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.agLowerConfig?.building ? {
+          organization: existing.mapping.agLowerConfig.organization || '',
+          client: existing.mapping.agLowerConfig.client || '',
+          zone: existing.mapping.agLowerConfig.zone || '',
+          subZone: existing.mapping.agLowerConfig.subZone || '',
+          building: existing.mapping.agLowerConfig.building || ''
+        } : null);
+
+        if (restoredLoc) {
+          setGlobalLocation(restoredLoc);
+        }
+
       } else {
         // Default for new selection
         setAgMasterEnabled(true);
+        setAgRule1Config(initialRuleState);
+        setAgRule2Config(initialRuleState);
       }
       setAgTankRange({ ...agTankRange, domStart: tower.name, domEnd: tower.id });
     } else {
@@ -851,7 +1134,8 @@ const ConfigTemplates = () => {
     const rawMapping = {
       agLowerConfig, agUpperConfig, agTankRange,
       agAutoConfig, agManualConfig, agBypassConfig,
-      agLevelConfig, agOpenConfig, agCloseConfig,
+      agLevelConfig, agOpenConfig, agCloseConfig, 
+      agStatusStartConfig, agStatusStopConfig, agAmpsConfig,
       agTankType, agMasterEnabled: enabledValue
     };
 
@@ -909,17 +1193,29 @@ const ConfigTemplates = () => {
         setAgLevelConfig(existing.mapping.agLevelConfig || createDefaultConfig());
         setAgOpenConfig(existing.mapping.agOpenConfig || createDefaultConfig());
         setAgCloseConfig(existing.mapping.agCloseConfig || createDefaultConfig());
+        setAgStatusStartConfig(existing.mapping.agStatusStartConfig || existing.mapping.agStatusConfig || createDefaultConfig());
+        setAgStatusStopConfig(existing.mapping.agStatusStopConfig || createDefaultConfig());
+        setAgAmpsConfig(existing.mapping.agAmpsConfig || createDefaultConfig());
+        setAgRule1Config(existing.mapping.rule1Config || existing.mapping.ruleEngineConfig || initialRuleState);
+        setAgRule2Config(existing.mapping.rule2Config || existing.mapping.ruleEngineConfig || initialRuleState);
 
-        // Restore Global Location from this existing template
-        setGlobalLocation({
-          organization: existing.mapping.agLowerConfig?.organization || '',
-          client: existing.mapping.agLowerConfig?.client || '',
-          zone: existing.mapping.agLowerConfig?.zone || '',
-          subZone: existing.mapping.agLowerConfig?.subZone || '',
-          building: existing.mapping.agLowerConfig?.building || ''
-        });
+        // Restore Global Location from this existing template ONLY if it has a valid building
+        const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.agLowerConfig?.building ? {
+          organization: existing.mapping.agLowerConfig.organization || '',
+          client: existing.mapping.agLowerConfig.client || '',
+          zone: existing.mapping.agLowerConfig.zone || '',
+          subZone: existing.mapping.agLowerConfig.subZone || '',
+          building: existing.mapping.agLowerConfig.building || ''
+        } : null);
+
+        if (restoredLoc) {
+          setGlobalLocation(restoredLoc);
+        }
+
       } else {
         setAgMasterEnabled(true);
+        setAgRule1Config(initialRuleState);
+        setAgRule2Config(initialRuleState);
       }
       setAgTankRange({ ...agTankRange, flushStart: tower.name, flushEnd: tower.id });
     } else {
@@ -934,16 +1230,18 @@ const ConfigTemplates = () => {
       mapping = {
         agLowerConfig, agUpperConfig, agTankRange,
         agAutoConfig, agManualConfig, agBypassConfig,
-        agLevelConfig, agOpenConfig, agCloseConfig,
-        agTankType, agMasterEnabled, rule1Config, rule2Config, ruleEngineConfig
+        agLevelConfig, agOpenConfig, agCloseConfig, 
+        agStatusStartConfig, agStatusStopConfig, agAmpsConfig,
+        agTankType, agMasterEnabled, rule1Config: agRule1Config, rule2Config: agRule2Config, ruleEngineConfig
       };
     } else if (selectedModule === 'UG Pump') {
       mapping = {
         ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
         ugStartCmdConfig, ugStopCmdConfig, ugStartPressConfig, ugStopPressConfig,
         ugLocalModeConfig, ugRemoteModeConfig,
+        ugStatusStartConfig, ugStatusStopConfig, ugAmpsConfig,
         ugPumpRange: { ...ugPumpRange, pumpNo: selectedUgPumpNo },
-        ugConfig, rule1Config, rule2Config
+        ugConfig, rule1Config: ugRule1Config, rule2Config: ugRule2Config
       };
     } else if (selectedModule === 'UG Tank') {
       mapping = {
@@ -979,10 +1277,14 @@ const ConfigTemplates = () => {
     const cleanedMapping = {};
     Object.keys(rawMapping).forEach(key => {
       const val = rawMapping[key];
-      // Only include sections that have a field selected (actually configured)
-      if (val && typeof val === 'object' && !Array.isArray(val) && 'field' in val) {
-        if (!val.field) return;
+      
+      // Special check for rules: Only save if moduleId is present
+      if ((key === 'rule1Config' || key === 'rule2Config' || key === 'ruleEngineConfig') && val && !val.moduleId) {
+        return; 
+      }
 
+      // Only include sections that have a valid mapping
+      if (val && typeof val === 'object' && !Array.isArray(val)) {
         // Add unique mapping ID for database tracking if it doesn't have one
         if (!val.mappingId) {
           val.mappingId = `map_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -992,7 +1294,7 @@ const ConfigTemplates = () => {
     });
 
     const hasValidConfig = Object.values(cleanedMapping).some(val =>
-      val && typeof val === 'object' && val.field
+      val && typeof val === 'object' && (val.field || val.ry || val.r || val.pf || val.kva || val.domStart || val.name || val.pumpNo)
     );
 
     if (!hasValidConfig) {
@@ -1083,6 +1385,7 @@ const ConfigTemplates = () => {
       setAgLevelConfig(createDefaultConfig());
       setAgOpenConfig(createDefaultConfig());
       setAgCloseConfig(createDefaultConfig());
+      setAgAmpsConfig(createDefaultConfig());
       setAgTankRange({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
       setAgMasterEnabled(true);
     }
@@ -1096,6 +1399,7 @@ const ConfigTemplates = () => {
     setUgStopPressConfig(createDefaultConfig());
     setUgLocalModeConfig(createDefaultConfig());
     setUgRemoteModeConfig(createDefaultConfig());
+    setUgAmpsConfig(createDefaultConfig());
     setPressureConfig(createDefaultConfig());
     setElecVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
     setElecCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
@@ -1104,8 +1408,10 @@ const ConfigTemplates = () => {
     setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
     setTemplateName('');
-    setRule1Config(initialRuleState);
-    setRule2Config(initialRuleState);
+    setAgRule1Config(initialRuleState);
+    setAgRule2Config(initialRuleState);
+    setUgRule1Config(initialRuleState);
+    setUgRule2Config(initialRuleState);
     setRuleEngineConfig(initialRuleState);
     setUgConfig({
       integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
@@ -1160,6 +1466,8 @@ const ConfigTemplates = () => {
       setAgLevelConfig(template.mapping.agLevelConfig || createDefaultConfig());
       setAgOpenConfig(template.mapping.agOpenConfig || createDefaultConfig());
       setAgCloseConfig(template.mapping.agCloseConfig || createDefaultConfig());
+      setAgStatusStartConfig(template.mapping.agStatusStartConfig || template.mapping.agStatusConfig || createDefaultConfig());
+      setAgStatusStopConfig(template.mapping.agStatusStopConfig || createDefaultConfig());
       setAgTankRange(template.mapping.agTankRange || { domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
       setAgTankType(template.mapping.agTankType || 'DOMESTIC');
       setAgMasterEnabled(template.mapping.agMasterEnabled !== undefined ? template.mapping.agMasterEnabled : true);
@@ -1173,6 +1481,8 @@ const ConfigTemplates = () => {
       setUgStopPressConfig(template.mapping.ugStopPressConfig || createDefaultConfig());
       setUgLocalModeConfig(template.mapping.ugLocalModeConfig || createDefaultConfig());
       setUgRemoteModeConfig(template.mapping.ugRemoteModeConfig || createDefaultConfig());
+      setUgStatusStartConfig(template.mapping.ugStatusStartConfig || createDefaultConfig());
+      setUgStatusStopConfig(template.mapping.ugStatusStopConfig || createDefaultConfig());
       setPressureConfig(template.mapping.pressureConfig || createDefaultConfig());
       setElecVoltageConfig(template.mapping.elecVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
       setElecCurrentConfig(template.mapping.elecCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
@@ -1189,21 +1499,18 @@ const ConfigTemplates = () => {
       setUgTankLevelConfig(template.mapping.ugTankLevelConfig || createDefaultConfig());
       setUgTankRange(template.mapping.ugTankRange || { name: '', id: '' });
       setTemplateName(template.name || '');
-      if (template.mapping.rule1Config) {
-        setRule1Config(template.mapping.rule1Config);
-      } else if (template.mapping.ruleEngineConfig) {
-        setRule1Config(template.mapping.ruleEngineConfig);
+      // 0. Restore Rules (Cross-Module)
+      const r1 = template.mapping.rule1Config || template.mapping.ruleEngineConfig || initialRuleState;
+      const r2 = template.mapping.rule2Config || template.mapping.ruleEngineConfig || initialRuleState;
+      
+      if (template.module === 'AG Tank') {
+        setAgRule1Config(r1);
+        setAgRule2Config(r2);
+      } else if (template.module === 'UG Pump') {
+        setUgRule1Config(r1);
+        setUgRule2Config(r2);
       }
-
-      if (template.mapping.rule2Config) {
-        setRule2Config(template.mapping.rule2Config);
-      } else if (template.mapping.ruleEngineConfig) {
-        setRule2Config(template.mapping.ruleEngineConfig);
-      }
-
-      if (template.mapping.ruleEngineConfig) {
-        setRuleEngineConfig(template.mapping.ruleEngineConfig);
-      }
+      setRuleEngineConfig(template.mapping.ruleEngineConfig || r1);
 
       // 1. Restore Global Location
       let restoredHierarchy = null;
@@ -1317,6 +1624,7 @@ const ConfigTemplates = () => {
                 setAgLevelConfig(createDefaultConfig());
                 setAgOpenConfig(createDefaultConfig());
                 setAgCloseConfig(createDefaultConfig());
+                setAgAmpsConfig(createDefaultConfig());
                 setAgTankRange({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
 
                 // Reset UG Configs
@@ -1330,6 +1638,7 @@ const ConfigTemplates = () => {
                 setUgStopPressConfig(createDefaultConfig());
                 setUgLocalModeConfig(createDefaultConfig());
                 setUgRemoteModeConfig(createDefaultConfig());
+                setUgAmpsConfig(createDefaultConfig());
                 setUgPumpRange({ name: '', id: '' });
 
                 // Reset Others
@@ -1354,6 +1663,7 @@ const ConfigTemplates = () => {
                 setAgLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setAgOpenConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setAgCloseConfig({ location: '', device: '', module: '', field: '', enabled: true });
+                setAgAmpsConfig({ location: '', device: '', module: '', field: '', enabled: true });
                 setAgTankRange({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
                 setUgPumpRange({ name: '', id: '' });
                 setViewMode('FORM');
@@ -1557,11 +1867,15 @@ const ConfigTemplates = () => {
                                   <Form.Select className="premium-input p-2 fs-9 fw-bold border-info border-opacity-10"
                                     value={agTankRange.domStart} onChange={(e) => handleDomesticTowerChange(e.target.value)}>
                                     <option value="">SELECT TOWER</option>
-                                    {domesticTowers.map(t => (
-                                      <option key={t.name} value={t.name}>
-                                        {t.name}{disabledTowerNames.includes(t.name) ? ' (DISABLED)' : ''}
-                                      </option>
-                                    ))}
+                                    {domesticTowers.map(t => {
+                                      const isSaved = savedTemplates.some(tmpl => tmpl.module === 'AG Tank' && tmpl.mapping?.agTankRange?.domStart === t.name);
+                                      const isDisabled = disabledTowerNames.includes(t.name) || isSaved;
+                                      return (
+                                        <option key={t.name} value={t.name} disabled={isDisabled}>
+                                          {t.name}{disabledTowerNames.includes(t.name) ? ' (DISABLED)' : ''}{isSaved ? ' (ALREADY SAVED)' : ''}
+                                        </option>
+                                      );
+                                    })}
                                   </Form.Select>
                                 </Col>
                                 <Col xs={3}>
@@ -1609,11 +1923,15 @@ const ConfigTemplates = () => {
                                   <Form.Select className="premium-input p-2 fs-9 fw-bold border-primary border-opacity-10"
                                     value={agTankRange.flushStart} onChange={(e) => handleFlushingTowerChange(e.target.value)}>
                                     <option value="">SELECT TOWER</option>
-                                    {flushingTowers.map(t => (
-                                      <option key={t.name} value={t.name}>
-                                        {t.name}{disabledTowerNames.includes(t.name) ? ' (DISABLED)' : ''}
-                                      </option>
-                                    ))}
+                                    {flushingTowers.map(t => {
+                                      const isSaved = savedTemplates.some(tmpl => tmpl.module === 'AG Tank' && tmpl.mapping?.agTankRange?.flushStart === t.name);
+                                      const isDisabled = disabledTowerNames.includes(t.name) || isSaved;
+                                      return (
+                                        <option key={t.name} value={t.name} disabled={isDisabled}>
+                                          {t.name}{disabledTowerNames.includes(t.name) ? ' (DISABLED)' : ''}{isSaved ? ' (ALREADY SAVED)' : ''}
+                                        </option>
+                                      );
+                                    })}
                                   </Form.Select>
                                 </Col>
                                 <Col xs={3}>
@@ -1657,6 +1975,9 @@ const ConfigTemplates = () => {
                         { title: 'Level Command', state: agLevelConfig, setter: setAgLevelConfig, icon: <Layers size={18} />, color: 'info' },
                         { title: 'Open Valve Command', state: agOpenConfig, setter: setAgOpenConfig, icon: <Droplets size={18} />, color: 'primary' },
                         { title: 'Close Valve Command', state: agCloseConfig, setter: setAgCloseConfig, icon: <X size={18} />, color: 'danger' },
+                        { title: 'Valve Status  Start', state: agStatusStartConfig, setter: setAgStatusStartConfig, icon: <Activity size={18} />, color: 'success' },
+                        { title: 'Valve Status  Stop', state: agStatusStopConfig, setter: setAgStatusStopConfig, icon: <Activity size={18} />, color: 'warning' },
+                        { title: 'Current Monitor', state: agAmpsConfig, setter: setAgAmpsConfig, icon: <Zap size={18} />, color: 'info' },
                       ].map((section, idx) => (
                         <Col md={6} key={idx}>
                           <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all ${agMasterEnabled ? `hover-glow-${section.color}` : 'opacity-25 grayscale'}`} style={{ pointerEvents: agMasterEnabled ? 'auto' : 'none' }}>
@@ -1669,7 +1990,13 @@ const ConfigTemplates = () => {
                                   {section.icon}
                                 </div>
                                 <div>
-                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                  <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
+                                    {section.title} {
+                                      (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
+                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                        : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                    }
+                                  </h6>
                                   <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>Sensor Mapping</small>
                                 </div>
                               </div>
@@ -1679,7 +2006,7 @@ const ConfigTemplates = () => {
                                   size="sm" 
                                   className="ms-auto fw-black fs-11 px-3 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow me-2"
                                   onClick={() => {
-                                    const config = section.title === 'Lower Limits' ? rule1Config : rule2Config;
+                                    const config = section.title === 'Lower Limits' ? agRule1Config : agRule2Config;
                                     handleSendRule({ ...config, moduleId: section.state.module });
                                   }}
                                 >
@@ -1705,21 +2032,24 @@ const ConfigTemplates = () => {
                             {!section.isAction && (
                               <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
                                 <Row className="g-3 position-relative z-1">
-                                  {!globalLocation.building ? (
+                                  {!isHierarchyUnlocked ? (
                                     <Col md={12}>
                                       <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
                                         <small className="text-warning fw-black uppercase tracking-widest fs-12">
-                                          <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                          <Info size={14} className="me-2" /> Select any hierarchy level in MODULE CONFIGURATOR to unlock mapping
                                         </small>
                                       </div>
                                     </Col>
                                   ) : (
                                     <>
+                                      {/* PRIMARY MAPPING ROW */}
                                       <Col md={3}>
-                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-flex align-items-center gap-2">
+                                          <Home size={12} /> BUILDING
+                                        </Form.Label>
                                         <Form.Select
                                           className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
-                                          style={{ height: '45px' }}
+                                          style={{ height: '45px', background: 'rgba(15, 23, 42, 0.4)' }}
                                           value={section.state.building || globalLocation.building}
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}
                                         >
@@ -1730,52 +2060,110 @@ const ConfigTemplates = () => {
                                         </Form.Select>
                                       </Col>
                                       <Col md={3}>
-                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-flex align-items-center gap-2">
+                                          <Zap size={12} /> DEVICE_ID
+                                        </Form.Label>
                                         <Form.Select
                                           className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
-                                          style={{ height: '45px' }}
+                                          style={{ height: '45px', background: 'rgba(15, 23, 42, 0.4)' }}
                                           value={section.state.device}
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}
                                         >
-                                          <option value="">SELECT DEVICE_ID</option>
+                                          <option value="">SELECT DEVICE</option>
                                           {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
                                             <option key={opt.id} value={opt.id}>{opt.label}</option>
                                           ))}
                                         </Form.Select>
                                       </Col>
                                       <Col md={3}>
-                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">MODULE_ID</Form.Label>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-flex align-items-center gap-2">
+                                          <Layers size={12} /> MODULE_ID
+                                        </Form.Label>
                                         <Form.Select
                                           className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
-                                          style={{ height: '45px' }}
+                                          style={{ height: '45px', background: 'rgba(15, 23, 42, 0.4)' }}
                                           value={section.state.module}
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'module', e.target.value)}
                                         >
-                                          <option value="">SELECT MODULE_ID</option>
+                                          <option value="">SELECT MODULE</option>
                                           {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => {
-                                             const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
+                                             const isRuleEngine = section.title === 'Lower Limits' || section.title === 'Upper Limits';
+                                             const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
                                              return (
                                                <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
-                                                 {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
+                                                 {opt.label} {isUsed ? ' (USED)' : ''}
                                                </option>
                                              );
                                            })}
                                         </Form.Select>
                                       </Col>
                                       <Col md={3}>
-                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
-                                        <Form.Select
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-flex align-items-center gap-2">
+                                          <Activity size={12} /> EVENT_FIELD
+                                        </Form.Label>
+                                        <Form.Control
+                                          as="input"
+                                          list={`datalist-ag-${section.title.replace(/\s+/g, '-')}-${idx}`}
                                           className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
-                                          style={{ height: '45px' }}
+                                          style={{ height: '45px', background: 'rgba(15, 23, 42, 0.4)' }}
                                           value={section.state.field}
+                                          placeholder="TYPE FIELD"
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'field', e.target.value)}
-                                        >
-                                          <option value="">SELECT EVENT_FIELD</option>
+                                        />
+                                        <datalist id={`datalist-ag-${section.title.replace(/\s+/g, '-')}-${idx}`}>
                                           {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
                                             <option key={opt.id} value={opt.id}>{opt.label}</option>
                                           ))}
-                                        </Form.Select>
+                                        </datalist>
                                       </Col>
+
+                                      {/* LOGIC CONDITION ROW FOR STATUS */}
+                                      {section.title.includes('Status') && (
+                                        <Col md={12} className="mt-3">
+                                          <div className="p-3 rounded-4 border border-white border-opacity-5" style={{ background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(4px)' }}>
+                                            <div className="d-flex align-items-center gap-4">
+                                              <div className="flex-shrink-0">
+                                                <small className={`text-${section.color} fw-black uppercase tracking-widest fs-10 opacity-75 d-block mb-1`}>Logic Condition</small>
+                                                <div className="fs-11 text-secondary fw-bold opacity-40 uppercase tracking-tighter">Threshold Logic</div>
+                                              </div>
+                                              
+                                              <div className="flex-grow-1 d-flex gap-3">
+                                                <div style={{ width: '120px' }}>
+                                                  <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Operator</Form.Label>
+                                                  <Form.Select
+                                                    className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                    style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
+                                                    value={section.state.operator}
+                                                    onChange={(e) => handleConfigChange(section.state, section.setter, 'operator', e.target.value)}
+                                                  >
+                                                    <option value="=">EQUAL (=)</option>
+                                                    <option value=">">GREATER (&gt;)</option>
+                                                    <option value="<">LESS (&lt;)</option>
+                                                  </Form.Select>
+                                                </div>
+                                                
+                                                <div style={{ width: '120px' }}>
+                                                  <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Value</Form.Label>
+                                                  <Form.Control
+                                                    type="text"
+                                                    className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner text-white`}
+                                                    style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
+                                                    value={section.state.value}
+                                                    placeholder="ENTER VALUE"
+                                                    onChange={(e) => {
+                                                      handleConfigChange(section.state, section.setter, 'value', e.target.value);
+                                                    }}
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              <div className="ms-auto text-end opacity-20">
+                                                <Settings size={24} className={`text-${section.color}`} />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </Col>
+                                      )}
                                     </>
                                   )}
                                 </Row>
@@ -1785,12 +2173,18 @@ const ConfigTemplates = () => {
                             {/* RULE ENGINE SHORTCUT FOR LIMITS */}
                             {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
                               <div className="mt-4 pt-3 border-top border-white border-opacity-5 d-flex justify-content-end">
+                                {(!section.state.enabled || !section.state.module) ? (
+                                  <div className={`text-${section.color} fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 opacity-50`}>
+                                    <Zap size={14} />
+                                    RULE ENGINE NOT MAPPED
+                                  </div>
+                                ) : (
                                   <Button
                                     variant="link"
                                     className={`p-0 text-${section.color} text-decoration-none fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 transition-all hover-opacity-100 opacity-70`}
                                     onClick={() => {
                                       const target = section.title === 'Lower Limits' ? 'RULE1' : 'RULE2';
-                                      const config = target === 'RULE1' ? rule1Config : rule2Config;
+                                      const config = target === 'RULE1' ? agRule1Config : agRule2Config;
                                       setCurrentRuleTarget(target);
                                       setRuleEngineConfig({ ...config, moduleId: section.state.module });
                                       setShowRuleEngineModal(true);
@@ -1800,6 +2194,7 @@ const ConfigTemplates = () => {
                                     Rule Engine Configuration
                                     <ChevronRight size={14} />
                                   </Button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1824,9 +2219,14 @@ const ConfigTemplates = () => {
                           onChange={(e) => handleUgPumpNoChange(Number(e.target.value))}
                         >
                           <option value="">SELECT UNIT</option>
-                          <option value="1">PUMP 1</option>
-                          <option value="2">PUMP 2</option>
-                          <option value="3">PUMP 3</option>
+                          {[1, 2, 3].map(no => {
+                            const isSaved = savedTemplates.some(t => t.module === 'UG Pump' && t.mapping?.ugPumpRange?.pumpNo === no);
+                            return (
+                              <option key={no} value={no} disabled={isSaved}>
+                                PUMP {no} {isSaved ? '(ALREADY SAVED)' : ''}
+                              </option>
+                            );
+                          })}
                         </Form.Select>
                       </div>
                     </div>
@@ -1840,10 +2240,13 @@ const ConfigTemplates = () => {
                           { title: 'Manual Setting', state: ugManualConfig, setter: setUgManualConfig, icon: <Settings size={18} />, color: 'warning' },
                           { title: 'Start Command', state: ugStartCmdConfig, setter: setUgStartCmdConfig, icon: <Zap size={18} />, color: 'info' },
                           { title: 'Stop Command', state: ugStopCmdConfig, setter: setUgStopCmdConfig, icon: <X size={18} />, color: 'danger' },
+                          { title: 'Valve Status Start', state: ugStatusStartConfig, setter: setUgStatusStartConfig, icon: <Activity size={18} />, color: 'success' },
+                          { title: 'Valve Status Stop', state: ugStatusStopConfig, setter: setUgStatusStopConfig, icon: <Activity size={18} />, color: 'danger' },
                           { title: 'Start Pressure', state: ugStartPressConfig, setter: setUgStartPressConfig, icon: <Activity size={18} />, color: 'primary' },
                           { title: 'Stop Pressure', state: ugStopPressConfig, setter: setUgStopPressConfig, icon: <Zap size={18} />, color: 'warning' },
                           { title: 'Local Mode', state: ugLocalModeConfig, setter: setUgLocalModeConfig, icon: <Home size={18} />, color: 'info' },
                           { title: 'Remote Mode', state: ugRemoteModeConfig, setter: setUgRemoteModeConfig, icon: <Activity size={18} />, color: 'primary' },
+                          { title: 'Current Monitor', state: ugAmpsConfig, setter: setUgAmpsConfig, icon: <Zap size={18} />, color: 'warning' },
                         ].map((section, idx) => (
                           <Col md={6} key={idx}>
                             <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-${section.color}`}>
@@ -1856,7 +2259,13 @@ const ConfigTemplates = () => {
                                     {section.icon}
                                   </div>
                                   <div>
-                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
+                                      {section.title} {
+                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
+                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                          : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                      }
+                                    </h6>
                                     <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>UG Pump Mapping</small>
                                   </div>
                                 </div>
@@ -1866,7 +2275,7 @@ const ConfigTemplates = () => {
                                     size="sm" 
                                     className="ms-auto fw-black fs-11 px-3 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow me-2"
                                     onClick={() => {
-                                      const config = section.title === 'Lower Limits' ? rule1Config : rule2Config;
+                                      const config = section.title === 'Lower Limits' ? ugRule1Config : ugRule2Config;
                                       handleSendRule({ ...config, moduleId: section.state.module });
                                     }}
                                   >
@@ -1884,11 +2293,11 @@ const ConfigTemplates = () => {
                               {/* MAPPING BOXES */}
                               <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
                                 <Row className="g-3 position-relative z-1">
-                                  {!globalLocation.building ? (
+                                  {!isHierarchyUnlocked ? (
                                     <Col md={12}>
                                       <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
                                         <small className="text-warning fw-black uppercase tracking-widest fs-12">
-                                          <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                          <Info size={14} className="me-2" /> Select any hierarchy level in MODULE CONFIGURATOR to unlock mapping
                                         </small>
                                       </div>
                                     </Col>
@@ -1932,7 +2341,8 @@ const ConfigTemplates = () => {
                                         >
                                           <option value="">SELECT MODULE_ID</option>
                                           {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => {
-                                             const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
+                                             const isRuleEngine = section.title === 'Lower Limits' || section.title === 'Upper Limits';
+                                             const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
                                              return (
                                                <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
                                                  {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
@@ -1943,18 +2353,69 @@ const ConfigTemplates = () => {
                                       </Col>
                                       <Col md={3}>
                                         <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
-                                        <Form.Select
+                                        <Form.Control
+                                          as="input"
+                                          list={`datalist-ugp-${section.title.replace(/\s+/g, '-')}-${idx}`}
                                           className={`premium-input p-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
                                           style={{ height: '45px' }}
                                           value={section.state.field}
+                                          placeholder="SELECT OR TYPE"
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'field', e.target.value)}
-                                        >
-                                          <option value="">SELECT EVENT_FIELD</option>
-                                          {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
-                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                          ))}
-                                        </Form.Select>
-                                      </Col>
+                                        />
+                                         <datalist id={`datalist-ugp-${section.title.replace(/\s+/g, '-')}-${idx}`}>
+                                           {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                             <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                           ))}
+                                         </datalist>
+                                       </Col>
+
+                                       {/* LOGIC CONDITION ROW FOR STATUS */}
+                                       {section.title.includes('Status') && (
+                                         <Col md={12} className="mt-3">
+                                           <div className="p-3 rounded-4 border border-white border-opacity-5" style={{ background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(4px)' }}>
+                                             <div className="d-flex align-items-center gap-4">
+                                               <div className="flex-shrink-0">
+                                                 <small className={`text-${section.color} fw-black uppercase tracking-widest fs-10 opacity-75 d-block mb-1`}>Logic Condition</small>
+                                                 <div className="fs-11 text-secondary fw-bold opacity-40 uppercase tracking-tighter">Threshold Logic</div>
+                                               </div>
+                                               
+                                               <div className="flex-grow-1 d-flex gap-3">
+                                                 <div style={{ width: '120px' }}>
+                                                   <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Operator</Form.Label>
+                                                   <Form.Select
+                                                     className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                     style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
+                                                     value={section.state.operator}
+                                                     onChange={(e) => handleConfigChange(section.state, section.setter, 'operator', e.target.value)}
+                                                   >
+                                                     <option value="=">EQUAL (=)</option>
+                                                     <option value=">">GREATER (&gt;)</option>
+                                                     <option value="<">LESS (&lt;)</option>
+                                                   </Form.Select>
+                                                 </div>
+                                                 
+                                                 <div style={{ width: '120px' }}>
+                                                   <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Value</Form.Label>
+                                                   <Form.Control
+                                                     type="text"
+                                                     className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner text-white`}
+                                                     style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
+                                                     value={section.state.value}
+                                                     placeholder="ENTER VALUE"
+                                                     onChange={(e) => {
+                                                       handleConfigChange(section.state, section.setter, 'value', e.target.value);
+                                                     }}
+                                                   />
+                                                 </div>
+                                               </div>
+
+                                               <div className="ms-auto text-end opacity-20">
+                                                 <Settings size={24} className={`text-${section.color}`} />
+                                               </div>
+                                             </div>
+                                           </div>
+                                         </Col>
+                                       )}
                                     </>
                                   )}
                                 </Row>
@@ -1963,21 +2424,28 @@ const ConfigTemplates = () => {
                               {/* RULE ENGINE SHORTCUT FOR LIMITS */}
                               {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
                                 <div className="mt-4 pt-3 border-top border-white border-opacity-5 d-flex justify-content-end">
-                                  <Button
-                                    variant="link"
-                                    className={`p-0 text-${section.color} text-decoration-none fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 transition-all hover-opacity-100 opacity-70`}
-                                    onClick={() => {
-                                      const target = section.title === 'Lower Limits' ? 'RULE1' : 'RULE2';
-                                      const config = target === 'RULE1' ? rule1Config : rule2Config;
-                                      setCurrentRuleTarget(target);
-                                      setRuleEngineConfig({ ...config, moduleId: section.state.module });
-                                      setShowRuleEngineModal(true);
-                                    }}
-                                  >
-                                    <Zap size={14} className="shadow-glow-blue" />
-                                    Rule Engine Configuration
-                                    <ChevronRight size={14} />
-                                  </Button>
+                                  {(!section.state.enabled || !section.state.module) ? (
+                                    <div className={`text-${section.color} fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 opacity-50`}>
+                                      <Zap size={14} />
+                                      RULE ENGINE NOT MAPPED
+                                    </div>
+                                  ) : (
+                                    <Button
+                                      variant="link"
+                                      className={`p-0 text-${section.color} text-decoration-none fs-11 fw-black uppercase tracking-widest d-flex align-items-center gap-2 transition-all hover-opacity-100 opacity-70`}
+                                      onClick={() => {
+                                        const target = section.title === 'Lower Limits' ? 'RULE1' : 'RULE2';
+                                        const config = target === 'RULE1' ? ugRule1Config : ugRule2Config;
+                                        setCurrentRuleTarget(target);
+                                        setRuleEngineConfig({ ...config, moduleId: section.state.module });
+                                        setShowRuleEngineModal(true);
+                                      }}
+                                    >
+                                      <Zap size={14} className="shadow-glow-blue" />
+                                      Rule Engine Configuration
+                                      <ChevronRight size={14} />
+                                    </Button>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -2037,11 +2505,11 @@ const ConfigTemplates = () => {
                             {/* MAPPING GRID */}
                             <div className={`transition-all ${!ugTankLevelConfig.enabled ? 'opacity-25 grayscale' : ''}`}>
                               <Row className="g-3 position-relative z-1">
-                                {!globalLocation.building ? (
+                                {!isHierarchyUnlocked ? (
                                   <Col md={12}>
                                     <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
                                       <small className="text-warning fw-black uppercase tracking-widest fs-12">
-                                        <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                        <Info size={14} className="me-2" /> Select any hierarchy level in MODULE CONFIGURATOR to unlock mapping
                                       </small>
                                     </div>
                                   </Col>
@@ -2085,7 +2553,8 @@ const ConfigTemplates = () => {
                                       >
                                         <option value="">SELECT MODULE_ID</option>
                                         {getFieldList('module', { ...globalLocation, ...ugTankLevelConfig, building: ugTankLevelConfig.building || globalLocation.building }).map(opt => {
-                                          const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== ugTankLevelConfig.module;
+                                          const isRuleEngine = false; // UG Tank Level is usually not a rule engine card directly here
+                                          const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== ugTankLevelConfig.module;
                                           return (
                                             <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
                                               {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
@@ -2096,17 +2565,20 @@ const ConfigTemplates = () => {
                                     </Col>
                                     <Col md={3}>
                                       <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
-                                      <Form.Select
+                                      <Form.Control
+                                        as="input"
+                                        list="datalist-ugt-level"
                                         className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10 shadow-inner"
                                         style={{ height: '45px' }}
                                         value={ugTankLevelConfig.field}
+                                        placeholder="SELECT OR TYPE"
                                         onChange={(e) => handleConfigChange(ugTankLevelConfig, setUgTankLevelConfig, 'field', e.target.value)}
-                                      >
-                                        <option value="">SELECT EVENT_FIELD</option>
+                                      />
+                                      <datalist id="datalist-ugt-level">
                                         {getFieldList('field', { ...globalLocation, ...ugTankLevelConfig, building: ugTankLevelConfig.building || globalLocation.building }).map(opt => (
                                           <option key={opt.id} value={opt.id}>{opt.label}</option>
                                         ))}
-                                      </Form.Select>
+                                      </datalist>
                                     </Col>
                                   </>
                                 )}
@@ -2149,7 +2621,7 @@ const ConfigTemplates = () => {
                                     className="premium-input p-1 fs-11 fw-bold border-0 bg-transparent text-info"
                                     style={{ width: '180px', height: '30px' }}
                                     value={pressureTarget}
-                                    onChange={(e) => setPressureTarget(e.target.value)}
+                                    onChange={(e) => handlePressureTargetChange(e.target.value)}
                                   >
                                     <option value="">SELECT SENSOR</option>
                                     {pressureSensorsList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
@@ -2209,7 +2681,8 @@ const ConfigTemplates = () => {
                                   >
                                     <option value="">SELECT MODULE_ID</option>
                                     {getFieldList('module', { ...globalLocation, ...pressureConfig, building: pressureConfig.building || globalLocation.building }).map(opt => {
-                                      const isUsed = usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== pressureConfig.module;
+                                      const isRuleEngine = false;
+                                      const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== pressureConfig.module;
                                       return (
                                         <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
                                           {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
@@ -2222,15 +2695,20 @@ const ConfigTemplates = () => {
                                 {/* 4. EVENT_FIELD */}
                                 <Col md={6}>
                                   <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">EVENT_ FIELD</Form.Label>
-                                  <Form.Select className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10" style={{ height: '45px' }}
+                                  <Form.Control
+                                    as="input"
+                                    list="datalist-pressure-field"
+                                    className="premium-input p-3 fs-12 fw-bold border-info border-opacity-10 shadow-inner"
+                                    style={{ height: '45px' }}
                                     value={pressureConfig.field}
+                                    placeholder="SELECT OR TYPE"
                                     onChange={(e) => handleConfigChange(pressureConfig, setPressureConfig, 'field', e.target.value)}
-                                  >
-                                    <option value="">SELECT EVENT_FIELD</option>
+                                  />
+                                  <datalist id="datalist-pressure-field">
                                     {getFieldList('field', { ...globalLocation, ...pressureConfig, building: pressureConfig.building || globalLocation.building }).map(opt => (
                                       <option key={opt.id} value={opt.id}>{opt.label}</option>
                                     ))}
-                                  </Form.Select>
+                                  </datalist>
                                 </Col>
                               </Row>
                             </div>
@@ -2254,7 +2732,7 @@ const ConfigTemplates = () => {
                           className="premium-input p-2 fs-10 fw-bold border-warning border-opacity-20"
                           style={{ width: '220px' }}
                           value={electricalTarget}
-                          onChange={(e) => setElectricalTarget(e.target.value)}
+                          onChange={(e) => handleElectricalTargetChange(e.target.value)}
                         >
                           <option value="">SELECT METER</option>
                           {electricalMetersList.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
@@ -2288,7 +2766,13 @@ const ConfigTemplates = () => {
                                     {section.icon}
                                   </div>
                                   <div>
-                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
+                                      {section.title} {
+                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
+                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                          : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                      }
+                                    </h6>
                                     <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>Power Meter Mapping</small>
                                   </div>
                                 </div>
@@ -2298,11 +2782,11 @@ const ConfigTemplates = () => {
                               {/* MAPPING GRID */}
                               <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
                                 <Row className="g-3 position-relative z-1">
-                                  {!globalLocation.building ? (
+                                  {!isHierarchyUnlocked ? (
                                     <Col md={12}>
                                       <div className="p-3 rounded bg-dark bg-opacity-40 border border-warning border-opacity-20 text-center shadow-glow-warning-box">
                                         <small className="text-warning fw-black uppercase tracking-widest fs-12">
-                                          <Info size={14} className="me-2" /> Select Building in MODULE CONFIGURATOR to unlock mapping
+                                          <Info size={14} className="me-2" /> Select any hierarchy level in MODULE CONFIGURATOR to unlock mapping
                                         </small>
                                       </div>
                                     </Col>
@@ -2355,17 +2839,20 @@ const ConfigTemplates = () => {
                                           {section.fields.map((f, fIdx) => (
                                             <div key={fIdx}>
                                               <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
-                                              <Form.Select
+                                              <Form.Control
+                                                as="input"
+                                                list={`datalist-elec-${section.title.replace(/\s+/g, '-')}-${f.key}`}
                                                 className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
                                                 style={{ height: '35px' }}
                                                 value={section.state[f.key]}
+                                                placeholder={`TYPE ${f.label}`}
                                                 onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
-                                              >
-                                                <option value="">SELECT {f.label}</option>
+                                              />
+                                              <datalist id={`datalist-elec-${section.title.replace(/\s+/g, '-')}-${f.key}`}>
                                                 {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
                                                   <option key={opt.id} value={opt.id}>{opt.label}</option>
                                                 ))}
-                                              </Form.Select>
+                                              </datalist>
                                             </div>
                                           ))}
                                         </div>
@@ -2443,29 +2930,45 @@ const ConfigTemplates = () => {
                     <Card className={`premium-figma-card border-0 rounded-4 overflow-hidden h-100 d-flex flex-column transition-all ${selectedTemplates.includes(template.id) ? 'selected-premium-card' : ''}`}>
                       <div className="card-inner-glow"></div>
                       <div className="p-3 position-relative z-1 flex-grow-1">
-                        <div className="d-flex justify-content-between align-items-center mb-3">
-                          <div className="d-flex align-items-center gap-3">
-                            <Form.Check
-                              type="checkbox"
-                              className="scada-checkbox info m-0"
-                              checked={selectedTemplates.includes(template.id)}
-                              onChange={() => toggleSelectTemplate(template.id)}
-                            />
-                            <div className="status-indicator-pulse"></div>
-                            <div>
-                              <h6 className="text-info fw-black mb-0 fs-10 tracking-widest uppercase">
-                                {template.name || template.module}
-                              </h6>
-                              <span className="text-secondary fs-12 uppercase fw-bold opacity-40 letter-spacing-2" style={{ fontSize: '0.6rem' }}>{template.module} • {template.category}</span>
+                        <div className="mb-4 position-relative">
+                          {/* TOP ROW: Checkbox & Preview */}
+                          <div className="d-flex justify-content-between align-items-center mb-2">
+                            <div className="d-flex align-items-center gap-2">
+                              <Form.Check
+                                type="checkbox"
+                                className="scada-checkbox info m-0"
+                                checked={selectedTemplates.includes(template.id)}
+                                onChange={() => toggleSelectTemplate(template.id)}
+                              />
+                              <div className="status-indicator-pulse"></div>
+                            </div>
+                            
+                            <div
+                              className="preview-badge-premium d-flex align-items-center gap-2 cursor-pointer transition-all hover-glow-blue"
+                              style={{ 
+                                padding: '4px 12px', 
+                                borderRadius: '8px', 
+                                background: 'rgba(56, 189, 248, 0.12)',
+                                border: '1px solid rgba(56, 189, 248, 0.2)',
+                                backdropFilter: 'blur(8px)',
+                                boxShadow: '0 4px 15px rgba(0,0,0,0.3)',
+                                zIndex: 10
+                              }}
+                              onClick={(e) => { e.stopPropagation(); handlePreview(template); }}
+                            >
+                              <Eye size={12} className="text-info shadow-glow-blue" />
+                              <span className="fw-black text-info uppercase tracking-widest" style={{ fontSize: '0.65rem' }}>Preview</span>
                             </div>
                           </div>
-                          <div
-                            className="preview-badge-premium d-flex align-items-center gap-2 cursor-pointer"
-                            onClick={() => handlePreview(template)}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <Eye size={12} className="eye-icon-glow" />
-                            <span className="fw-black uppercase tracking-widest" style={{ fontSize: '0.65rem' }}>Preview</span>
+
+                          {/* TEXT SECTION: Moved Lower */}
+                          <div className="mt-3 pt-1">
+                            <h6 className="text-info fw-black mb-0 tracking-widest uppercase text-truncate" style={{ fontSize: '0.7rem', textShadow: '0 0 12px rgba(56, 189, 248, 0.4)' }}>
+                              {template.name || template.module}
+                            </h6>
+                            <div className="text-secondary fs-12 uppercase fw-bold opacity-40 letter-spacing-1 text-truncate mt-1" style={{ fontSize: '0.55rem' }}>
+                              {template.module} • {template.category}
+                            </div>
                           </div>
                         </div>
 
@@ -2514,7 +3017,7 @@ const ConfigTemplates = () => {
                           </div>
                           <div className="d-flex justify-content-between text-secondary fs-12 fw-bold">
                             <span className="opacity-40 uppercase tracking-tighter" style={{ fontSize: '0.65rem' }}>Synchronized</span>
-                            <span className="fs-13 opacity-75 fw-black tracking-tighter">{template.timestamp.split(',')[0]}</span>
+                            <span className="fs-13 opacity-75 fw-black tracking-tighter text-nowrap">{template.timestamp}</span>
                           </div>
                         </div>
                       </div>
@@ -2650,7 +3153,13 @@ const ConfigTemplates = () => {
                               ].filter(section => previewTemplate.mapping[section.key]?.field).map((section, idx) => (
                                 <Col md={4} key={idx}>
                                   <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
-                                    <span className="fs-13 text-success fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">{section.title}</span>
+                                      <span className="fs-13 text-success fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
+                                        {section.title} {
+                                          (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
+                                            ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                            : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                        }
+                                      </span>
                                     {['location', 'device', 'module', 'field'].map(f => (
                                       <div key={f} className="d-flex justify-content-between">
                                         <span className="fs-13 text-secondary uppercase fw-bold opacity-40">{f}</span>
@@ -2747,7 +3256,13 @@ const ConfigTemplates = () => {
                           ].map((section, idx) => (
                             <Col md={6} key={idx}>
                               <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
-                                <span className="fs-13 text-warning fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">{section.title}</span>
+                                  <span className="fs-13 text-warning fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
+                                    {section.title} {
+                                      (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
+                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                        : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                    }
+                                  </span>
                                 {['location', 'device', 'module', ...section.fields].map(f => (
                                   <div key={f} className="d-flex justify-content-between">
                                     <span className="fs-13 text-secondary uppercase fw-bold opacity-40">{f}</span>
@@ -2783,7 +3298,13 @@ const ConfigTemplates = () => {
                             <Col md={4} key={idx}>
                               <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                 <div className="d-flex justify-content-between align-items-center mb-1 border-bottom border-white border-opacity-5 pb-1">
-                                  <span className="fs-12 text-info fw-black uppercase">{section.title}</span>
+                                    <span className="fs-12 text-info fw-black uppercase">
+                                      {section.title} {
+                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
+                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                          : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                      }
+                                    </span>
                                   {previewTemplate.mapping[section.key]?.enabled !== undefined && (
                                     <Badge bg={previewTemplate.mapping[section.key].enabled ? "success" : "secondary"} className="fs-13 py-0">
                                       {previewTemplate.mapping[section.key].enabled ? 'ON' : 'OFF'}
@@ -3148,6 +3669,27 @@ const ConfigTemplates = () => {
         }
         .hover-text-white:hover { color: white !important; }
         .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        
+        /* Mobile Responsiveness for Cards */
+        @media (max-width: 576px) {
+          .premium-figma-card {
+            padding: 0.75rem !important;
+          }
+          .fs-10 { font-size: 0.65rem !important; }
+          .fs-11 { font-size: 0.55rem !important; }
+          .fs-12 { font-size: 0.45rem !important; }
+          .fs-13 { font-size: 0.6rem !important; }
+          .preview-badge-premium {
+            padding: 1px 4px !important;
+            gap: 1px !important;
+          }
+          .preview-badge-premium span { font-size: 0.5rem !important; }
+          .scada-data-box {
+            margin-top: 0.25rem !important;
+            margin-bottom: 0.25rem !important;
+            padding: 0.4rem !important;
+          }
+        }
         
         .premium-figma-card {
           background: linear-gradient(145deg, rgba(23, 33, 50, 0.7) 0%, rgba(8, 12, 21, 0.9) 100%);
