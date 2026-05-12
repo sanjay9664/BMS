@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Row, Col, Card, Button, Form, Badge, Modal } from 'react-bootstrap';
+import { Row, Col, Card, Button, Form, Badge, Modal, Spinner } from 'react-bootstrap';
 import { Activity, Zap, ShieldCheck, Info, Droplets, ToggleRight, ToggleLeft, Layers, Maximize, Minimize, XCircle, X } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
+import { getSochiotDeviceDetails } from '../../services/authService';
 
 const UgTank = () => {
   const [activeStation, setActiveStation] = useState(1);
@@ -17,17 +18,17 @@ const UgTank = () => {
   }, []);
 
   const [pumps1, setPumps1] = useState([
-    { id: 1, status: 'Running', mode: 'AUTO', hz: '50.0', amp: '12.2', pressure: 3.8, startLimit: 1.5, stopLimit: 4.5 },
-    { id: 2, status: 'Running', mode: 'AUTO', hz: '50.0', amp: '12.0', pressure: 3.7, startLimit: 1.5, stopLimit: 4.5 },
-    { id: 3, status: 'Running', mode: 'AUTO', hz: '50.0', amp: '12.8', pressure: 4.1, startLimit: 1.5, stopLimit: 4.5 },
-    { id: 4, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5 },
+    { id: 1, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 2, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 3, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 4, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
   ]);
 
   const [pumps2, setPumps2] = useState([
-    { id: 1, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5 },
-    { id: 2, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5 },
-    { id: 3, status: 'Running', mode: 'MANUAL', hz: '48.5', amp: '11.5', pressure: 3.2, startLimit: 1.5, stopLimit: 4.5 },
-    { id: 4, status: 'Running', mode: 'AUTO', hz: '50.0', amp: '12.2', pressure: 3.9, startLimit: 1.5, stopLimit: 4.5 },
+    { id: 1, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 2, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 3, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 4, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
   ]);
 
   const [tanks, setTanks] = useState([
@@ -58,6 +59,57 @@ const UgTank = () => {
     return () => clearInterval(interval);
   }, []);
 
+  const [deviceStatuses, setDeviceStatuses] = useState({});
+
+  // Poll real-time device connection status from Sochiot API
+  useEffect(() => {
+    const fetchDeviceStatus = async () => {
+      try {
+        const saved = localStorage.getItem('scada_templates');
+        if (!saved) return;
+        const templates = JSON.parse(saved);
+        
+        // Collect all unique device IDs used in UG Tank/Pump templates
+        const deviceIds = new Set();
+        templates.forEach(t => {
+          if ((t.module === 'UG Pump' || t.module === 'UG Tank') && t.mapping) {
+            Object.values(t.mapping).forEach(config => {
+              if (config && config.device) {
+                deviceIds.add(config.device);
+              }
+            });
+          }
+        });
+
+        if (deviceIds.size === 0) return;
+
+        const statuses = {};
+        const promises = Array.from(deviceIds).map(async (dId) => {
+          try {
+            const data = await getSochiotDeviceDetails(dId);
+            if (data && data.mode) {
+              statuses[dId] = data.mode.name === 'ONLINE';
+            } else {
+              statuses[dId] = false; // explicit offline if mode missing
+            }
+          } catch (e) {
+            console.error(`Failed to fetch status for device ${dId}`, e);
+            statuses[dId] = false; // explicit offline on failure
+          }
+        });
+
+        await Promise.all(promises);
+        setDeviceStatuses(statuses);
+      } catch (e) {
+        console.error("Device status polling error:", e);
+      }
+    };
+    
+    fetchDeviceStatus();
+    const interval = setInterval(fetchDeviceStatus, 15000); // Fetch every 15s
+    return () => clearInterval(interval);
+  }, []);
+
   useEffect(() => {
     const fetchUgDynamicLevels = async () => {
       try {
@@ -70,8 +122,15 @@ const UgTank = () => {
           if ((t.module === 'UG Tank' || t.module === 'UG Pump') && t.mapping?.ugTankLevelConfig?.module) {
             moduleIds.add(t.mapping.ugTankLevelConfig.module);
           }
-          if (t.module === 'AG Tank' && t.mapping?.agLevelConfig?.module) {
-            moduleIds.add(t.mapping.agLevelConfig.module);
+          if (t.module === 'UG Pump') {
+            if (t.mapping?.ugStatusStartConfig?.module) moduleIds.add(t.mapping.ugStatusStartConfig.module);
+            if (t.mapping?.ugStatusStopConfig?.module) moduleIds.add(t.mapping.ugStatusStopConfig.module);
+          }
+          if (t.module === 'AG Tank') {
+            if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
+            if (t.mapping?.agStatusStartConfig?.module) moduleIds.add(t.mapping.agStatusStartConfig.module);
+            if (t.mapping?.agStatusStopConfig?.module) moduleIds.add(t.mapping.agStatusStopConfig.module);
+            if (t.mapping?.agStatusConfig?.module) moduleIds.add(t.mapping.agStatusConfig.module);
           }
         });
         
@@ -81,6 +140,10 @@ const UgTank = () => {
         const response = await fetch(url);
         if (response.ok) {
           const stats = await response.json();
+          if (!Array.isArray(stats)) {
+            console.warn("Expected stats array but got:", stats);
+            return;
+          }
           
           setTanks(prev => {
             let updated = false;
@@ -125,6 +188,142 @@ const UgTank = () => {
             });
             return updated ? next : prev;
           });
+
+          // Helper to evaluate condition based on operator
+          const evaluateCondition = (val, operator, threshold) => {
+            const v = Number(val);
+            const t = Number(threshold);
+            if (isNaN(v)) return false;
+            switch (operator) {
+              case '=': return v === t;
+              case '>': return v > t;
+              case '<': return v < t;
+              default: return v === t;
+            }
+          };
+
+          const updatePumpsStatus = (prevPumps) => {
+            let pumpUpdated = false;
+            const nextPumps = prevPumps.map(pump => {
+              const template = templates.find(t => 
+                t.module === 'UG Pump' && 
+                Number(t.mapping?.ugPumpRange?.pumpNo) === Number(pump.id)
+              );
+
+              if (!template || !template.mapping) {
+                if (pump.status !== 'Stopped') {
+                  pumpUpdated = true;
+                  return { ...pump, status: 'Stopped', hz: '0.0', amp: '0.0', pressure: 0.0 };
+                }
+                return pump;
+              }
+
+              const startCfg = template.mapping.ugStatusStartConfig;
+              const stopCfg = template.mapping.ugStatusStopConfig;
+              
+              let newStatus = pump.status;
+              let conditionMet = false;
+
+              // 1. Check for START condition (Running)
+              if (startCfg?.field && startCfg?.module) {
+                const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+                if (stat && stat.meta && stat.meta[startCfg.field] !== undefined) {
+                  const currentVal = Number(stat.meta[startCfg.field]);
+                  const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
+                  
+                  if (isStartMet) {
+                    newStatus = 'Running';
+                    conditionMet = true;
+                  }
+                }
+              }
+
+              // 2. Check for STOP condition (Stopped) - if start not met
+              if (!conditionMet && stopCfg?.field && stopCfg?.module) {
+                const stat = stats.find(s => String(s.moduleId) === String(stopCfg.module) || String(s.meta?.module_id) === String(stopCfg.module));
+                if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
+                  const currentVal = Number(stat.meta[stopCfg.field]);
+                  const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
+                  
+                  if (isStopMet) {
+                    newStatus = 'Stopped';
+                    conditionMet = true;
+                  }
+                }
+              }
+
+              // 3. Final Fallback: If Start is mapped but NOT met, default to Stopped
+              if (!conditionMet && startCfg?.field && startCfg?.module) {
+                newStatus = 'Stopped';
+              }
+
+              // Update Online Status
+              let isOnline = pump.isOnline;
+              
+              // 1. Find any device ID in the mapping to check status if explicit status mapping is missing
+              let deviceToCheck = startCfg?.device;
+              if (!deviceToCheck && template.mapping) {
+                const anyConfigWithDevice = Object.values(template.mapping).find(cfg => cfg && cfg.device);
+                if (anyConfigWithDevice) deviceToCheck = anyConfigWithDevice.device;
+              }
+
+              if (deviceToCheck && deviceStatuses[deviceToCheck] !== undefined) {
+                isOnline = deviceStatuses[deviceToCheck];
+              }
+
+              const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+              if (stat) {
+                const modeObj = stat.meta?.mode || stat.mode;
+                
+                // 2. Only use telemetry fallback if real-time polling didn't cover it
+                if (startCfg?.device === undefined || deviceStatuses[startCfg.device] === undefined) {
+                  if (modeObj && modeObj.name) {
+                    isOnline = modeObj.name === 'ONLINE';
+                  } 
+                  else if (stat.meta?.created_at_timestamp) {
+                    const ts = stat.meta.created_at_timestamp;
+                    const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
+                    if (!isNaN(lastSeen)) {
+                      isOnline = (Date.now() - lastSeen) < 86400000;
+                    }
+                  }
+                }
+              }
+
+              // 4. Sync Thresholds from Rules
+              const startLimit = template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : pump.startLimit;
+              const stopLimit = template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : pump.stopLimit;
+
+              let newAmp = pump.amp;
+              // Amps/Current Config
+              if (template.mapping.ugAmpsConfig?.field && template.mapping.ugAmpsConfig?.module) {
+                const config = template.mapping.ugAmpsConfig;
+                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                  newAmp = Number(stat.meta[config.field]).toFixed(1);
+                }
+              } else if (startCfg?.module) {
+                const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+                if (stat && stat.meta) {
+                  // Fallback: Dynamically find current/amp value in telemetry if not explicitly mapped
+                  const currentKey = Object.keys(stat.meta).find(k => k.toLowerCase().includes('current'));
+                  if (currentKey && stat.meta[currentKey] !== undefined) {
+                    newAmp = Number(stat.meta[currentKey]);
+                  }
+                }
+              }
+
+              if (newStatus !== pump.status || isOnline !== pump.isOnline || startLimit !== pump.startLimit || stopLimit !== pump.stopLimit || newAmp !== pump.amp) {
+                pumpUpdated = true;
+                return { ...pump, status: newStatus, isOnline, startLimit, stopLimit, amp: newAmp };
+              }
+              return pump;
+            });
+            return pumpUpdated ? nextPumps : prevPumps;
+          };
+
+          setPumps1(prev => updatePumpsStatus(prev));
+          setPumps2(prev => updatePumpsStatus(prev));
         }
       } catch (error) {
         console.error('Error fetching dynamic UG tank levels:', error);
@@ -181,7 +380,9 @@ const UgTank = () => {
     return Math.min(Math.max(angle, -135), 135);
   }, [masterPressureValue]);
 
-  const handlePumpControl = (id, updates) => {
+  const [isSendingCommand, setIsSendingCommand] = useState(false);
+
+  const handlePumpControl = async (id, updates) => {
     const userRole = (localStorage.getItem('userRole') || 'user').toUpperCase();
     if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
       setActionFeedback("ACCESS DENIED: ADMIN ONLY");
@@ -189,16 +390,83 @@ const UgTank = () => {
       return;
     }
 
-    const setter = activeStation === 1 ? setPumps1 : setPumps2;
-    setter(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-    if (selectedPump && selectedPump.id === id) setSelectedPump(prev => ({ ...prev, ...updates }));
-
     if (updates.status) {
-      const msg = `${updates.status === 'Running' ? 'STARTED' : 'STOPPED'} SUCCESSFULLY`;
-      setActionFeedback(msg);
-      setTimeout(() => setActionFeedback(null), 800);
-      // Auto-hide modal after brief success visualization
-      setTimeout(() => setShowPumpModal(false), 500);
+      if (selectedPump && !selectedPump.isOnline) {
+        setActionFeedback("DEVICE OFFLINE");
+        setTimeout(() => setActionFeedback(null), 2000);
+        return;
+      }
+
+      const isStart = updates.status === 'Running';
+      
+      // 1. Fetch Template
+      const saved = localStorage.getItem('scada_templates');
+      if (!saved) {
+        setActionFeedback("ERROR: NO TEMPLATES FOUND");
+        setTimeout(() => setActionFeedback(null), 2000);
+        return;
+      }
+      
+      const templates = JSON.parse(saved);
+      // Find template for this specific pump
+      const template = templates.find(t => 
+        t.module === 'UG Pump' && 
+        Number(t.mapping?.ugPumpRange?.pumpNo) === Number(id)
+      );
+
+      if (!template) {
+        setActionFeedback("ERROR: PUMP NOT MAPPED");
+        setTimeout(() => setActionFeedback(null), 2000);
+        return;
+      }
+
+      const config = isStart ? template.mapping?.ugStartCmdConfig : template.mapping?.ugStopCmdConfig;
+
+      if (!config || !config.module || !config.field) {
+        setActionFeedback("ERROR: COMMAND MAPPING MISSING");
+        setTimeout(() => setActionFeedback(null), 2000);
+        return;
+      }
+
+      setIsSendingCommand(true);
+      setActionFeedback("SYNCHRONIZING...");
+
+      try {
+        const payload = {
+          argValue: 1,
+          cmdArg: isStart ? 1 : 0,
+          moduleId: parseInt(config.module),
+          cmdField: config.field
+        };
+
+        const response = await fetch('/api/command/push', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('sochiot_token')}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          setActionFeedback(`${isStart ? 'STARTED' : 'STOPPED'} SUCCESSFULLY`);
+          setTimeout(() => setActionFeedback(null), 800);
+          setTimeout(() => setShowPumpModal(false), 500);
+        } else {
+          const errorData = await response.json();
+          setActionFeedback(`FAILED: ${errorData.message || 'API ERROR'}`);
+          setTimeout(() => setActionFeedback(null), 3000);
+        }
+      } catch (error) {
+        setActionFeedback("FAILED: NETWORK ERROR");
+        setTimeout(() => setActionFeedback(null), 3000);
+      } finally {
+        setIsSendingCommand(false);
+      }
+    } else {
+      const setter = activeStation === 1 ? setPumps1 : setPumps2;
+      setter(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
+      if (selectedPump && selectedPump.id === id) setSelectedPump(prev => ({ ...prev, ...updates }));
     }
   };
 
@@ -216,6 +484,12 @@ const UgTank = () => {
 
   const handleSendRuleToEngine = async (limitType) => {
     if (!selectedPump) return;
+
+    if (!limitForm.start || !limitForm.stop || Number(limitForm.start) === 0 || Number(limitForm.stop) === 0) {
+      setActionFeedback("RULE IS NOT APPLIED");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
     
     // 1. Fetch Template for this specific pump
     const saved = localStorage.getItem('scada_templates');
@@ -247,16 +521,20 @@ const UgTank = () => {
     try {
       const apiURL = '/api/rule-engine/apply';
       const token = localStorage.getItem('sochiot_token');
+      let rulesProcessed = 0;
 
       for (const type of typesToSend) {
         // 2. Identify Config (Rule 1 for Lower, Rule 2 for Upper)
         const config = type === 'LOWER' ? template.mapping.rule1Config : template.mapping.rule2Config;
         const moduleId = type === 'LOWER' ? template.mapping.ugLowerConfig?.module : template.mapping.ugUpperConfig?.module;
+        const isEnabled = type === 'LOWER' ? (template.mapping.ugLowerConfig?.enabled !== false) : (template.mapping.ugUpperConfig?.enabled !== false);
 
-        if (!moduleId) {
-          console.warn(`Module ID missing for ${type} limit`);
+        if (!moduleId || !isEnabled) {
+          console.warn(`Module ID missing or disabled for ${type} limit`);
           continue;
         }
+        
+        rulesProcessed++;
 
         // 3. Update Consequence Value to current UI limit
         const updatedValue = type === 'LOWER' ? limitForm.start : limitForm.stop;
@@ -302,13 +580,39 @@ const UgTank = () => {
         }
       }
 
+      if (rulesProcessed === 0) {
+        setActionFeedback("RULE IS NOT APPLIED");
+        setTimeout(() => setActionFeedback(null), 2000);
+        setIsSendingRules(false);
+        return;
+      }
+
       // 5. Save updated templates to localStorage
       templates[templateIndex] = template;
       localStorage.setItem('scada_templates', JSON.stringify(templates));
       window.dispatchEvent(new Event('storage'));
 
       setActionFeedback("SETTINGS APPLIED SUCCESS");
-      setTimeout(() => setActionFeedback(null), 2000);
+      
+      // 6. Update local state so UI reflects recent values immediately
+      const setter = activeStation === 1 ? setPumps1 : setPumps2;
+      setter(prev => prev.map(p => p.id === selectedPump.id ? { 
+        ...p, 
+        startLimit: Number(limitForm.start), 
+        stopLimit: Number(limitForm.stop) 
+      } : p));
+      
+      // Update selectedPump so the modal also has current data if it stays open
+      setSelectedPump(prev => ({ 
+        ...prev, 
+        startLimit: Number(limitForm.start), 
+        stopLimit: Number(limitForm.stop) 
+      }));
+
+      setTimeout(() => {
+        setActionFeedback(null);
+        setShowLimitModal(false);
+      }, 1500);
     } catch (error) {
       console.error("Error sending rules:", error);
       setActionFeedback("FAILED TO UPDATE RULES");
@@ -457,13 +761,13 @@ const UgTank = () => {
                         <path d={`M360 ${y + 35} L440 ${y + 35}`} fill="none" stroke="#1e293b" strokeWidth="16" />
                         {active && (<path d={`M360 ${y + 35} L440 ${y + 35}`} fill="none" stroke="#38bdf8" strokeWidth="8" strokeDasharray="10,10"><animate attributeName="stroke-dashoffset" from="20" to="0" dur="0.8s" repeatCount="indefinite" /></path>)}
                         <g transform={`translate(460, ${y + 35})`}>
-                          <circle r="38" fill="#111827" stroke={active ? "#22c55e" : "#334155"} strokeWidth="4" />
-                          {active && (
+                          <circle r="38" fill="#111827" stroke={!p.isOnline ? "#475569" : (active ? "#22c55e" : "#334155")} strokeWidth="4" />
+                          {active && p.isOnline && (
                             <circle r="46" fill="none" stroke="#22c55e" strokeWidth="2" strokeDasharray="8,6" opacity="0.8">
                               <animateTransform attributeName="transform" type="rotate" from="0 0 0" to="360 0 0" dur="4s" repeatCount="indefinite" />
                             </circle>
                           )}
-                          <Droplets size={32} x="-16" y="-16" className={active ? "text-success" : "text-muted"} />
+                          <Droplets size={32} x="-16" y="-16" className={!p.isOnline ? "text-secondary opacity-25" : (active ? "text-success" : "text-muted")} />
                         </g>
 
                         {/* Circle to Label Connection */}
@@ -475,9 +779,15 @@ const UgTank = () => {
                         )}
 
                         <g transform={`translate(540, ${y + 5})`}>
-                          <rect width="200" height="60" rx="8" fill="#0f172a" fillOpacity="0.9" stroke="#1e293b" strokeWidth="2" />
+                          <rect width="200" height="60" rx="8" fill="#0f172a" fillOpacity="0.9" stroke={!p.isOnline ? "#334155" : "#1e293b"} strokeWidth="2" />
                           <text x="14" y="20" fill="#94a3b8" fontSize="9" fontWeight="bold">PUMP P{p.id}</text>
-                          <text x="14" y="44" fill={active ? "#22c55e" : "#475569"} fontSize="16" fontWeight="900">{p.status.toUpperCase()} <tspan fill={p.mode === 'AUTO' ? '#38bdf8' : '#f59e0b'} fontSize="10" dy="-1">| {p.mode}</tspan></text>
+                          <text x="65" y="20" fill="#f59e0b" fontSize="9" fontWeight="bold">
+                            {p.isOnline && p.amp !== undefined ? `| ${Number(p.amp).toFixed(1)} A` : ''}
+                          </text>
+                          <text x="14" y="44" fill={!p.isOnline ? "#64748b" : (active ? "#22c55e" : "#475569")} fontSize={!p.isOnline ? "12" : "16"} fontWeight="900">
+                             {!p.isOnline ? "OFFLINE" : p.status.toUpperCase()} 
+                             <tspan fill={!p.isOnline ? '#64748b' : (p.mode === 'AUTO' ? '#38bdf8' : '#f59e0b')} fontSize="10" dy="-1">| {p.mode}</tspan>
+                          </text>
                           <g transform="translate(165, 30)" style={{ cursor: 'pointer' }} onClick={(e) => openLimitSettings(e, p)}>
                             <circle r="22" fill="#111827" stroke="#334155" strokeWidth="1.5" />
 
@@ -505,10 +815,10 @@ const UgTank = () => {
                             <line x1="0" y1="-22" x2="0" y2="-15" stroke="#ef4444" strokeWidth="2.5" transform={`rotate(${(p.stopLimit / 10) * 270 - 135})`} style={{ transition: 'all 0.5s ease' }} />
 
                             {/* Needle */}
-                            <line x1="0" y1="0" x2="0" y2="-19" stroke={active ? "#ef4444" : "#475569"} strokeWidth="2" strokeLinecap="round" transform={`rotate(${(p.pressure / 10) * 270 - 135})`} style={{ transition: 'transform 0.8s ease-out' }} />
+                            <line x1="0" y1="0" x2="0" y2="-19" stroke={active && p.isOnline ? "#ef4444" : "#475569"} strokeWidth="2" strokeLinecap="round" transform={`rotate(${(p.pressure / 10) * 270 - 135})`} style={{ transition: 'transform 0.8s ease-out' }} />
                             <circle r="2.5" fill="#fff" />
 
-                            <text y="24" textAnchor="middle" fill="#38bdf8" fontSize="9" fontWeight="900">{active ? p.pressure.toFixed(1) : "0.0"} <small style={{ fontSize: '6px' }}>kg/cm²</small></text>
+                            <text y="24" textAnchor="middle" fill={p.isOnline ? "#38bdf8" : "#475569"} fontSize="9" fontWeight="900">{active && p.isOnline ? p.pressure.toFixed(1) : "0.0"} <small style={{ fontSize: '6px' }}>kg/cm²</small></text>
                           </g>
                         </g>
                         {/* Pump Output Connection to Final Manifold */}
@@ -689,28 +999,28 @@ const UgTank = () => {
                 <Row className="g-3">
                   <Col xs={6}>
                     <button 
-                      className={`premium-action-btn open w-100 ${selectedPump.status === 'Running' ? 'active' : ''}`}
-                      disabled={selectedPump.mode === 'AUTO'}
+                      className="premium-action-btn open w-100"
+                      disabled={selectedPump.mode === 'AUTO' || isSendingCommand}
                       style={{ padding: '16px' }}
                       onClick={() => handlePumpControl(selectedPump.id, { status: 'Running', hz: '50.0' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
-                         <Zap size={20} />
+                         {isSendingCommand && selectedPump.status !== 'Running' ? <Spinner size="sm" animation="border" /> : <Zap size={20} />}
                          <div>
-                            <div className="btn-label fs-5">START PUMP</div>
+                            <div className="btn-label fs-5">{isSendingCommand && selectedPump.status !== 'Running' ? 'SENDING...' : 'START PUMP'}</div>
                          </div>
                       </div>
                     </button>
                   </Col>
                   <Col xs={6}>
                     <button 
-                      className={`premium-action-btn close w-100 ${selectedPump.status === 'Stopped' ? 'active' : ''}`}
-                      disabled={selectedPump.mode === 'AUTO'}
+                      className="premium-action-btn close w-100"
+                      disabled={selectedPump.mode === 'AUTO' || isSendingCommand}
                       style={{ padding: '16px' }}
                       onClick={() => handlePumpControl(selectedPump.id, { status: 'Stopped', hz: '0.0' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
-                         <X size={20} />
+                         {isSendingCommand && selectedPump.status !== 'Stopped' ? <Spinner size="sm" animation="border" /> : <X size={20} />}
                          <div>
-                            <div className="btn-label fs-5">STOP PUMP</div>
+                            <div className="btn-label fs-5">{isSendingCommand && selectedPump.status !== 'Stopped' ? 'SENDING...' : 'STOP PUMP'}</div>
                          </div>
                       </div>
                     </button>
@@ -745,11 +1055,20 @@ const UgTank = () => {
         )}
       </Modal>
 
-      <Modal show={showLimitModal} onHide={() => setShowLimitModal(false)} centered contentClassName="bg-dark border-secondary shadow-lg">
+      <Modal show={showLimitModal} onHide={() => setShowLimitModal(false)} centered contentClassName="bg-dark border-secondary shadow-lg rounded-4 overflow-hidden">
         {selectedPump && (
-          <Modal.Body className="p-4 text-white">
-            <div className="text-center mb-4"><h5 className="fw-bold text-info">PUMP P{selectedPump.id} THRESHOLD SETUP</h5></div>
-            <div className="bg-black bg-opacity-30 p-4 rounded-4 mb-4 border border-secondary border-opacity-10">
+          <Modal.Body className="p-4 text-white position-relative">
+            <Button 
+              variant="link" 
+              className="position-absolute top-0 end-0 m-2 text-secondary hover-text-white transition-all p-2"
+              onClick={() => setShowLimitModal(false)}
+            >
+              <X size={20} />
+            </Button>
+            <div className="text-center mb-4 mt-2">
+              <h5 className="fw-black text-info tracking-tighter uppercase fs-9">PUMP P{selectedPump.id} THRESHOLD SETUP</h5>
+            </div>
+            <div className="bg-black bg-opacity-30 p-3 p-sm-4 rounded-4 mb-4 border border-secondary border-opacity-10">
               <Form.Group className="mb-4">
                 <Form.Label className="fs-9 text-muted uppercase fw-bold mb-2">AUTO-START THRESHOLD (kg/cm²)</Form.Label>
                 <Form.Control type="number" step="0.1" value={limitForm.start} onChange={(e) => setLimitForm({ ...limitForm, start: e.target.value })} className="bg-dark border-secondary text-white fw-bold fs-4" />
@@ -763,8 +1082,7 @@ const UgTank = () => {
             </div>
             <div className="d-flex flex-column gap-2 mt-4">
                <div className="d-flex gap-3">
-                 <Button variant="outline-secondary" className="w-100 py-2 fw-bold" onClick={() => setShowLimitModal(false)}>CANCEL</Button>
-                 <Button variant="info" className="w-100 py-2 fw-bold" onClick={handleApplyLimits}>APPLY CONFIG</Button>
+                
                </div>
                <Button 
                 variant="primary" 
@@ -777,6 +1095,20 @@ const UgTank = () => {
                 SYNC WITH RULE ENGINE
               </Button>
             </div>
+
+            {actionFeedback && (
+              <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2" 
+                   style={{ 
+                     backgroundColor: actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '#7f1d1d' : '#064e3b', 
+                     zIndex: 1000, 
+                     boxShadow: actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)' 
+                   }}>
+                  <div className="bg-white rounded-circle p-2 mb-2">
+                     {actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
+                  </div>
+                  <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
+              </div>
+            )}
           </Modal.Body>
         )}
       </Modal>
@@ -826,6 +1158,24 @@ const UgTank = () => {
         .pulse-dot { width: 8px; height: 8px; border-radius: 50%; position: relative; }
         .pulse-dot.green { background-color: #22c55e; box-shadow: 0 0 0 rgba(34, 197, 94, 0.4); animation: pulse-green 2s infinite; }
         @keyframes pulse-green { 0% { box-shadow: 0 0 0 0px rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0px rgba(34, 197, 94, 0); } }
+        .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }
+        
+        /* Mobile Responsiveness for Cards */
+        @media (max-width: 576px) {
+          .premium-figma-card {
+            padding: 1rem !important;
+          }
+          .fs-10 { font-size: 0.7rem !important; }
+          .fs-11 { font-size: 0.6rem !important; }
+          .fs-12 { font-size: 0.5rem !important; }
+          .preview-badge-premium {
+            padding: 2px 6px !important;
+          }
+          .scada-data-box {
+            margin-top: 0.5rem !important;
+            margin-bottom: 0.5rem !important;
+          }
+        }
         .text-danger-custom { color: #ef4444; }
         .text-warning-custom { color: #f59e0b; }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }

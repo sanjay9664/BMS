@@ -301,8 +301,13 @@ const Sidebar = ({ collapsed }) => {
         </div>
 
         {/* Operational Modules */}
-        {menuItems.filter(item => (!item.adminOnly || isAdmin || isSuperAdmin) && (!modulesConfig || modulesConfig[item.title] !== false)).map((item, index) => {
-          const effectiveDisabled = isSuperAdmin ? false : item.disabled;
+        {menuItems.filter(item => {
+          const isAllowedByRole = !item.adminOnly || isAdmin || isSuperAdmin;
+          const isEnabledByConfig = !modulesConfig || modulesConfig[item.title] === true;
+          
+          return isAllowedByRole && isEnabledByConfig;
+        }).map((item, index) => {
+          const effectiveDisabled = item.disabled;
           return item.subItems ? (
             <Accordion key={index} className="sidebar-accordion">
               <Accordion.Item eventKey={index.toString()} className={`bg-transparent border-0 ${effectiveDisabled ? 'sidebar-disabled-item' : ''}`}>

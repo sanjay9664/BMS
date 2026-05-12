@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Row, Col, Card, Tooltip, OverlayTrigger, Form, Button, Modal, Badge, Spinner } from 'react-bootstrap';
 import { Home, Waves, LayoutGrid, Settings, Save, AlertCircle, CheckCircle2, XCircle, Activity, X, Droplets, ToggleRight, ToggleLeft, Maximize, Minimize, ShieldCheck, ArrowUp, ArrowDown, Zap } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
+import { getSochiotDeviceDetails } from '../../services/authService';
 
 const AgTank = () => {
   const [sectorFilter, setSectorFilter] = useState('ALL');
@@ -22,6 +23,61 @@ const AgTank = () => {
 
   const totalTanks = 48;
   
+  const [deviceStatuses, setDeviceStatuses] = useState({});
+
+  // Poll real-time device connection status from Sochiot API
+  useEffect(() => {
+    const fetchDeviceStatus = async () => {
+      try {
+        const saved = localStorage.getItem('scada_templates');
+        if (!saved) return;
+        const templates = JSON.parse(saved);
+        
+        // Collect all unique device IDs used in AG Tank templates
+        const deviceIds = new Set();
+        templates.forEach(t => {
+          if (t.module === 'AG Tank' && t.mapping) {
+            Object.values(t.mapping).forEach(config => {
+              if (config && config.device) {
+                deviceIds.add(config.device);
+              }
+            });
+          }
+        });
+
+        if (deviceIds.size === 0) return;
+
+        const statuses = {};
+        const promises = Array.from(deviceIds).map(async (dId) => {
+          try {
+            console.log(`[AgTank] Fetching device details for: ${dId}`);
+            const data = await getSochiotDeviceDetails(dId);
+            console.log(`[AgTank] Device ${dId} data:`, data);
+            if (data && data.mode) {
+              statuses[dId] = data.mode.name === 'ONLINE';
+              console.log(`[AgTank] Device ${dId} status set to: ${statuses[dId]}`);
+            } else {
+              console.log(`[AgTank] Device ${dId} missing mode object. Setting to OFFLINE explicitly.`);
+              statuses[dId] = false; // explicitly set if missing to prevent fallback
+            }
+          } catch (e) {
+            console.error(`Failed to fetch status for device ${dId}`, e);
+            statuses[dId] = false; // explicit offline on failure
+          }
+        });
+
+        await Promise.all(promises);
+        console.log("[AgTank] Final device statuses:", statuses);
+        setDeviceStatuses(statuses);
+      } catch (e) {
+        console.error("Device status polling error:", e);
+      }
+    };
+    
+    fetchDeviceStatus();
+    const interval = setInterval(fetchDeviceStatus, 15000); // Fetch every 15s
+    return () => clearInterval(interval);
+  }, []);
 
   // Initialize tanks with valve states
   const [allTanks, setAllTanks] = useState(() => {
@@ -34,7 +90,8 @@ const AgTank = () => {
       valveMode: 'AUTO',
       valveStatus: 'CLOSE',
       minLevel: 20,
-      maxLevel: 90
+      maxLevel: 90,
+      isOnline: true
     }));
 
     // Initial Sync from LocalStorage templates
@@ -63,6 +120,7 @@ const AgTank = () => {
   });
 
   const [isSendingRules, setIsSendingRules] = useState(false);
+  const [isSendingCommand, setIsSendingCommand] = useState(false);
 
   const [controlMode, setControlMode] = useState('REMOTE');
 
@@ -73,6 +131,12 @@ const AgTank = () => {
 
   const handleSendRuleToEngine = async (limitType) => {
     if (!selectedTank) return;
+
+    if (!selectedTank.minLevel || !selectedTank.maxLevel || Number(selectedTank.minLevel) === 0 || Number(selectedTank.maxLevel) === 0) {
+      setActionFeedback("RULE IS NOT APPLIED");
+      setTimeout(() => setActionFeedback(null), 2000);
+      return;
+    }
     
     // 1. Identify Tank Name
     const tankName = `${selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${selectedTank.localId}`;
@@ -106,16 +170,20 @@ const AgTank = () => {
     try {
       const apiURL = '/api/rule-engine/apply';
       const token = localStorage.getItem('sochiot_token');
+      let rulesProcessed = 0;
 
       for (const type of typesToSend) {
         // 3. Prepare Config
         const config = type === 'LOWER' ? template.mapping.rule1Config : template.mapping.rule2Config;
         const moduleId = type === 'LOWER' ? template.mapping.agLowerConfig?.module : template.mapping.agUpperConfig?.module;
+        const isEnabled = type === 'LOWER' ? (template.mapping.agLowerConfig?.enabled !== false) : (template.mapping.agUpperConfig?.enabled !== false);
 
-        if (!moduleId) {
-          console.warn(`Module ID missing for ${type} limit`);
+        if (!moduleId || !isEnabled) {
+          console.warn(`Module ID missing or disabled for ${type} limit`);
           continue;
         }
+        
+        rulesProcessed++;
 
         // 4. Update Consequence Value to current UI limit
         const updatedValue = type === 'LOWER' ? selectedTank.minLevel : selectedTank.maxLevel;
@@ -161,6 +229,13 @@ const AgTank = () => {
         }
       }
 
+      if (rulesProcessed === 0) {
+        setActionFeedback("RULE IS NOT APPLIED");
+        setTimeout(() => setActionFeedback(null), 2000);
+        setIsSendingRules(false);
+        return;
+      }
+
       // 6. Save updated templates to localStorage for persistence
       templates[templateIndex] = template;
       localStorage.setItem('scada_templates', JSON.stringify(templates));
@@ -177,12 +252,69 @@ const AgTank = () => {
     }
   };
 
-  const updateTankValve = (globalId, updates) => {
+  const updateTankValve = async (globalId, updates) => {
     const userRole = (localStorage.getItem('userRole') || 'user').toUpperCase();
     if (userRole !== 'ADMIN' && userRole !== 'SUPER_ADMIN') {
       setActionFeedback("ACCESS DENIED: ADMIN ONLY");
       setTimeout(() => setActionFeedback(null), 1500);
       return;
+    }
+
+    // Handle Manual Remote Command via API
+    if (updates.valveStatus && selectedTank && selectedTank.valveMode === 'MANUAL') {
+      if (!selectedTank.isOnline) {
+        setActionFeedback("DEVICE OFFLINE");
+        setTimeout(() => setActionFeedback(null), 2000);
+        return;
+      }
+      const tankName = `${selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${selectedTank.localId}`;
+      const saved = localStorage.getItem('scada_templates');
+      
+      if (saved) {
+        try {
+          const templates = JSON.parse(saved);
+          const template = templates.find(t => 
+            t.module === 'AG Tank' && 
+            (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
+          );
+
+          const config = updates.valveStatus === 'OPEN' ? template?.mapping?.agOpenConfig : template?.mapping?.agCloseConfig;
+
+          if (config && config.module && config.field) {
+            setIsSendingCommand(true);
+            setActionFeedback("SYNCHRONIZING...");
+
+            const payload = {
+              argValue: 1,
+              cmdArg: updates.valveStatus === 'OPEN' ? 1 : 0,
+              moduleId: parseInt(config.module),
+              cmdField: config.field
+            };
+
+            const response = await fetch('/api/command/push', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('sochiot_token')}`
+              },
+              body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) throw new Error("Remote command failed");
+            
+            setActionFeedback("COMMAND SUCCESS");
+            setTimeout(() => setActionFeedback(null), 800);
+          }
+        } catch (error) {
+          console.error("Manual command error:", error);
+          setActionFeedback("COMMAND FAILED");
+          setTimeout(() => setActionFeedback(null), 2000);
+          setIsSendingCommand(false);
+          return; // Exit if failed
+        } finally {
+          setIsSendingCommand(false);
+        }
+      }
     }
 
     setAllTanks(prev => {
@@ -208,8 +340,10 @@ const AgTank = () => {
     });
 
     if (updates.valveStatus) {
-      setActionFeedback(`${updates.valveStatus === 'OPEN' ? 'STARTED' : 'STOPPED'} SUCCESSFULLY`);
-      setTimeout(() => setActionFeedback(null), 800);
+      if (!isSendingCommand) {
+        setActionFeedback(`${updates.valveStatus === 'OPEN' ? 'STARTED' : 'STOPPED'} SUCCESSFULLY`);
+        setTimeout(() => setActionFeedback(null), 800);
+      }
        // Auto-hide modal after brief success visualization
        setTimeout(() => setShowValveModal(false), 500);
     }
@@ -308,9 +442,12 @@ const AgTank = () => {
         const moduleIds = new Set();
         templates.forEach(t => {
           if (t.module === 'AG Tank') {
-            if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
             if (t.mapping?.agOpenConfig?.module) moduleIds.add(t.mapping.agOpenConfig.module);
             if (t.mapping?.agCloseConfig?.module) moduleIds.add(t.mapping.agCloseConfig.module);
+            if (t.mapping?.agStatusStartConfig?.module) moduleIds.add(t.mapping.agStatusStartConfig.module);
+            if (t.mapping?.agStatusStopConfig?.module) moduleIds.add(t.mapping.agStatusStopConfig.module);
+            if (t.mapping?.agStatusConfig?.module) moduleIds.add(t.mapping.agStatusConfig.module);
+            if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
           }
         });
         
@@ -320,6 +457,10 @@ const AgTank = () => {
         const response = await fetch(url);
         if (response.ok) {
           const stats = await response.json();
+          if (!Array.isArray(stats)) {
+            console.warn("Expected stats array but got:", stats);
+            return;
+          }
           
           setAllTanks(prev => {
             let updated = false;
@@ -375,28 +516,114 @@ const AgTank = () => {
                   }
                 }
 
-                // Open Valve Config
-                if (template.mapping.agOpenConfig?.field && template.mapping.agOpenConfig?.module) {
-                  const config = template.mapping.agOpenConfig;
+                // Amps/Current Config
+                if (template.mapping.agAmpsConfig?.field && template.mapping.agAmpsConfig?.module) {
+                  const config = template.mapping.agAmpsConfig;
                   const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
                   if (stat && stat.meta && stat.meta[config.field] !== undefined) {
                     updated = true;
-                    const isOpen = Number(stat.meta[config.field]) > 0 || String(stat.meta[config.field]).toLowerCase() === 'true';
-                    if (isOpen) {
-                      newTank.valveStatus = 'OPEN';
-                      newTank.status = 'Running';
+                    newTank.amps = Number(stat.meta[config.field]).toFixed(1);
+                  }
+                }
+
+                // Helper to evaluate condition based on operator
+                const evaluateCondition = (val, operator, threshold) => {
+                  const v = Number(val);
+                  const t = Number(threshold);
+                  if (isNaN(v)) return false;
+                  switch (operator) {
+                    case '=': return v === t;
+                    case '>': return v > t;
+                    case '<': return v < t;
+                    default: return v === t;
+                  }
+                };
+
+                // Status Interpretation (Start/Stop with Operator/Value logic)
+                const startCfg = template.mapping.agStatusStartConfig || template.mapping.agStatusConfig;
+                const stopCfg = template.mapping.agStatusStopConfig;
+
+                let conditionMet = false;
+
+                // 1. Check for START condition (OPEN)
+                if (startCfg?.field && startCfg?.module) {
+                    // Update Online Status
+                    let isOnline = tank.isOnline;
+                    
+                    // 1. Check real-time polled device connection status (Reliable even without telemetry)
+                    if (startCfg?.device && deviceStatuses[startCfg.device] !== undefined) {
+                      isOnline = deviceStatuses[startCfg.device];
+                    }
+
+                    const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+                    if (stat && stat.meta) {
+                      const modeObj = stat.meta?.mode || stat.mode;
+                      
+                      // 2. Only use telemetry fallback if real-time polling didn't cover it
+                      if (startCfg?.device && deviceStatuses[startCfg.device] === undefined) {
+                        if (modeObj && modeObj.name) {
+                          isOnline = modeObj.name === 'ONLINE';
+                        } 
+                        else if (stat.meta.created_at_timestamp) {
+                          const ts = stat.meta.created_at_timestamp;
+                          const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
+                          if (!isNaN(lastSeen)) {
+                            isOnline = (Date.now() - lastSeen) < 86400000;
+                          }
+                        }
+                      }
+
+                      const currentVal = Number(stat.meta[startCfg.field]);
+                      const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
+                      
+                      if (isStartMet) {
+                        updated = true;
+                        conditionMet = true;
+                        newTank.valveStatus = 'OPEN';
+                        newTank.status = 'Running';
+                      }
+                    }
+
+                    if (newTank.isOnline !== isOnline) {
+                      newTank.isOnline = isOnline;
+                      updated = true;
+                    }
+                }
+
+                // 2. Check for STOP condition (CLOSE) - if start not met
+                if (!conditionMet && stopCfg?.field && stopCfg?.module) {
+                  const stat = stats.find(s => String(s.moduleId) === String(stopCfg.module) || String(s.meta?.module_id) === String(stopCfg.module));
+                  if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
+                    const currentVal = Number(stat.meta[stopCfg.field]);
+                    const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
+                    
+                    if (isStopMet) {
+                      updated = true;
+                      conditionMet = true;
+                      newTank.valveStatus = 'CLOSE';
+                      newTank.status = 'Stopped';
                     }
                   }
                 }
 
-                // Close Valve Config
-                if (template.mapping.agCloseConfig?.field && template.mapping.agCloseConfig?.module) {
-                  const config = template.mapping.agCloseConfig;
+                // 3. Final Fallback: If Start is mapped but NOT met, default to CLOSE
+                if (!conditionMet && startCfg?.field && startCfg?.module) {
+                  updated = true;
+                  newTank.valveStatus = 'CLOSE';
+                  newTank.status = 'Stopped';
+                }
+
+                // Legacy Fallback for agOpenConfig (only if no status start/stop is configured)
+                if (!updated && template.mapping.agOpenConfig?.field && template.mapping.agOpenConfig?.module) {
+                  const config = template.mapping.agOpenConfig;
                   const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
                   if (stat && stat.meta && stat.meta[config.field] !== undefined) {
                     updated = true;
-                    const isClosed = Number(stat.meta[config.field]) > 0 || String(stat.meta[config.field]).toLowerCase() === 'true';
-                    if (isClosed) {
+                    const val = Number(stat.meta[config.field]);
+                    if (val > 0) {
+                      newTank.valveStatus = 'OPEN';
+                      newTank.status = 'Running';
+                    } else {
                       newTank.valveStatus = 'CLOSE';
                       newTank.status = 'Stopped';
                     }
@@ -557,14 +784,14 @@ const AgTank = () => {
       <div className={`scada-card ${isFullscreen ? 'p-5' : 'p-4'}`}>
         <Row className="g-4">
           {filteredTanks.map((tank) => (
-            <Col key={tank.globalId} xs={6} sm={4} md={isFullscreen ? 4 : 2} lg={isFullscreen ? 2 : 1} className={isFullscreen ? 'col-fs-2' : ''}>
+            <Col key={tank.globalId} xs={6} sm={4} md={isFullscreen ? 4 : 3} lg={isFullscreen ? 2 : 2} className={isFullscreen ? 'col-fs-2' : ''}>
               <div
                 className={`tank-unit-wrapper p-2 rounded text-center position-relative ${tank.status === 'Stopped' ? 'tank-stopped-outline' : ''} ${isFullscreen ? 'expanded-unit' : ''} ${isTankDisabled(tank) ? 'tank-disabled' : ''}`}
                 onClick={() => handleTankClick(tank)}
                 style={{ cursor: isTankDisabled(tank) ? 'not-allowed' : 'pointer' }}
               >
                 {isTankDisabled(tank) && <div className="disabled-overlay-text">DISABLED</div>}
-                <div className="tank-assembly-anchor mx-auto position-relative" style={{ width: isFullscreen ? '48px' : '36px' }}>
+                <div className="tank-assembly-anchor mx-auto position-relative" style={{ width: isFullscreen ? '48px' : '44px' }}>
                   <div 
                     className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''}`}
                     style={{ borderColor: '#475569' }}
@@ -577,17 +804,17 @@ const AgTank = () => {
                     <div className="threshold-marker upper" style={{ bottom: `${tank.maxLevel}%` }}></div>
                   </div>
                   <div className="valve-connector-pipe"></div>
-                  <div className={`industrial-valve-node ${tank.valveStatus === 'OPEN' ? 'valve-open' : 'valve-closed'}`}>
+                  <div className={`industrial-valve-node ${!tank.isOnline ? 'valve-offline' : (tank.valveStatus === 'OPEN' ? 'valve-open' : 'valve-closed')}`}>
                     {/* Mode Indicator A/M */}
-                    <div className={`valve-mode-pill mode-${tank.valveMode.toLowerCase()}`}>
+                    <div className={`valve-mode-pill mode-${tank.valveMode.toLowerCase()} ${!tank.isOnline ? 'opacity-25' : ''}`}>
                       {tank.valveMode === 'AUTO' ? 'A' : tank.valveMode === 'MANUAL' ? 'M' : 'B'}
                     </div>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                       <path d="M4 6L20 18V6L4 18V6Z" 
-                            fill={tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444'} 
-                            stroke={tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444'} 
+                            fill={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')} 
+                            stroke={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')} 
                             strokeWidth="2"
-                            style={{ transition: 'all 0.3s ease', filter: tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 5px #22c55e)' : 'drop-shadow(0 0 5px #ef4444)' }} />
+                            style={{ transition: 'all 0.3s ease', filter: !tank.isOnline ? 'none' : (tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 5px #22c55e)' : 'drop-shadow(0 0 5px #ef4444)') }} />
                       <rect x="11" y="2" width="2" height="6" fill="#94a3b8" />
                       <rect x="9" y="2" width="6" height="1" fill="#94a3b8" />
                     </svg>
@@ -599,10 +826,17 @@ const AgTank = () => {
                     </div>
                   )}
                 </div>
-                <div className={`fw-bold text-white mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
-                  {tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{tank.localId}
+                <div className={`fw-bold mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'} ${!tank.isOnline ? 'text-secondary opacity-50' : 'text-white'}`}>
+                  {!tank.isOnline ? 'OFFLINE' : `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`}
                 </div>
-                <div className={`opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`} style={{ color: getTankColor(tank.type, tank.level, tank.status) }}>{tank.level}%</div>
+                <div className={`d-flex justify-content-center gap-2 opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
+                  <span style={{ color: !tank.isOnline ? '#475569' : getTankColor(tank.type, tank.level, tank.status) }}>{!tank.isOnline ? '--' : tank.level}%</span>
+                  {tank.isOnline && tank.amps !== undefined && (
+                    <span className="text-warning d-flex align-items-center gap-1">
+                      <Zap size={8} className="pulse-icon" /> {tank.amps}A
+                    </span>
+                  )}
+                </div>
               </div>
             </Col>
           ))}
@@ -676,8 +910,8 @@ const AgTank = () => {
         }
 
         .tank-vessel { 
-            width: 36px; 
-            height: 52px; 
+            width: 44px; 
+            height: 60px; 
             border: 2px solid #475569; 
             border-radius: 4px 4px 8px 8px; 
             background: linear-gradient(90deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); 
@@ -944,26 +1178,28 @@ const AgTank = () => {
                     <Row className="g-3">
                       <Col xs={6}>
                         <button 
-                          className={`premium-action-btn open w-100 ${selectedTank.valveStatus === 'OPEN' ? 'active' : ''}`}
+                          className="premium-action-btn open w-100"
                           style={{ padding: '12px' }}
+                          disabled={isSendingCommand}
                           onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'OPEN' })}>
                           <div className="d-flex align-items-center justify-content-center gap-2">
-                             <Droplets size={16} />
+                             {isSendingCommand && selectedTank.valveStatus !== 'OPEN' ? <Spinner size="sm" animation="border" /> : <Droplets size={16} />}
                              <div>
-                                <div className="btn-label">OPEN SUPPLY</div>
+                                <div className="btn-label">{isSendingCommand && selectedTank.valveStatus !== 'OPEN' ? 'SENDING...' : 'OPEN SUPPLY'}</div>
                              </div>
                           </div>
                         </button>
                       </Col>
                       <Col xs={6}>
                         <button 
-                          className={`premium-action-btn close w-100 ${selectedTank.valveStatus === 'CLOSE' ? 'active' : ''}`}
+                          className="premium-action-btn close w-100"
                           style={{ padding: '12px' }}
+                          disabled={isSendingCommand}
                           onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'CLOSE' })}>
                           <div className="d-flex align-items-center justify-content-center gap-2">
-                             <X size={16} />
+                             {isSendingCommand && selectedTank.valveStatus !== 'CLOSE' ? <Spinner size="sm" animation="border" /> : <X size={16} />}
                              <div>
-                                <div className="btn-label">CLOSE SUPPLY</div>
+                                <div className="btn-label">{isSendingCommand && selectedTank.valveStatus !== 'CLOSE' ? 'SENDING...' : 'CLOSE SUPPLY'}</div>
                              </div>
                           </div>
                         </button>
@@ -1005,15 +1241,15 @@ const AgTank = () => {
              {actionFeedback && (
                 <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2" 
                      style={{ 
-                       backgroundColor: actionFeedback.includes('DENIED') ? '#7f1d1d' : '#064e3b', 
+                       backgroundColor: actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '#7f1d1d' : '#064e3b', 
                        zIndex: 1000, 
-                       boxShadow: actionFeedback.includes('DENIED') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)' 
+                       boxShadow: actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)' 
                      }}>
                     <div className="bg-white rounded-circle p-2 mb-2">
-                       {actionFeedback.includes('DENIED') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
+                       {actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
                     </div>
                     <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
-                    <small className="text-white opacity-90 fw-bold">{actionFeedback.includes('DENIED') ? 'SECURITY PROTOCOL ACTIVE' : 'VALVE OPERATION VERIFIED'}</small>
+                    <small className="text-white opacity-90 fw-bold">{actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? 'SECURITY PROTOCOL ACTIVE' : 'VALVE OPERATION VERIFIED'}</small>
                 </div>
              )}
 

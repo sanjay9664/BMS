@@ -73,7 +73,7 @@ const mergeConfig = (rawConfig = {}) => ({
 const SuperAdminConfig = () => {
   const [activeTab, setActiveTab] = useState('tenants');
   const [tenants, setTenants] = useState([]);
-  const [config, setConfig] = useState(null);
+  const [config, setConfig] = useState(defaultConfig);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -228,7 +228,12 @@ const SuperAdminConfig = () => {
           window.dispatchEvent(new Event('storage'));
         }
 
-        setMessage({ type: 'success', text: selectedTenant ? `Permissions updated for ${selectedTenant.name}` : 'Global configuration saved' });
+        setMessage({ 
+          type: 'success', 
+          text: selectedTenant 
+            ? `Successfully updated permissions for ${selectedTenant.name}` 
+            : '✨ Global System Visibility Synchronized Successfully!' 
+        });
         setTimeout(() => setMessage(null), 3000);
       }
     } catch (error) {
@@ -452,7 +457,7 @@ const SuperAdminConfig = () => {
                         <Form.Control placeholder="Search modules..." className="bg-transparent border-0 text-white shadow-none" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                       </InputGroup>
                     </Col>
-                    <Col md={6} className="d-flex justify-content-md-end gap-2 align-items-center">
+                    <Col md={7} className="d-flex justify-content-md-end gap-2 align-items-center">
                       <div className="d-flex gap-2 me-3 border-end border-light border-opacity-10 pe-3">
                          <Button variant="outline-success" size="sm" className="rounded-pill px-3 fw-bold fs-10" onClick={() => handleToggleAllModules(true)}>
                            ENABLE ALL
@@ -461,11 +466,16 @@ const SuperAdminConfig = () => {
                            DISABLE ALL
                          </Button>
                       </div>
-                      {['all', 'enabled', 'disabled'].map(s => (
-                        <Button key={s} variant={filterStatus === s ? 'info' : 'outline-secondary'} size="sm" className="rounded-pill px-3" onClick={() => setFilterStatus(s)}>
-                          {s.charAt(0).toUpperCase() + s.slice(1)}
-                        </Button>
-                      ))}
+                      <Button variant="info" size="sm" className="rounded-pill px-3 fw-bold fs-10 save-btn-premium" onClick={handleSaveConfig} disabled={saving}>
+                         {saving ? <Spinner size="sm" /> : <Save size={14} className="me-1" />} SAVE & SYNC
+                      </Button>
+                      <div className="ms-2 d-flex gap-1">
+                        {['all', 'enabled', 'disabled'].map(s => (
+                          <Button key={s} variant={filterStatus === s ? 'info' : 'outline-secondary'} size="sm" className="rounded-pill px-2 fs-10" onClick={() => setFilterStatus(s)}>
+                            {s.charAt(0).toUpperCase()}
+                          </Button>
+                        ))}
+                      </div>
                     </Col>
                   </Row>
                 </Card.Header>
@@ -529,7 +539,7 @@ const SuperAdminConfig = () => {
                   </Card.Header>
                   <Card.Body className="p-0">
                     <div className="mini-sidebar-preview p-4" style={{ background: '#0f172a', minHeight: '300px' }}>
-                      {Object.entries(moduleDetails).map(([key, module]) => config[key] && (
+                      {Object.entries(moduleDetails).map(([key, module]) => config?.[key] && (
                         <div key={key} className="preview-item mb-2 p-2 rounded" style={{ background: 'rgba(255,255,255,0.02)' }}>
                           <div className="d-flex align-items-center gap-2 small">
                             <span className="text-info">{module.icon}</span>
