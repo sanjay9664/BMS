@@ -12,8 +12,8 @@ const AgTank = () => {
   const [domesticCount, setDomesticCount] = useState(24);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const pageRef = useRef(null);
-  
-   
+
+
   // Status Filter Sync
   useEffect(() => {
     const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
@@ -22,7 +22,7 @@ const AgTank = () => {
   }, []);
 
   const totalTanks = 48;
-  
+
   const [deviceStatuses, setDeviceStatuses] = useState({});
 
   // Poll real-time device connection status from Sochiot API
@@ -32,7 +32,7 @@ const AgTank = () => {
         const saved = localStorage.getItem('scada_templates');
         if (!saved) return;
         const templates = JSON.parse(saved);
-        
+
         // Collect all unique device IDs used in AG Tank templates
         const deviceIds = new Set();
         templates.forEach(t => {
@@ -73,7 +73,7 @@ const AgTank = () => {
         console.error("Device status polling error:", e);
       }
     };
-    
+
     fetchDeviceStatus();
     const interval = setInterval(fetchDeviceStatus, 15000); // Fetch every 15s
     return () => clearInterval(interval);
@@ -101,8 +101,8 @@ const AgTank = () => {
         const templates = JSON.parse(saved);
         return initial.map(tank => {
           const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
-          const template = templates.find(t => 
-            t.module === 'AG Tank' && 
+          const template = templates.find(t =>
+            t.module === 'AG Tank' &&
             (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
           );
           if (template && template.mapping) {
@@ -137,10 +137,10 @@ const AgTank = () => {
       setTimeout(() => setActionFeedback(null), 2000);
       return;
     }
-    
+
     // 1. Identify Tank Name
     const tankName = `${selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${selectedTank.localId}`;
-    
+
     // 2. Fetch Template
     const saved = localStorage.getItem('scada_templates');
     if (!saved) {
@@ -148,10 +148,10 @@ const AgTank = () => {
       setTimeout(() => setActionFeedback(null), 2000);
       return;
     }
-    
+
     const templates = JSON.parse(saved);
-    const templateIndex = templates.findIndex(t => 
-      t.module === 'AG Tank' && 
+    const templateIndex = templates.findIndex(t =>
+      t.module === 'AG Tank' &&
       (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
     );
 
@@ -163,7 +163,7 @@ const AgTank = () => {
 
     const template = templates[templateIndex];
     const typesToSend = limitType === 'BOTH' ? ['LOWER', 'UPPER'] : [limitType];
-    
+
     setIsSendingRules(true);
     setActionFeedback("SENDING RULES...");
 
@@ -182,19 +182,19 @@ const AgTank = () => {
           console.warn(`Module ID missing or disabled for ${type} limit`);
           continue;
         }
-        
+
         rulesProcessed++;
 
         // 4. Update Consequence Value to current UI limit
         const updatedValue = type === 'LOWER' ? selectedTank.minLevel : selectedTank.maxLevel;
-        
+
         // 5. Send to API
         const payload = {
           moduleId: moduleId,
           settingFields: [
             { fieldName: "condition_date_time", currentValue: config?.condition?.timeDate || "" },
             { fieldName: "condition_date_time_repeat_days", currentValue: config?.condition?.repeatDays?.join(',') || "" },
-            { fieldName: "consequence_value", currentValue: String(updatedValue) }, 
+            { fieldName: "consequence_value", currentValue: String(updatedValue) },
             { fieldName: "condition_type", currentValue: config?.condition?.type || "MODBUS" },
             { fieldName: "condition_modbus", currentValue: config?.condition?.modbus || "" },
             { fieldName: "comparison_type", currentValue: config?.condition?.comparisonType || "LESS_THAN" },
@@ -217,14 +217,14 @@ const AgTank = () => {
 
         // Update local template object for persistence
         if (type === 'LOWER') {
-          template.mapping.rule1Config = { 
-            ...template.mapping.rule1Config, 
-            consequence: { ...template.mapping.rule1Config?.consequence, value: String(updatedValue) } 
+          template.mapping.rule1Config = {
+            ...template.mapping.rule1Config,
+            consequence: { ...template.mapping.rule1Config?.consequence, value: String(updatedValue) }
           };
         } else {
-          template.mapping.rule2Config = { 
-            ...template.mapping.rule2Config, 
-            consequence: { ...template.mapping.rule2Config?.consequence, value: String(updatedValue) } 
+          template.mapping.rule2Config = {
+            ...template.mapping.rule2Config,
+            consequence: { ...template.mapping.rule2Config?.consequence, value: String(updatedValue) }
           };
         }
       }
@@ -260,7 +260,7 @@ const AgTank = () => {
       return;
     }
 
-    // Handle Manual Remote Command via API
+    // Handle Manual RemoteWater Level via API
     if (updates.valveStatus && selectedTank && selectedTank.valveMode === 'MANUAL') {
       if (!selectedTank.isOnline) {
         setActionFeedback("DEVICE OFFLINE");
@@ -269,12 +269,12 @@ const AgTank = () => {
       }
       const tankName = `${selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${selectedTank.localId}`;
       const saved = localStorage.getItem('scada_templates');
-      
+
       if (saved) {
         try {
           const templates = JSON.parse(saved);
-          const template = templates.find(t => 
-            t.module === 'AG Tank' && 
+          const template = templates.find(t =>
+            t.module === 'AG Tank' &&
             (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
           );
 
@@ -300,13 +300,13 @@ const AgTank = () => {
               body: JSON.stringify(payload)
             });
 
-            if (!response.ok) throw new Error("Remote command failed");
-            
+            if (!response.ok) throw new Error("RemoteWater Level failed");
+
             setActionFeedback("COMMAND SUCCESS");
             setTimeout(() => setActionFeedback(null), 800);
           }
         } catch (error) {
-          console.error("Manual command error:", error);
+          console.error("ManualWater Level error:", error);
           setActionFeedback("COMMAND FAILED");
           setTimeout(() => setActionFeedback(null), 2000);
           setIsSendingCommand(false);
@@ -344,8 +344,8 @@ const AgTank = () => {
         setActionFeedback(`${updates.valveStatus === 'OPEN' ? 'STARTED' : 'STOPPED'} SUCCESSFULLY`);
         setTimeout(() => setActionFeedback(null), 800);
       }
-       // Auto-hide modal after brief success visualization
-       setTimeout(() => setShowValveModal(false), 500);
+      // Auto-hide modal after brief success visualization
+      setTimeout(() => setShowValveModal(false), 500);
     }
   };
 
@@ -425,7 +425,7 @@ const AgTank = () => {
     window.addEventListener('storage', syncDisabledTanks);
     // Listen for custom events if navigation happens within same tab without storage event firing
     window.addEventListener('focus', syncDisabledTanks);
-    
+
     return () => {
       window.removeEventListener('storage', syncDisabledTanks);
       window.removeEventListener('focus', syncDisabledTanks);
@@ -450,9 +450,9 @@ const AgTank = () => {
             if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
           }
         });
-        
+
         const modulesQuery = Array.from(moduleIds).join(',');
-        const url = modulesQuery ? `http://localhost:5000/api/templates/stats?modules=${modulesQuery}` : 'http://localhost:5000/api/templates/stats';
+        const url = modulesQuery ? `/api/templates/stats?modules=${modulesQuery}` : '/api/templates/stats';
 
         const response = await fetch(url);
         if (response.ok) {
@@ -461,20 +461,20 @@ const AgTank = () => {
             console.warn("Expected stats array but got:", stats);
             return;
           }
-          
+
           setAllTanks(prev => {
             let updated = false;
 
             const agTemplates = templates.filter(t => t.module === 'AG Tank');
-            const genericAgTemplates = agTemplates.filter(t => 
+            const genericAgTemplates = agTemplates.filter(t =>
               (!t.mapping?.agTankRange?.domStart && !t.mapping?.agTankRange?.flushStart) ||
               t.mapping?.agTankRange?.domStart === 'AG TANK' || t.mapping?.agTankRange?.flushStart === 'AG TANK'
             );
 
             const next = prev.map((tank, index) => {
               const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
-              
-              let template = agTemplates.find(t => 
+
+              let template = agTemplates.find(t =>
                 (tank.type === 'DOMESTIC' && t.mapping?.agTankRange?.domStart === tankName) ||
                 (tank.type === 'FLUSHING' && t.mapping?.agTankRange?.flushStart === tankName)
               );
@@ -490,20 +490,20 @@ const AgTank = () => {
                 // Avoid overwriting if this tank is currently being edited in modal
                 const isEditing = showValveModal && selectedTank?.globalId === tank.globalId;
                 if (!isEditing) {
-                   if (template.mapping.rule1Config?.consequence?.value) {
-                      const newMin = Number(template.mapping.rule1Config.consequence.value);
-                      if (newTank.minLevel !== newMin) {
-                        newTank.minLevel = newMin;
-                        updated = true;
-                      }
-                   }
-                   if (template.mapping.rule2Config?.consequence?.value) {
-                      const newMax = Number(template.mapping.rule2Config.consequence.value);
-                      if (newTank.maxLevel !== newMax) {
-                        newTank.maxLevel = newMax;
-                        updated = true;
-                      }
-                   }
+                  if (template.mapping.rule1Config?.consequence?.value) {
+                    const newMin = Number(template.mapping.rule1Config.consequence.value);
+                    if (newTank.minLevel !== newMin) {
+                      newTank.minLevel = newMin;
+                      updated = true;
+                    }
+                  }
+                  if (template.mapping.rule2Config?.consequence?.value) {
+                    const newMax = Number(template.mapping.rule2Config.consequence.value);
+                    if (newTank.maxLevel !== newMax) {
+                      newTank.maxLevel = newMax;
+                      updated = true;
+                    }
+                  }
                 }
 
                 // Level Config
@@ -547,47 +547,47 @@ const AgTank = () => {
 
                 // 1. Check for START condition (OPEN)
                 if (startCfg?.field && startCfg?.module) {
-                    // Update Online Status
-                    let isOnline = tank.isOnline;
-                    
-                    // 1. Check real-time polled device connection status (Reliable even without telemetry)
-                    if (startCfg?.device && deviceStatuses[startCfg.device] !== undefined) {
-                      isOnline = deviceStatuses[startCfg.device];
-                    }
+                  // Update Online Status
+                  let isOnline = tank.isOnline;
 
-                    const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
-                    if (stat && stat.meta) {
-                      const modeObj = stat.meta?.mode || stat.mode;
-                      
-                      // 2. Only use telemetry fallback if real-time polling didn't cover it
-                      if (startCfg?.device && deviceStatuses[startCfg.device] === undefined) {
-                        if (modeObj && modeObj.name) {
-                          isOnline = modeObj.name === 'ONLINE';
-                        } 
-                        else if (stat.meta.created_at_timestamp) {
-                          const ts = stat.meta.created_at_timestamp;
-                          const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
-                          if (!isNaN(lastSeen)) {
-                            isOnline = (Date.now() - lastSeen) < 86400000;
-                          }
+                  // 1. Check real-time polled device connection status (Reliable even without telemetry)
+                  if (startCfg?.device && deviceStatuses[startCfg.device] !== undefined) {
+                    isOnline = deviceStatuses[startCfg.device];
+                  }
+
+                  const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+                  if (stat && stat.meta) {
+                    const modeObj = stat.meta?.mode || stat.mode;
+
+                    // 2. Only use telemetry fallback if real-time polling didn't cover it
+                    if (startCfg?.device && deviceStatuses[startCfg.device] === undefined) {
+                      if (modeObj && modeObj.name) {
+                        isOnline = modeObj.name === 'ONLINE';
+                      }
+                      else if (stat.meta.created_at_timestamp) {
+                        const ts = stat.meta.created_at_timestamp;
+                        const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
+                        if (!isNaN(lastSeen)) {
+                          isOnline = (Date.now() - lastSeen) < 86400000;
                         }
                       }
-
-                      const currentVal = Number(stat.meta[startCfg.field]);
-                      const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
-                      
-                      if (isStartMet) {
-                        updated = true;
-                        conditionMet = true;
-                        newTank.valveStatus = 'OPEN';
-                        newTank.status = 'Running';
-                      }
                     }
 
-                    if (newTank.isOnline !== isOnline) {
-                      newTank.isOnline = isOnline;
+                    const currentVal = Number(stat.meta[startCfg.field]);
+                    const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
+
+                    if (isStartMet) {
                       updated = true;
+                      conditionMet = true;
+                      newTank.valveStatus = 'OPEN';
+                      newTank.status = 'Running';
                     }
+                  }
+
+                  if (newTank.isOnline !== isOnline) {
+                    newTank.isOnline = isOnline;
+                    updated = true;
+                  }
                 }
 
                 // 2. Check for STOP condition (CLOSE) - if start not met
@@ -596,7 +596,7 @@ const AgTank = () => {
                   if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
                     const currentVal = Number(stat.meta[stopCfg.field]);
                     const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
-                    
+
                     if (isStopMet) {
                       updated = true;
                       conditionMet = true;
@@ -663,17 +663,17 @@ const AgTank = () => {
       try {
         const templates = JSON.parse(saved);
         const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
-        const template = templates.find(t => 
-          t.module === 'AG Tank' && 
+        const template = templates.find(t =>
+          t.module === 'AG Tank' &&
           (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
         );
         if (template && template.mapping) {
           const min = template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : tank.minLevel;
           const max = template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : tank.maxLevel;
-          
+
           // Update local tank object for the modal
           const syncedTank = { ...tank, minLevel: min, maxLevel: max };
-          
+
           // Update in master list to sync markers
           setAllTanks(prev => prev.map(t => t.globalId === tank.globalId ? syncedTank : t));
           setSelectedTank(syncedTank);
@@ -687,7 +687,7 @@ const AgTank = () => {
     } else {
       setSelectedTank(tank);
     }
-    
+
     setShowValveModal(true);
   };
 
@@ -699,20 +699,20 @@ const AgTank = () => {
             <h2 className="mb-0 text-white fw-black tracking-tighter">AG TANK <span className="text-info">SCADA</span></h2>
             <p className="text-secondary fs-10 fw-bold opacity-75 mb-0 uppercase letter-spacing-1">Unit Array: 01-48 | Active Sector: {domesticCount}D / {48 - domesticCount}F</p>
           </div>
-          
+
           <div className="d-none d-xl-flex gap-4 border-start border-white border-opacity-10 ps-4">
-             <div className="hud-stat-container">
-                <div className="hud-label">Net Storage</div>
-                <div className="hud-value">{Math.round(allTanks.reduce((acc, t) => acc + t.level, 0) / 48)}<span className="fs-10 text-info ms-1">%</span></div>
-             </div>
-             <div className="hud-stat-container">
-                <div className="hud-label">Avg Temp</div>
-                <div className="hud-value">24.2<span className="fs-10 text-muted ms-1">°C</span></div>
-             </div>
-             <div className="hud-stat-container border-info border-opacity-50">
-                <div className="hud-label text-info">System Health</div>
-                <div className="hud-value text-info">98.5<span className="fs-10 ms-1">%</span></div>
-             </div>
+            <div className="hud-stat-container">
+              <div className="hud-label">Net Storage</div>
+              <div className="hud-value">{Math.round(allTanks.reduce((acc, t) => acc + t.level, 0) / 48)}<span className="fs-10 text-info ms-1">%</span></div>
+            </div>
+            <div className="hud-stat-container">
+              <div className="hud-label">Avg Temp</div>
+              <div className="hud-value">24.2<span className="fs-10 text-muted ms-1">°C</span></div>
+            </div>
+            <div className="hud-stat-container border-info border-opacity-50">
+              <div className="hud-label text-info">System Health</div>
+              <div className="hud-value text-info">98.5<span className="fs-10 ms-1">%</span></div>
+            </div>
           </div>
         </div>
         <div className="d-flex gap-2">
@@ -758,7 +758,7 @@ const AgTank = () => {
           { id: 'ALL', label: 'SYSTEM TOTAL', count: stats.total.all, icon: <LayoutGrid size={16} />, color: 'secondary' }
         ].map(mode => (
           <Col md={4} key={mode.id}>
-            <div className={`filter-tile ${sectorFilter === mode.id ? 'active ' + mode.id.toLowerCase() : ''}`} 
+            <div className={`filter-tile ${sectorFilter === mode.id ? 'active ' + mode.id.toLowerCase() : ''}`}
               onClick={() => {
                 setSectorFilter(mode.id);
                 if (mode.id === 'ALL') setStatusFilter('ALL');
@@ -792,7 +792,7 @@ const AgTank = () => {
               >
                 {isTankDisabled(tank) && <div className="disabled-overlay-text">DISABLED</div>}
                 <div className="tank-assembly-anchor mx-auto position-relative" style={{ width: isFullscreen ? '48px' : '44px' }}>
-                  <div 
+                  <div
                     className={`tank-vessel ${isFullscreen ? 'vessel-large' : ''}`}
                     style={{ borderColor: '#475569' }}
                   >
@@ -810,11 +810,11 @@ const AgTank = () => {
                       {tank.valveMode === 'AUTO' ? 'A' : tank.valveMode === 'MANUAL' ? 'M' : 'B'}
                     </div>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-                      <path d="M4 6L20 18V6L4 18V6Z" 
-                            fill={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')} 
-                            stroke={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')} 
-                            strokeWidth="2"
-                            style={{ transition: 'all 0.3s ease', filter: !tank.isOnline ? 'none' : (tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 5px #22c55e)' : 'drop-shadow(0 0 5px #ef4444)') }} />
+                      <path d="M4 6L20 18V6L4 18V6Z"
+                        fill={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')}
+                        stroke={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')}
+                        strokeWidth="2"
+                        style={{ transition: 'all 0.3s ease', filter: !tank.isOnline ? 'none' : (tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 5px #22c55e)' : 'drop-shadow(0 0 5px #ef4444)') }} />
                       <rect x="11" y="2" width="2" height="6" fill="#94a3b8" />
                       <rect x="9" y="2" width="6" height="1" fill="#94a3b8" />
                     </svg>
@@ -822,7 +822,7 @@ const AgTank = () => {
                   {/* Discharge Flow Animation - Reacts to both Valve and Operation Status */}
                   {tank.valveStatus === 'OPEN' && tank.status === 'Running' && (
                     <div className="discharge-manifold-system">
-                      
+
                     </div>
                   )}
                 </div>
@@ -1073,37 +1073,36 @@ const AgTank = () => {
       <Modal show={showValveModal} onHide={() => setShowValveModal(false)} centered size="lg" contentClassName="bg-transparent border-0 shadow-2xl custom-modal-wide">
         {selectedTank && (
           <Modal.Body className="p-0 text-white overflow-hidden rounded-5" style={{ background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            
+
             {/* Modal Header Bar */}
             <div className="p-4 text-center border-bottom border-white border-opacity-10" style={{ background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, transparent 100%)' }}>
-               <Badge bg="info" className="bg-opacity-10 text-info px-3 py-1 mb-2 border border-info border-opacity-25 rounded-pill">
-                  <div className="d-flex align-items-center gap-2 fs-12 fw-black tracking-widest uppercase">
-                    <Activity size={10} className="pulse-icon" /> Operational Control
-                  </div>
-               </Badge>
-               <h3 className="fw-black text-white mb-0 size-3 tracking-tighter" style={{ textShadow: '0 0 20px rgba(56, 189, 248, 0.3)' }}>
-                 {selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{selectedTank.localId} <span className="text-info-scada">COMMAND</span>
-               </h3>
+              <Badge bg="info" className="bg-opacity-10 text-info px-3 py-1 mb-2 border border-info border-opacity-25 rounded-pill">
+                <div className="d-flex align-items-center gap-2 fs-12 fw-black tracking-widest uppercase">
+                  <Activity size={10} className="pulse-icon" /> Operational Control
+                </div>
+              </Badge>
+              <h3 className="fw-black text-white mb-0 size-3 tracking-tighter" style={{ textShadow: '0 0 20px rgba(56, 189, 248, 0.3)' }}>
+                {selectedTank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{selectedTank.localId} <span className="text-info-scada">COMMAND</span>
+              </h3>
             </div>
             <div className="p-4 px-5">
               {/* Mode Control Section */}
-              <div className="d-flex justify-content-between align-items-center p-3 rounded-4 position-relative overflow-hidden mb-3" 
-                   style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="d-flex justify-content-between align-items-center p-3 rounded-4 position-relative overflow-hidden mb-3"
+                style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div className="position-absolute top-0 start-0 h-100 w-1 bg-info bg-opacity-50"></div>
                 <div>
-                   <div className="fw-black fs-10 tracking-widest text-secondary uppercase">Control Strategy</div>
-                   <div className="text-white fw-bold fs-6">AUTO / MANUAL OVERRIDE</div>
+                  <div className="fw-black fs-10 tracking-widest text-secondary uppercase">Control Strategy</div>
+                  <div className="text-white fw-bold fs-6">AUTO / MANUAL OVERRIDE</div>
                 </div>
                 <div className="d-flex align-items-center gap-1 bg-dark bg-opacity-80 p-1 rounded-pill border border-white border-opacity-10 shadow-inner">
                   {['AUTO', 'MANUAL', 'BYPASS'].map(mode => (
-                    <div 
+                    <div
                       key={mode}
                       onClick={() => updateTankValve(selectedTank.globalId, { valveMode: mode })}
-                      className={`px-4 py-2 rounded-pill fw-black tracking-widest transition-all cursor-pointer ${
-                        selectedTank.valveMode === mode 
-                          ? 'bg-info text-white shadow-lg scale-105' 
+                      className={`px-4 py-2 rounded-pill fw-black tracking-widest transition-all cursor-pointer ${selectedTank.valveMode === mode
+                          ? 'bg-info text-white shadow-lg scale-105'
                           : 'text-secondary opacity-40 hover-opacity-100 hover-white'
-                      }`}
+                        }`}
                       style={{ fontSize: '11px', letterSpacing: '1px', cursor: 'pointer' }}
                     >
                       {mode}
@@ -1116,38 +1115,38 @@ const AgTank = () => {
               {selectedTank.valveMode === 'AUTO' && (
                 <Row className="g-3 mb-3">
                   <Col md={6}>
-                     <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
-                        <div className="d-flex align-items-center gap-2 mb-2">
-                          <div className="p-1 px-2 rounded bg-info bg-opacity-10 text-info border border-info border-opacity-20"><ArrowDown size={12} /></div>
-                          <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Lower Limit</Form.Label>
-                        </div>
-                        <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
-                           <Form.Control 
-                              type="number" 
-                              value={selectedTank.minLevel} 
-                              onChange={(e) => updateTankValve(selectedTank.globalId, { minLevel: parseInt(e.target.value) })}
-                              className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
-                           />
-                           <span className="text-info fw-black fs-5">%</span>
-                        </div>
-                     </div>
+                    <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
+                      <div className="d-flex align-items-center gap-2 mb-2">
+                        <div className="p-1 px-2 rounded bg-info bg-opacity-10 text-info border border-info border-opacity-20"><ArrowDown size={12} /></div>
+                        <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Lower Limit</Form.Label>
+                      </div>
+                      <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
+                        <Form.Control
+                          type="number"
+                          value={selectedTank.minLevel}
+                          onChange={(e) => updateTankValve(selectedTank.globalId, { minLevel: parseInt(e.target.value) })}
+                          className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
+                        />
+                        <span className="text-info fw-black fs-5">%</span>
+                      </div>
+                    </div>
                   </Col>
                   <Col md={6}>
-                     <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
-                        <div className="d-flex align-items-center gap-2 mb-2">
-                          <div className="p-1 px-2 rounded bg-danger bg-opacity-10 text-danger border border-danger border-opacity-20"><ArrowUp size={12} /></div>
-                          <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Upper Limit</Form.Label>
-                        </div>
-                        <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
-                           <Form.Control 
-                              type="number" 
-                              value={selectedTank.maxLevel} 
-                              onChange={(e) => updateTankValve(selectedTank.globalId, { maxLevel: parseInt(e.target.value) })}
-                              className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
-                           />
-                           <span className="text-danger fw-black fs-5">%</span>
-                        </div>
-                     </div>
+                    <div className="p-3 rounded-4 bg-black bg-opacity-40 border border-white border-opacity-5 hover-glow transition-all">
+                      <div className="d-flex align-items-center gap-2 mb-2">
+                        <div className="p-1 px-2 rounded bg-danger bg-opacity-10 text-danger border border-danger border-opacity-20"><ArrowUp size={12} /></div>
+                        <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-0 uppercase">Upper Limit</Form.Label>
+                      </div>
+                      <div className="d-flex align-items-center gap-3 bg-dark border border-white border-opacity-10 rounded-3 p-1 px-3">
+                        <Form.Control
+                          type="number"
+                          value={selectedTank.maxLevel}
+                          onChange={(e) => updateTankValve(selectedTank.globalId, { maxLevel: parseInt(e.target.value) })}
+                          className="bg-transparent border-0 text-white fw-black fs-4 p-0 shadow-none w-100"
+                        />
+                        <span className="text-danger fw-black fs-5">%</span>
+                      </div>
+                    </div>
                   </Col>
                 </Row>
               )}
@@ -1155,10 +1154,10 @@ const AgTank = () => {
               {/* Action Section */}
               <div className="mb-2">
                 {selectedTank.valveMode === 'AUTO' ? (
-                   <>
+                  <>
                     <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-3 uppercase">Automation Settings Control</Form.Label>
-                    <Button 
-                      variant="info" 
+                    <Button
+                      variant="info"
                       className="w-100 py-3 rounded-4 fw-black tracking-widest d-flex align-items-center justify-content-center gap-3 shadow-lg border-0"
                       style={{ background: 'linear-gradient(45deg, #0ea5e9, #2563eb)', transition: 'all 0.3s ease' }}
                       onClick={() => handleSendRuleToEngine('BOTH')}
@@ -1171,47 +1170,47 @@ const AgTank = () => {
                       )}
                       {isSendingRules ? 'SYNCHRONIZING...' : 'APPLY LIMIT SETTINGS'}
                     </Button>
-                   </>
+                  </>
                 ) : selectedTank.valveMode === 'MANUAL' ? (
                   <>
-                    <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-2 uppercase">Supply Override Commands</Form.Label>
+                    <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-2 uppercase">Supply OverrideWater Levels</Form.Label>
                     <Row className="g-3">
                       <Col xs={6}>
-                        <button 
+                        <button
                           className="premium-action-btn open w-100"
                           style={{ padding: '12px' }}
                           disabled={isSendingCommand}
                           onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'OPEN' })}>
                           <div className="d-flex align-items-center justify-content-center gap-2">
-                             {isSendingCommand && selectedTank.valveStatus !== 'OPEN' ? <Spinner size="sm" animation="border" /> : <Droplets size={16} />}
-                             <div>
-                                <div className="btn-label">{isSendingCommand && selectedTank.valveStatus !== 'OPEN' ? 'SENDING...' : 'OPEN SUPPLY'}</div>
-                             </div>
+                            {isSendingCommand && selectedTank.valveStatus !== 'OPEN' ? <Spinner size="sm" animation="border" /> : <Droplets size={16} />}
+                            <div>
+                              <div className="btn-label">{isSendingCommand && selectedTank.valveStatus !== 'OPEN' ? 'SENDING...' : 'OPEN SUPPLY'}</div>
+                            </div>
                           </div>
                         </button>
                       </Col>
                       <Col xs={6}>
-                        <button 
+                        <button
                           className="premium-action-btn close w-100"
                           style={{ padding: '12px' }}
                           disabled={isSendingCommand}
                           onClick={() => updateTankValve(selectedTank.globalId, { valveStatus: 'CLOSE' })}>
                           <div className="d-flex align-items-center justify-content-center gap-2">
-                             {isSendingCommand && selectedTank.valveStatus !== 'CLOSE' ? <Spinner size="sm" animation="border" /> : <X size={16} />}
-                             <div>
-                                <div className="btn-label">{isSendingCommand && selectedTank.valveStatus !== 'CLOSE' ? 'SENDING...' : 'CLOSE SUPPLY'}</div>
-                             </div>
+                            {isSendingCommand && selectedTank.valveStatus !== 'CLOSE' ? <Spinner size="sm" animation="border" /> : <X size={16} />}
+                            <div>
+                              <div className="btn-label">{isSendingCommand && selectedTank.valveStatus !== 'CLOSE' ? 'SENDING...' : 'CLOSE SUPPLY'}</div>
+                            </div>
                           </div>
                         </button>
                       </Col>
                     </Row>
                   </>
                 ) : (
-                  <div className="text-center p-3 rounded-4 position-relative overflow-hidden" 
-                       style={{ 
-                         background: 'rgba(251, 191, 36, 0.05)', 
-                         border: '1px solid rgba(251, 191, 36, 0.2)'
-                       }}>
+                  <div className="text-center p-3 rounded-4 position-relative overflow-hidden"
+                    style={{
+                      background: 'rgba(251, 191, 36, 0.05)',
+                      border: '1px solid rgba(251, 191, 36, 0.2)'
+                    }}>
                     <div className="position-absolute top-0 start-0 w-100 h-1 bg-warning opacity-30"></div>
                     <div className="d-flex align-items-center justify-content-center gap-3">
                       <ShieldCheck size={24} className="text-warning opacity-80" />
@@ -1231,27 +1230,27 @@ const AgTank = () => {
 
             <div className="p-4 border-top border-white border-opacity-5 text-center bg-black bg-opacity-20 d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2 text-muted fs-12 fw-bold tracking-widest">
-                 <ShieldCheck size={14} className="text-success" /> BMS VERIFIED LINK
+                <ShieldCheck size={14} className="text-success" /> BMS VERIFIED LINK
               </div>
               <Button variant="link" className="text-secondary fs-12 fw-black text-decoration-none hover-white transition-all uppercase tracking-widest" onClick={() => setShowValveModal(false)}>
                 Dismiss Panel
               </Button>
             </div>
 
-             {actionFeedback && (
-                <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2" 
-                     style={{ 
-                       backgroundColor: actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '#7f1d1d' : '#064e3b', 
-                       zIndex: 1000, 
-                       boxShadow: actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)' 
-                     }}>
-                    <div className="bg-white rounded-circle p-2 mb-2">
-                       {actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
-                    </div>
-                    <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
-                    <small className="text-white opacity-90 fw-bold">{actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? 'SECURITY PROTOCOL ACTIVE' : 'VALVE OPERATION VERIFIED'}</small>
+            {actionFeedback && (
+              <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2"
+                style={{
+                  backgroundColor: actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '#7f1d1d' : '#064e3b',
+                  zIndex: 1000,
+                  boxShadow: actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)'
+                }}>
+                <div className="bg-white rounded-circle p-2 mb-2">
+                  {actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
                 </div>
-             )}
+                <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
+                <small className="text-white opacity-90 fw-bold">{actionFeedback.includes('DENIED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? 'SECURITY PROTOCOL ACTIVE' : 'VALVE OPERATION VERIFIED'}</small>
+              </div>
+            )}
 
             <div className="mt-4 pt-3 border-top border-secondary border-opacity-10 text-center">
               <Button variant="link" className="text-secondary fs-10 text-decoration-none" onClick={() => setShowValveModal(false)}>DISMISS CONTROLS</Button>

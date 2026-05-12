@@ -68,7 +68,7 @@ const UgTank = () => {
         const saved = localStorage.getItem('scada_templates');
         if (!saved) return;
         const templates = JSON.parse(saved);
-        
+
         // Collect all unique device IDs used in UG Tank/Pump templates
         const deviceIds = new Set();
         templates.forEach(t => {
@@ -104,7 +104,7 @@ const UgTank = () => {
         console.error("Device status polling error:", e);
       }
     };
-    
+
     fetchDeviceStatus();
     const interval = setInterval(fetchDeviceStatus, 15000); // Fetch every 15s
     return () => clearInterval(interval);
@@ -133,7 +133,7 @@ const UgTank = () => {
             if (t.mapping?.agStatusConfig?.module) moduleIds.add(t.mapping.agStatusConfig.module);
           }
         });
-        
+
         const modulesQuery = Array.from(moduleIds).join(',');
         const url = modulesQuery ? `/api/templates/stats?modules=${modulesQuery}` : '/api/templates/stats';
 
@@ -144,23 +144,23 @@ const UgTank = () => {
             console.warn("Expected stats array but got:", stats);
             return;
           }
-          
+
           setTanks(prev => {
             let updated = false;
 
             // Get all generic UG Tank templates (those without a specific valid name)
-            const ugTemplates = templates.filter(t => 
+            const ugTemplates = templates.filter(t =>
               t.module === 'UG Tank' || t.module === 'UG Pump'
             );
 
-            const genericUgTemplates = ugTemplates.filter(t => 
+            const genericUgTemplates = ugTemplates.filter(t =>
               !t.mapping?.ugTankRange?.name || t.mapping?.ugTankRange?.name === "" || t.mapping?.ugTankRange?.name === "UG TANK"
             );
 
             const next = prev.map((tank, index) => {
               // 1. Try to find exact match
               let template = ugTemplates.find(t => t.mapping?.ugTankRange?.name === tank.name);
-              
+
               // 2. If no exact match, fallback to generic templates by index
               if (!template && genericUgTemplates.length > index) {
                 template = genericUgTemplates[index];
@@ -205,8 +205,8 @@ const UgTank = () => {
           const updatePumpsStatus = (prevPumps) => {
             let pumpUpdated = false;
             const nextPumps = prevPumps.map(pump => {
-              const template = templates.find(t => 
-                t.module === 'UG Pump' && 
+              const template = templates.find(t =>
+                t.module === 'UG Pump' &&
                 Number(t.mapping?.ugPumpRange?.pumpNo) === Number(pump.id)
               );
 
@@ -220,7 +220,7 @@ const UgTank = () => {
 
               const startCfg = template.mapping.ugStatusStartConfig;
               const stopCfg = template.mapping.ugStatusStopConfig;
-              
+
               let newStatus = pump.status;
               let conditionMet = false;
 
@@ -230,7 +230,7 @@ const UgTank = () => {
                 if (stat && stat.meta && stat.meta[startCfg.field] !== undefined) {
                   const currentVal = Number(stat.meta[startCfg.field]);
                   const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
-                  
+
                   if (isStartMet) {
                     newStatus = 'Running';
                     conditionMet = true;
@@ -244,7 +244,7 @@ const UgTank = () => {
                 if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
                   const currentVal = Number(stat.meta[stopCfg.field]);
                   const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
-                  
+
                   if (isStopMet) {
                     newStatus = 'Stopped';
                     conditionMet = true;
@@ -259,7 +259,7 @@ const UgTank = () => {
 
               // Update Online Status
               let isOnline = pump.isOnline;
-              
+
               // 1. Find any device ID in the mapping to check status if explicit status mapping is missing
               let deviceToCheck = startCfg?.device;
               if (!deviceToCheck && template.mapping) {
@@ -274,12 +274,12 @@ const UgTank = () => {
               const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
               if (stat) {
                 const modeObj = stat.meta?.mode || stat.mode;
-                
+
                 // 2. Only use telemetry fallback if real-time polling didn't cover it
                 if (startCfg?.device === undefined || deviceStatuses[startCfg.device] === undefined) {
                   if (modeObj && modeObj.name) {
                     isOnline = modeObj.name === 'ONLINE';
-                  } 
+                  }
                   else if (stat.meta?.created_at_timestamp) {
                     const ts = stat.meta.created_at_timestamp;
                     const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
@@ -398,7 +398,7 @@ const UgTank = () => {
       }
 
       const isStart = updates.status === 'Running';
-      
+
       // 1. Fetch Template
       const saved = localStorage.getItem('scada_templates');
       if (!saved) {
@@ -406,11 +406,11 @@ const UgTank = () => {
         setTimeout(() => setActionFeedback(null), 2000);
         return;
       }
-      
+
       const templates = JSON.parse(saved);
       // Find template for this specific pump
-      const template = templates.find(t => 
-        t.module === 'UG Pump' && 
+      const template = templates.find(t =>
+        t.module === 'UG Pump' &&
         Number(t.mapping?.ugPumpRange?.pumpNo) === Number(id)
       );
 
@@ -423,7 +423,7 @@ const UgTank = () => {
       const config = isStart ? template.mapping?.ugStartCmdConfig : template.mapping?.ugStopCmdConfig;
 
       if (!config || !config.module || !config.field) {
-        setActionFeedback("ERROR: COMMAND MAPPING MISSING");
+        setActionFeedback("ERROR:Water Level MAPPING MISSING");
         setTimeout(() => setActionFeedback(null), 2000);
         return;
       }
@@ -490,7 +490,7 @@ const UgTank = () => {
       setTimeout(() => setActionFeedback(null), 2000);
       return;
     }
-    
+
     // 1. Fetch Template for this specific pump
     const saved = localStorage.getItem('scada_templates');
     if (!saved) {
@@ -498,11 +498,11 @@ const UgTank = () => {
       setTimeout(() => setActionFeedback(null), 2000);
       return;
     }
-    
+
     const templates = JSON.parse(saved);
     // Find the template for "UG Pump" that matches this pump ID
-    const templateIndex = templates.findIndex(t => 
-      t.module === 'UG Pump' && 
+    const templateIndex = templates.findIndex(t =>
+      t.module === 'UG Pump' &&
       Number(t.mapping?.ugPumpRange?.pumpNo) === Number(selectedPump.id)
     );
 
@@ -514,7 +514,7 @@ const UgTank = () => {
 
     const template = templates[templateIndex];
     const typesToSend = limitType === 'BOTH' ? ['LOWER', 'UPPER'] : [limitType];
-    
+
     setIsSendingRules(true);
     setActionFeedback("SENDING RULES...");
 
@@ -533,19 +533,19 @@ const UgTank = () => {
           console.warn(`Module ID missing or disabled for ${type} limit`);
           continue;
         }
-        
+
         rulesProcessed++;
 
         // 3. Update Consequence Value to current UI limit
         const updatedValue = type === 'LOWER' ? limitForm.start : limitForm.stop;
-        
+
         // 4. Send to API
         const payload = {
           moduleId: moduleId,
           settingFields: [
             { fieldName: "condition_date_time", currentValue: config?.condition?.timeDate || "" },
             { fieldName: "condition_date_time_repeat_days", currentValue: config?.condition?.repeatDays?.join(',') || "" },
-            { fieldName: "consequence_value", currentValue: String(updatedValue) }, 
+            { fieldName: "consequence_value", currentValue: String(updatedValue) },
             { fieldName: "condition_type", currentValue: config?.condition?.type || "MODBUS" },
             { fieldName: "condition_modbus", currentValue: config?.condition?.modbus || "" },
             { fieldName: "comparison_type", currentValue: config?.condition?.comparisonType || (type === 'LOWER' ? "LESS_THAN" : "GREATER_THAN") },
@@ -568,14 +568,14 @@ const UgTank = () => {
 
         // Update local template object for persistence
         if (type === 'LOWER') {
-          template.mapping.rule1Config = { 
-            ...template.mapping.rule1Config, 
-            consequence: { ...template.mapping.rule1Config?.consequence, value: String(updatedValue) } 
+          template.mapping.rule1Config = {
+            ...template.mapping.rule1Config,
+            consequence: { ...template.mapping.rule1Config?.consequence, value: String(updatedValue) }
           };
         } else {
-          template.mapping.rule2Config = { 
-            ...template.mapping.rule2Config, 
-            consequence: { ...template.mapping.rule2Config?.consequence, value: String(updatedValue) } 
+          template.mapping.rule2Config = {
+            ...template.mapping.rule2Config,
+            consequence: { ...template.mapping.rule2Config?.consequence, value: String(updatedValue) }
           };
         }
       }
@@ -593,20 +593,20 @@ const UgTank = () => {
       window.dispatchEvent(new Event('storage'));
 
       setActionFeedback("SETTINGS APPLIED SUCCESS");
-      
+
       // 6. Update local state so UI reflects recent values immediately
       const setter = activeStation === 1 ? setPumps1 : setPumps2;
-      setter(prev => prev.map(p => p.id === selectedPump.id ? { 
-        ...p, 
-        startLimit: Number(limitForm.start), 
-        stopLimit: Number(limitForm.stop) 
+      setter(prev => prev.map(p => p.id === selectedPump.id ? {
+        ...p,
+        startLimit: Number(limitForm.start),
+        stopLimit: Number(limitForm.stop)
       } : p));
-      
+
       // Update selectedPump so the modal also has current data if it stays open
-      setSelectedPump(prev => ({ 
-        ...prev, 
-        startLimit: Number(limitForm.start), 
-        stopLimit: Number(limitForm.stop) 
+      setSelectedPump(prev => ({
+        ...prev,
+        startLimit: Number(limitForm.start),
+        stopLimit: Number(limitForm.stop)
       }));
 
       setTimeout(() => {
@@ -665,9 +665,9 @@ const UgTank = () => {
                   <div className="text-center pe-5 border-end border-secondary border-opacity-20 d-none d-md-block">
                     <small className="text-secondary d-block fs-11 fw-bold uppercase mb-1">Station mode</small>
                     <div className="d-flex align-items-center justify-content-center bg-black bg-opacity-40 p-1 px-3 rounded-pill border border-secondary border-opacity-20" style={{ minWidth: '100px' }}>
-                       <span className={`fs-10 fw-black letter-spacing-1 ${controlMode === 'REMOTE' ? 'text-info' : 'text-warning'}`}>
-                          {controlMode === 'REMOTE' ? 'REMOTE MODE' : 'LOCAL MODE'}
-                       </span>
+                      <span className={`fs-10 fw-black letter-spacing-1 ${controlMode === 'REMOTE' ? 'text-info' : 'text-warning'}`}>
+                        {controlMode === 'REMOTE' ? 'REMOTE MODE' : 'LOCAL MODE'}
+                      </span>
                     </div>
                   </div>
                   <div className="text-center">
@@ -785,8 +785,8 @@ const UgTank = () => {
                             {p.isOnline && p.amp !== undefined ? `| ${Number(p.amp).toFixed(1)} A` : ''}
                           </text>
                           <text x="14" y="44" fill={!p.isOnline ? "#64748b" : (active ? "#22c55e" : "#475569")} fontSize={!p.isOnline ? "12" : "16"} fontWeight="900">
-                             {!p.isOnline ? "OFFLINE" : p.status.toUpperCase()} 
-                             <tspan fill={!p.isOnline ? '#64748b' : (p.mode === 'AUTO' ? '#38bdf8' : '#f59e0b')} fontSize="10" dy="-1">| {p.mode}</tspan>
+                            {!p.isOnline ? "OFFLINE" : p.status.toUpperCase()}
+                            <tspan fill={!p.isOnline ? '#64748b' : (p.mode === 'AUTO' ? '#38bdf8' : '#f59e0b')} fontSize="10" dy="-1">| {p.mode}</tspan>
                           </text>
                           <g transform="translate(165, 30)" style={{ cursor: 'pointer' }} onClick={(e) => openLimitSettings(e, p)}>
                             <circle r="22" fill="#111827" stroke="#334155" strokeWidth="1.5" />
@@ -962,27 +962,27 @@ const UgTank = () => {
       <Modal show={showPumpModal} onHide={() => setShowPumpModal(false)} centered size="lg" contentClassName="bg-transparent border-0 shadow-2xl custom-modal-wide">
         {selectedPump && (
           <Modal.Body className="p-0 text-white overflow-hidden rounded-5" style={{ background: 'rgba(15, 23, 42, 0.9)', backdropFilter: 'blur(20px)', border: '1px solid rgba(255,255,255,0.1)' }}>
-            
+
             {/* Modal Header Bar */}
             <div className="p-4 text-center border-bottom border-white border-opacity-10" style={{ background: 'linear-gradient(180deg, rgba(56, 189, 248, 0.05) 0%, transparent 100%)' }}>
-               <Badge bg="info" className="bg-opacity-10 text-info px-3 py-1 mb-2 border border-info border-opacity-25 rounded-pill">
-                  <div className="d-flex align-items-center gap-2 fs-12 fw-black tracking-widest uppercase">
-                    <Activity size={10} className="pulse-icon" /> Station Controller
-                  </div>
-               </Badge>
-               <h3 className="fw-black text-white mb-0 size-3 tracking-tighter" style={{ textShadow: '0 0 20px rgba(56, 189, 248, 0.3)' }}>
-                 PUMP STATION <span className="text-info-scada">P{selectedPump.id}</span>
-               </h3>
+              <Badge bg="info" className="bg-opacity-10 text-info px-3 py-1 mb-2 border border-info border-opacity-25 rounded-pill">
+                <div className="d-flex align-items-center gap-2 fs-12 fw-black tracking-widest uppercase">
+                  <Activity size={10} className="pulse-icon" /> Station Controller
+                </div>
+              </Badge>
+              <h3 className="fw-black text-white mb-0 size-3 tracking-tighter" style={{ textShadow: '0 0 20px rgba(56, 189, 248, 0.3)' }}>
+                PUMP STATION <span className="text-info-scada">P{selectedPump.id}</span>
+              </h3>
             </div>
 
             <div className="p-4 px-5">
               {/* Mode Control Section */}
-              <div className="d-flex justify-content-between align-items-center p-3 rounded-4 position-relative overflow-hidden mb-3" 
-                   style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <div className="d-flex justify-content-between align-items-center p-3 rounded-4 position-relative overflow-hidden mb-3"
+                style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <div className="position-absolute top-0 start-0 h-100 w-1 bg-info bg-opacity-50"></div>
                 <div>
-                   <div className="fw-black fs-10 tracking-widest text-secondary uppercase">System Mode</div>
-                   <div className="text-white fw-bold fs-6">AUTO / MANUAL OVERRIDE</div>
+                  <div className="fw-black fs-10 tracking-widest text-secondary uppercase">System Mode</div>
+                  <div className="text-white fw-bold fs-6">AUTO / MANUAL OVERRIDE</div>
                 </div>
                 <div className="d-flex align-items-center gap-3">
                   <span className={`fs-11 fw-black tracking-widest ${selectedPump.mode === 'MANUAL' ? 'text-warning text-glow' : 'text-muted opacity-50'}`}>MANUAL</span>
@@ -995,33 +995,33 @@ const UgTank = () => {
 
               {/* Action Section */}
               <div className="mb-4">
-                <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-2 uppercase text-center w-100">Pump Commutation commands</Form.Label>
+                <Form.Label className="fs-11 text-secondary fw-black tracking-widest mb-2 uppercase text-center w-100">Pump CommutationWater Levels</Form.Label>
                 <Row className="g-3">
                   <Col xs={6}>
-                    <button 
+                    <button
                       className="premium-action-btn open w-100"
                       disabled={selectedPump.mode === 'AUTO' || isSendingCommand}
                       style={{ padding: '16px' }}
                       onClick={() => handlePumpControl(selectedPump.id, { status: 'Running', hz: '50.0' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
-                         {isSendingCommand && selectedPump.status !== 'Running' ? <Spinner size="sm" animation="border" /> : <Zap size={20} />}
-                         <div>
-                            <div className="btn-label fs-5">{isSendingCommand && selectedPump.status !== 'Running' ? 'SENDING...' : 'START PUMP'}</div>
-                         </div>
+                        {isSendingCommand && selectedPump.status !== 'Running' ? <Spinner size="sm" animation="border" /> : <Zap size={20} />}
+                        <div>
+                          <div className="btn-label fs-5">{isSendingCommand && selectedPump.status !== 'Running' ? 'SENDING...' : 'START PUMP'}</div>
+                        </div>
                       </div>
                     </button>
                   </Col>
                   <Col xs={6}>
-                    <button 
+                    <button
                       className="premium-action-btn close w-100"
                       disabled={selectedPump.mode === 'AUTO' || isSendingCommand}
                       style={{ padding: '16px' }}
                       onClick={() => handlePumpControl(selectedPump.id, { status: 'Stopped', hz: '0.0' })}>
                       <div className="d-flex align-items-center justify-content-center gap-2">
-                         {isSendingCommand && selectedPump.status !== 'Stopped' ? <Spinner size="sm" animation="border" /> : <X size={20} />}
-                         <div>
-                            <div className="btn-label fs-5">{isSendingCommand && selectedPump.status !== 'Stopped' ? 'SENDING...' : 'STOP PUMP'}</div>
-                         </div>
+                        {isSendingCommand && selectedPump.status !== 'Stopped' ? <Spinner size="sm" animation="border" /> : <X size={20} />}
+                        <div>
+                          <div className="btn-label fs-5">{isSendingCommand && selectedPump.status !== 'Stopped' ? 'SENDING...' : 'STOP PUMP'}</div>
+                        </div>
                       </div>
                     </button>
                   </Col>
@@ -1029,23 +1029,23 @@ const UgTank = () => {
               </div>
 
               {actionFeedback && (
-                <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2" 
-                     style={{ 
-                       backgroundColor: actionFeedback.includes('DENIED') ? '#7f1d1d' : '#064e3b', 
-                       zIndex: 1000, 
-                       boxShadow: actionFeedback.includes('DENIED') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)' 
-                     }}>
-                    <div className="bg-white rounded-circle p-2 mb-2">
-                       {actionFeedback.includes('DENIED') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
-                    </div>
-                    <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
+                <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2"
+                  style={{
+                    backgroundColor: actionFeedback.includes('DENIED') ? '#7f1d1d' : '#064e3b',
+                    zIndex: 1000,
+                    boxShadow: actionFeedback.includes('DENIED') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)'
+                  }}>
+                  <div className="bg-white rounded-circle p-2 mb-2">
+                    {actionFeedback.includes('DENIED') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
+                  </div>
+                  <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
                 </div>
               )}
             </div>
 
             <div className="p-3 border-top border-white border-opacity-5 text-center bg-black bg-opacity-20 d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center gap-2 text-muted fs-12 fw-bold tracking-widest">
-                 <ShieldCheck size={14} className="text-success" /> SECURE STATION LINK
+                <ShieldCheck size={14} className="text-success" /> SECURE STATION LINK
               </div>
               <Button variant="link" className="text-secondary fs-12 fw-black text-decoration-none hover-white transition-all uppercase tracking-widest" onClick={() => setShowPumpModal(false)}>
                 Dismiss Panel
@@ -1058,8 +1058,8 @@ const UgTank = () => {
       <Modal show={showLimitModal} onHide={() => setShowLimitModal(false)} centered contentClassName="bg-dark border-secondary shadow-lg rounded-4 overflow-hidden">
         {selectedPump && (
           <Modal.Body className="p-4 text-white position-relative">
-            <Button 
-              variant="link" 
+            <Button
+              variant="link"
               className="position-absolute top-0 end-0 m-2 text-secondary hover-text-white transition-all p-2"
               onClick={() => setShowLimitModal(false)}
             >
@@ -1081,11 +1081,11 @@ const UgTank = () => {
               </Form.Group>
             </div>
             <div className="d-flex flex-column gap-2 mt-4">
-               <div className="d-flex gap-3">
-                
-               </div>
-               <Button 
-                variant="primary" 
+              <div className="d-flex gap-3">
+
+              </div>
+              <Button
+                variant="primary"
                 className="w-100 py-3 fw-black tracking-widest d-flex align-items-center justify-content-center gap-2 shadow-glow-blue border-0"
                 style={{ background: 'linear-gradient(45deg, #2563eb, #3b82f6)' }}
                 disabled={isSendingRules}
@@ -1097,16 +1097,16 @@ const UgTank = () => {
             </div>
 
             {actionFeedback && (
-              <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2" 
-                   style={{ 
-                     backgroundColor: actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '#7f1d1d' : '#064e3b', 
-                     zIndex: 1000, 
-                     boxShadow: actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)' 
-                   }}>
-                  <div className="bg-white rounded-circle p-2 mb-2">
-                     {actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
-                  </div>
-                  <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
+              <div className="action-success-overlay position-absolute top-50 start-50 translate-middle w-75 p-4 rounded-4 shadow-2xl text-center border-2 border-white d-flex flex-column align-items-center gap-2"
+                style={{
+                  backgroundColor: actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '#7f1d1d' : '#064e3b',
+                  zIndex: 1000,
+                  boxShadow: actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? '0 0 40px rgba(239, 68, 68, 0.4)' : '0 0 40px rgba(6, 78, 59, 0.4)'
+                }}>
+                <div className="bg-white rounded-circle p-2 mb-2">
+                  {actionFeedback.includes('FAILED') || actionFeedback.includes('NOT APPLIED') || actionFeedback.includes('DEVICE OFFLINE') ? <XCircle size={40} className="text-danger" /> : <ShieldCheck size={40} style={{ color: '#059669' }} />}
+                </div>
+                <h4 className="text-white fw-black mb-0 letter-spacing-2">{actionFeedback}</h4>
               </div>
             )}
           </Modal.Body>
