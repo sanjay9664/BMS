@@ -185,8 +185,8 @@ const ConfigTemplates = () => {
       'PUMP STATUS': true,
       'AUTO LOGIC': true,
       'MANUAL CONTROL': true,
-      'START COMMAND': true,
-      'STOP COMMAND': true,
+      'STARTWater Level': true,
+      'STOPWater Level': true,
       'PRESSURE SENSOR': true
     },
     electrical: {
@@ -237,8 +237,8 @@ const ConfigTemplates = () => {
   const usedModules = useMemo(() => {
     if (selectedModule === 'AG Tank') {
       return [
-        agLowerConfig.module, agUpperConfig.module, agAutoConfig.module, 
-        agManualConfig.module, agBypassConfig.module, agLevelConfig.module, 
+        agLowerConfig.module, agUpperConfig.module, agAutoConfig.module,
+        agManualConfig.module, agBypassConfig.module, agLevelConfig.module,
         agOpenConfig.module, agCloseConfig.module
       ].filter(m => m);
     }
@@ -258,9 +258,9 @@ const ConfigTemplates = () => {
     }
     return [];
   }, [
-    selectedModule, 
-    agLowerConfig.module, agUpperConfig.module, agAutoConfig.module, 
-    agManualConfig.module, agBypassConfig.module, agLevelConfig.module, 
+    selectedModule,
+    agLowerConfig.module, agUpperConfig.module, agAutoConfig.module,
+    agManualConfig.module, agBypassConfig.module, agLevelConfig.module,
     agOpenConfig.module, agCloseConfig.module,
     ugLowerConfig.module, ugUpperConfig.module, ugAutoConfig.module,
     ugManualConfig.module, ugStartCmdConfig.module, ugStopCmdConfig.module,
@@ -272,7 +272,7 @@ const ConfigTemplates = () => {
   const handleUgPumpNoChange = (no) => {
     setSelectedUgPumpNo(no);
     setTemplateName('');
-    
+
     // Find if a template already exists for this specific pump number
     const existing = savedTemplates.find(t =>
       t.module === 'UG Pump' &&
@@ -296,7 +296,7 @@ const ConfigTemplates = () => {
       setUgAmpsConfig(existing.mapping.ugAmpsConfig || createDefaultConfig());
       setUgRule1Config(existing.mapping.rule1Config || existing.mapping.ruleEngineConfig || initialRuleState);
       setUgRule2Config(existing.mapping.rule2Config || existing.mapping.ruleEngineConfig || initialRuleState);
-      
+
       // Restore Hierarchy
       const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.ugLowerConfig?.building ? {
         organization: existing.mapping.ugLowerConfig.organization || '',
@@ -330,7 +330,7 @@ const ConfigTemplates = () => {
   const handlePressureTargetChange = (name) => {
     setPressureTarget(name);
     setTemplateName('');
-    
+
     const existing = savedTemplates.find(t =>
       t.module === 'Pressure' &&
       t.mapping.pressureTarget === name
@@ -354,7 +354,7 @@ const ConfigTemplates = () => {
   const handleElectricalTargetChange = (name) => {
     setElectricalTarget(name);
     setTemplateName('');
-    
+
     const existing = savedTemplates.find(t =>
       t.module === 'Electrical Parameter' &&
       t.mapping.electricalTarget === name
@@ -365,7 +365,7 @@ const ConfigTemplates = () => {
       setElecCurrentConfig(existing.mapping.elecCurrentConfig || createDefaultConfig());
       setElecSystemConfig(existing.mapping.elecSystemConfig || createDefaultConfig());
       setElecConsumptionConfig(existing.mapping.elecConsumptionConfig || createDefaultConfig());
-      
+
       const restoredLoc = existing.mapping.globalHierarchy || (existing.mapping.elecVoltageConfig?.building ? {
         organization: existing.mapping.elecVoltageConfig.organization || '',
         client: existing.mapping.elecVoltageConfig.client || '',
@@ -456,7 +456,7 @@ const ConfigTemplates = () => {
 
           if (userData.userZoneLocationVO?.companyList) {
             const rawData = userData.userZoneLocationVO.companyList;
-            
+
             const normalize = (list) => {
               return (list || []).map(org => ({
                 name: org.name,
@@ -531,23 +531,23 @@ const ConfigTemplates = () => {
     if (hierarchyData.length > 0 && Object.keys(locationIdMap).length > 0) {
       const restoreHierarchyDetails = async () => {
         const { zone, subZone, building } = globalLocation;
-        
+
         // 1. If zone is set, fetch its details
         if (zone && zoneIdMap[zone] && !hierarchyData.some(org => org.clients.some(c => c.zones.some(z => z.id === zoneIdMap[zone] && z.locations.length > 0)))) {
-           await fetchZoneDetails(zone, zoneIdMap[zone]);
+          await fetchZoneDetails(zone, zoneIdMap[zone]);
         }
-        
+
         // 2. If building is set, fetch its details
         if (building && !locationDetails[building]) {
           await fetchLocationDetails(building);
         }
-        
+
         // 3. If subZone is set (it might be a location too), fetch its details
         if (subZone && !locationDetails[subZone]) {
           await fetchLocationDetails(subZone);
         }
       };
-      
+
       restoreHierarchyDetails();
     }
   }, [hierarchyData, locationIdMap, zoneIdMap]);
@@ -573,15 +573,15 @@ const ConfigTemplates = () => {
                       type: loc.locationType
                     }));
                     if (data.locationVOS.length > 0) {
-                       // Update global locations list for dynamic options
-                       setDynamicOptions(prev => ({
-                         ...prev,
-                         locations: [...new Set([...prev.locations, ...data.locationVOS.map(l => l.name)])]
-                       }));
-                       // Update ID map
-                       data.locationVOS.forEach(l => {
-                          setLocationIdMap(prevMap => ({ ...prevMap, [l.name]: l.id }));
-                       });
+                      // Update global locations list for dynamic options
+                      setDynamicOptions(prev => ({
+                        ...prev,
+                        locations: [...new Set([...prev.locations, ...data.locationVOS.map(l => l.name)])]
+                      }));
+                      // Update ID map
+                      data.locationVOS.forEach(l => {
+                        setLocationIdMap(prevMap => ({ ...prevMap, [l.name]: l.id }));
+                      });
                     }
                   }
                   (node.subZones || []).forEach(updateNode);
@@ -637,12 +637,12 @@ const ConfigTemplates = () => {
   // Effect to ensure details are fetched for all active configurations (especially during Edit/Autofill)
   useEffect(() => {
     const configsToWatch = [
-      agLowerConfig, agUpperConfig, agAutoConfig, agManualConfig, agBypassConfig, 
+      agLowerConfig, agUpperConfig, agAutoConfig, agManualConfig, agBypassConfig,
       agLevelConfig, agOpenConfig, agCloseConfig, agStatusStartConfig, agStatusStopConfig,
-      ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig, 
+      ugLowerConfig, ugUpperConfig, ugAutoConfig, ugManualConfig,
       ugStartCmdConfig, ugStopCmdConfig, ugStatusStartConfig, ugStatusStopConfig,
       ugStartPressConfig, ugStopPressConfig, ugLocalModeConfig, ugRemoteModeConfig,
-      ugTankLevelConfig, pressureConfig, 
+      ugTankLevelConfig, pressureConfig,
       elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig
     ];
 
@@ -780,7 +780,7 @@ const ConfigTemplates = () => {
       const org = hierarchyData.find(o => o.name === updated.organization);
       const client = org?.clients?.find(c => c.name === updated.client);
       const zone = client?.zones?.find(z => z.name === updated.zone);
-      
+
       // Check if the selected "subZone" is actually a location at the zone level
       const loc = zone?.locations?.find(l => l.name === value);
       if (loc && loc.id) {
@@ -792,10 +792,10 @@ const ConfigTemplates = () => {
       const org = hierarchyData.find(o => o.name === updated.organization);
       const client = org?.clients?.find(c => c.name === updated.client);
       const zone = client?.zones?.find(z => z.name === updated.zone);
-      
+
       const targetZone = (zone?.subZones || []).find(sz => sz.name === updated.subZone) || zone;
       const loc = targetZone?.locations?.find(l => l.name === value);
-      
+
       if (loc && loc.id) fetchLocationDetails(value, loc.id);
     }
   };
@@ -852,9 +852,9 @@ const ConfigTemplates = () => {
 
   const getFieldList = (key, rowState = {}) => {
     if (!hierarchyData || hierarchyData.length === 0) return [];
-    
+
     const getSafeVal = (k) => rowState[k] || globalLocation[k];
-    
+
     const orgName = getSafeVal('organization');
     const clientName = getSafeVal('client');
     const zoneName = getSafeVal('zone');
@@ -876,7 +876,7 @@ const ConfigTemplates = () => {
       if (!org) return [];
       let clients = org.clients || [];
       if (clientName) clients = clients.filter(c => c.name === clientName);
-      
+
       const zones = [];
       clients.forEach(c => {
         if (c.zones) zones.push(...c.zones);
@@ -889,15 +889,15 @@ const ConfigTemplates = () => {
       if (!org) return [];
       let clients = org.clients || [];
       if (clientName) clients = clients.filter(c => c.name === clientName);
-      
+
       const zones = [];
       clients.forEach(c => {
         if (c.zones) zones.push(...c.zones);
       });
-      
+
       let filteredZones = zones;
       if (zoneName) filteredZones = zones.filter(z => z.name === zoneName);
-      
+
       const results = [];
       filteredZones.forEach(z => {
         const collect = (node) => {
@@ -930,15 +930,15 @@ const ConfigTemplates = () => {
       if (!org) return [];
       let clients = org.clients || [];
       if (clientName) clients = clients.filter(c => c.name === clientName);
-      
+
       const zones = [];
       clients.forEach(c => {
         if (c.zones) zones.push(...c.zones);
       });
-      
+
       let filteredZones = zones;
       if (zoneName) filteredZones = zones.filter(z => z.name === zoneName);
-      
+
       const buildings = [];
       filteredZones.forEach(z => {
         const collect = (node) => {
@@ -946,20 +946,20 @@ const ConfigTemplates = () => {
           if (node.subZones) {
             let szToSearch = node.subZones;
             if (subZoneName && node.name === zoneName) {
-               const target = node.subZones.find(sz => sz.name === subZoneName);
-               if (target) szToSearch = [target];
-               else {
-                 // If not found at top level, maybe it's deeper. 
-                 // But for now, if it's selected but not found in immediate subzones, 
-                 // we skip filtering to show everything.
-               }
+              const target = node.subZones.find(sz => sz.name === subZoneName);
+              if (target) szToSearch = [target];
+              else {
+                // If not found at top level, maybe it's deeper. 
+                // But for now, if it's selected but not found in immediate subzones, 
+                // we skip filtering to show everything.
+              }
             }
             szToSearch.forEach(collect);
           }
         };
         collect(z);
       });
-      
+
       return buildings.map(l => ({ label: l.name, id: l.name, rawId: l.id }));
     }
 
@@ -970,16 +970,16 @@ const ConfigTemplates = () => {
       if (selectedSZ && selectedSZ.type === 'location') {
         locName = subZoneName;
       }
-      
+
       const locInfo = locationDetails[locName];
       if (!locInfo) return [];
 
       // If buildingName (Level 5) is a specific Gateway, filter devices
       if (buildingName && buildingName !== locName) {
-         // Check if buildingName is a gateway label
-         return (locInfo.deviceList || []).filter(d => d.label.startsWith(buildingName) || d.gatewayId === buildingName);
+        // Check if buildingName is a gateway label
+        return (locInfo.deviceList || []).filter(d => d.label.startsWith(buildingName) || d.gatewayId === buildingName);
       }
-      
+
       return (locInfo.deviceList || []).map(d => ({ label: d.label, id: d.id, rawId: d.id }));
     }
 
@@ -1011,7 +1011,7 @@ const ConfigTemplates = () => {
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/templates');
+        const response = await fetch('/api/templates');
         if (response.ok) {
           const data = await response.json();
           // Map backend data to frontend format if necessary
@@ -1134,7 +1134,7 @@ const ConfigTemplates = () => {
     const rawMapping = {
       agLowerConfig, agUpperConfig, agTankRange,
       agAutoConfig, agManualConfig, agBypassConfig,
-      agLevelConfig, agOpenConfig, agCloseConfig, 
+      agLevelConfig, agOpenConfig, agCloseConfig,
       agStatusStartConfig, agStatusStopConfig, agAmpsConfig,
       agTankType, agMasterEnabled: enabledValue
     };
@@ -1230,7 +1230,7 @@ const ConfigTemplates = () => {
       mapping = {
         agLowerConfig, agUpperConfig, agTankRange,
         agAutoConfig, agManualConfig, agBypassConfig,
-        agLevelConfig, agOpenConfig, agCloseConfig, 
+        agLevelConfig, agOpenConfig, agCloseConfig,
         agStatusStartConfig, agStatusStopConfig, agAmpsConfig,
         agTankType, agMasterEnabled, rule1Config: agRule1Config, rule2Config: agRule2Config, ruleEngineConfig
       };
@@ -1277,10 +1277,10 @@ const ConfigTemplates = () => {
     const cleanedMapping = {};
     Object.keys(rawMapping).forEach(key => {
       const val = rawMapping[key];
-      
+
       // Special check for rules: Only save if moduleId is present
       if ((key === 'rule1Config' || key === 'rule2Config' || key === 'ruleEngineConfig') && val && !val.moduleId) {
-        return; 
+        return;
       }
 
       // Only include sections that have a valid mapping
@@ -1329,7 +1329,7 @@ const ConfigTemplates = () => {
     const uniqueName = templateName || `${autoName} (#${String(savedTemplates.length + 1).padStart(2, '0')})`;
 
     try {
-      const response = await fetch('http://localhost:5000/api/templates/save', {
+      const response = await fetch('/api/templates/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1414,7 +1414,7 @@ const ConfigTemplates = () => {
     setUgRule2Config(initialRuleState);
     setRuleEngineConfig(initialRuleState);
     setUgConfig({
-      integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
+      integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'STARTWater Level': true, 'STOPWater Level': true, 'PRESSURE SENSOR': true },
       electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
       stationMode: 'REMOTE'
     });
@@ -1425,7 +1425,7 @@ const ConfigTemplates = () => {
   const handleRemove = async (id) => {
     if (window.confirm('Are you sure you want to remove this mapping?')) {
       try {
-        const response = await fetch(`http://localhost:5000/api/templates/${id}`, { method: 'DELETE' });
+        const response = await fetch(`/api/templates/${id}`, { method: 'DELETE' });
         if (!response.ok) {
           throw new Error('Failed to delete from backend');
         }
@@ -1445,7 +1445,7 @@ const ConfigTemplates = () => {
   const handleBulkRemove = async () => {
     if (window.confirm(`Are you sure you want to remove ${selectedTemplates.length} selected mappings?`)) {
       try {
-        await Promise.all(selectedTemplates.map(id => fetch(`http://localhost:5000/api/templates/${id}`, { method: 'DELETE' })));
+        await Promise.all(selectedTemplates.map(id => fetch(`/api/templates/${id}`, { method: 'DELETE' })));
       } catch (error) {
         console.error('Error deleting multiple from backend:', error);
       }
@@ -1489,7 +1489,7 @@ const ConfigTemplates = () => {
       setElecSystemConfig(template.mapping.elecSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
       setElecConsumptionConfig(template.mapping.elecConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
       setUgConfig(template.mapping.ugConfig || {
-        integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
+        integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'STARTWater Level': true, 'STOPWater Level': true, 'PRESSURE SENSOR': true },
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
         stationMode: 'REMOTE'
       });
@@ -1502,7 +1502,7 @@ const ConfigTemplates = () => {
       // 0. Restore Rules (Cross-Module)
       const r1 = template.mapping.rule1Config || template.mapping.ruleEngineConfig || initialRuleState;
       const r2 = template.mapping.rule2Config || template.mapping.ruleEngineConfig || initialRuleState;
-      
+
       if (template.module === 'AG Tank') {
         setAgRule1Config(r1);
         setAgRule2Config(r2);
@@ -1969,12 +1969,12 @@ const ConfigTemplates = () => {
                       {[
                         { title: 'Lower Limits', state: agLowerConfig, setter: setAgLowerConfig, icon: <ArrowDownCircle size={18} />, color: 'info' },
                         { title: 'Upper Limits', state: agUpperConfig, setter: setAgUpperConfig, icon: <ArrowUpCircle size={18} />, color: 'primary' },
-                        { title: 'Auto Command', state: agAutoConfig, setter: setAgAutoConfig, icon: <Activity size={18} />, color: 'success' },
-                        { title: 'Manual Command', state: agManualConfig, setter: setAgManualConfig, icon: <Settings size={18} />, color: 'warning' },
-                        { title: 'Bypass Command', state: agBypassConfig, setter: setAgBypassConfig, icon: <Zap size={18} />, color: 'danger' },
-                        { title: 'Level Command', state: agLevelConfig, setter: setAgLevelConfig, icon: <Layers size={18} />, color: 'info' },
-                        { title: 'Open Valve Command', state: agOpenConfig, setter: setAgOpenConfig, icon: <Droplets size={18} />, color: 'primary' },
-                        { title: 'Close Valve Command', state: agCloseConfig, setter: setAgCloseConfig, icon: <X size={18} />, color: 'danger' },
+                        { title: 'AutoWater Level', state: agAutoConfig, setter: setAgAutoConfig, icon: <Activity size={18} />, color: 'success' },
+                        { title: 'ManualWater Level', state: agManualConfig, setter: setAgManualConfig, icon: <Settings size={18} />, color: 'warning' },
+                        { title: 'BypassWater Level', state: agBypassConfig, setter: setAgBypassConfig, icon: <Zap size={18} />, color: 'danger' },
+                        { title: 'Water Level', state: agLevelConfig, setter: setAgLevelConfig, icon: <Layers size={18} />, color: 'info' },
+                        { title: 'Open ValveWater Level', state: agOpenConfig, setter: setAgOpenConfig, icon: <Droplets size={18} />, color: 'primary' },
+                        { title: 'Close ValveWater Level', state: agCloseConfig, setter: setAgCloseConfig, icon: <X size={18} />, color: 'danger' },
                         { title: 'Valve Status  Start', state: agStatusStartConfig, setter: setAgStatusStartConfig, icon: <Activity size={18} />, color: 'success' },
                         { title: 'Valve Status  Stop', state: agStatusStopConfig, setter: setAgStatusStopConfig, icon: <Activity size={18} />, color: 'warning' },
                         { title: 'Current Monitor', state: agAmpsConfig, setter: setAgAmpsConfig, icon: <Zap size={18} />, color: 'info' },
@@ -1992,8 +1992,8 @@ const ConfigTemplates = () => {
                                 <div>
                                   <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
                                     {section.title} {
-                                      (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
-                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                      (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
+                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
                                         : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
                                     }
                                   </h6>
@@ -2001,9 +2001,9 @@ const ConfigTemplates = () => {
                                 </div>
                               </div>
                               {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
-                                <Button 
-                                  variant={`outline-${section.color}`} 
-                                  size="sm" 
+                                <Button
+                                  variant={`outline-${section.color}`}
+                                  size="sm"
                                   className="ms-auto fw-black fs-11 px-3 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow me-2"
                                   onClick={() => {
                                     const config = section.title === 'Lower Limits' ? agRule1Config : agRule2Config;
@@ -2087,14 +2087,14 @@ const ConfigTemplates = () => {
                                         >
                                           <option value="">SELECT MODULE</option>
                                           {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => {
-                                             const isRuleEngine = section.title === 'Lower Limits' || section.title === 'Upper Limits';
-                                             const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
-                                             return (
-                                               <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
-                                                 {opt.label} {isUsed ? ' (USED)' : ''}
-                                               </option>
-                                             );
-                                           })}
+                                            const isRuleEngine = section.title === 'Lower Limits' || section.title === 'Upper Limits';
+                                            const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
+                                            return (
+                                              <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
+                                                {opt.label} {isUsed ? ' (USED)' : ''}
+                                              </option>
+                                            );
+                                          })}
                                         </Form.Select>
                                       </Col>
                                       <Col md={3}>
@@ -2126,7 +2126,7 @@ const ConfigTemplates = () => {
                                                 <small className={`text-${section.color} fw-black uppercase tracking-widest fs-10 opacity-75 d-block mb-1`}>Logic Condition</small>
                                                 <div className="fs-11 text-secondary fw-bold opacity-40 uppercase tracking-tighter">Threshold Logic</div>
                                               </div>
-                                              
+
                                               <div className="flex-grow-1 d-flex gap-3">
                                                 <div style={{ width: '120px' }}>
                                                   <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Operator</Form.Label>
@@ -2141,7 +2141,7 @@ const ConfigTemplates = () => {
                                                     <option value="<">LESS (&lt;)</option>
                                                   </Form.Select>
                                                 </div>
-                                                
+
                                                 <div style={{ width: '120px' }}>
                                                   <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Value</Form.Label>
                                                   <Form.Control
@@ -2238,8 +2238,8 @@ const ConfigTemplates = () => {
                           { title: 'Upper Limits', state: ugUpperConfig, setter: setUgUpperConfig, icon: <ArrowUpCircle size={18} />, color: 'primary' },
                           { title: 'Auto Setting', state: ugAutoConfig, setter: setUgAutoConfig, icon: <Activity size={18} />, color: 'success' },
                           { title: 'Manual Setting', state: ugManualConfig, setter: setUgManualConfig, icon: <Settings size={18} />, color: 'warning' },
-                          { title: 'Start Command', state: ugStartCmdConfig, setter: setUgStartCmdConfig, icon: <Zap size={18} />, color: 'info' },
-                          { title: 'Stop Command', state: ugStopCmdConfig, setter: setUgStopCmdConfig, icon: <X size={18} />, color: 'danger' },
+                          { title: 'StartWater Level', state: ugStartCmdConfig, setter: setUgStartCmdConfig, icon: <Zap size={18} />, color: 'info' },
+                          { title: 'StopWater Level', state: ugStopCmdConfig, setter: setUgStopCmdConfig, icon: <X size={18} />, color: 'danger' },
                           { title: 'Valve Status Start', state: ugStatusStartConfig, setter: setUgStatusStartConfig, icon: <Activity size={18} />, color: 'success' },
                           { title: 'Valve Status Stop', state: ugStatusStopConfig, setter: setUgStatusStopConfig, icon: <Activity size={18} />, color: 'danger' },
                           { title: 'Start Pressure', state: ugStartPressConfig, setter: setUgStartPressConfig, icon: <Activity size={18} />, color: 'primary' },
@@ -2261,8 +2261,8 @@ const ConfigTemplates = () => {
                                   <div>
                                     <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
                                       {section.title} {
-                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
-                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
+                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
                                           : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
                                       }
                                     </h6>
@@ -2270,9 +2270,9 @@ const ConfigTemplates = () => {
                                   </div>
                                 </div>
                                 {(section.title === 'Lower Limits' || section.title === 'Upper Limits') && (
-                                  <Button 
-                                    variant={`outline-${section.color}`} 
-                                    size="sm" 
+                                  <Button
+                                    variant={`outline-${section.color}`}
+                                    size="sm"
                                     className="ms-auto fw-black fs-11 px-3 py-1 rounded-pill d-flex align-items-center gap-1 shadow-glow me-2"
                                     onClick={() => {
                                       const config = section.title === 'Lower Limits' ? ugRule1Config : ugRule2Config;
@@ -2341,14 +2341,14 @@ const ConfigTemplates = () => {
                                         >
                                           <option value="">SELECT MODULE_ID</option>
                                           {getFieldList('module', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => {
-                                             const isRuleEngine = section.title === 'Lower Limits' || section.title === 'Upper Limits';
-                                             const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
-                                             return (
-                                               <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
-                                                 {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
-                                               </option>
-                                             );
-                                           })}
+                                            const isRuleEngine = section.title === 'Lower Limits' || section.title === 'Upper Limits';
+                                            const isUsed = isRuleEngine && usedModules.some(m => String(m).trim() === String(opt.id).trim()) && opt.id !== section.state.module;
+                                            return (
+                                              <option key={opt.id} value={opt.id} disabled={isUsed} style={isUsed ? { color: '#64748b', fontStyle: 'italic' } : {}}>
+                                                {opt.label} {isUsed ? ' (ALREADY SELECTED)' : ''}
+                                              </option>
+                                            );
+                                          })}
                                         </Form.Select>
                                       </Col>
                                       <Col md={3}>
@@ -2362,60 +2362,60 @@ const ConfigTemplates = () => {
                                           placeholder="SELECT OR TYPE"
                                           onChange={(e) => handleConfigChange(section.state, section.setter, 'field', e.target.value)}
                                         />
-                                         <datalist id={`datalist-ugp-${section.title.replace(/\s+/g, '-')}-${idx}`}>
-                                           {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
-                                             <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                           ))}
-                                         </datalist>
-                                       </Col>
+                                        <datalist id={`datalist-ugp-${section.title.replace(/\s+/g, '-')}-${idx}`}>
+                                          {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </datalist>
+                                      </Col>
 
-                                       {/* LOGIC CONDITION ROW FOR STATUS */}
-                                       {section.title.includes('Status') && (
-                                         <Col md={12} className="mt-3">
-                                           <div className="p-3 rounded-4 border border-white border-opacity-5" style={{ background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(4px)' }}>
-                                             <div className="d-flex align-items-center gap-4">
-                                               <div className="flex-shrink-0">
-                                                 <small className={`text-${section.color} fw-black uppercase tracking-widest fs-10 opacity-75 d-block mb-1`}>Logic Condition</small>
-                                                 <div className="fs-11 text-secondary fw-bold opacity-40 uppercase tracking-tighter">Threshold Logic</div>
-                                               </div>
-                                               
-                                               <div className="flex-grow-1 d-flex gap-3">
-                                                 <div style={{ width: '120px' }}>
-                                                   <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Operator</Form.Label>
-                                                   <Form.Select
-                                                     className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
-                                                     style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
-                                                     value={section.state.operator}
-                                                     onChange={(e) => handleConfigChange(section.state, section.setter, 'operator', e.target.value)}
-                                                   >
-                                                     <option value="=">EQUAL (=)</option>
-                                                     <option value=">">GREATER (&gt;)</option>
-                                                     <option value="<">LESS (&lt;)</option>
-                                                   </Form.Select>
-                                                 </div>
-                                                 
-                                                 <div style={{ width: '120px' }}>
-                                                   <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Value</Form.Label>
-                                                   <Form.Control
-                                                     type="text"
-                                                     className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner text-white`}
-                                                     style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
-                                                     value={section.state.value}
-                                                     placeholder="ENTER VALUE"
-                                                     onChange={(e) => {
-                                                       handleConfigChange(section.state, section.setter, 'value', e.target.value);
-                                                     }}
-                                                   />
-                                                 </div>
-                                               </div>
+                                      {/* LOGIC CONDITION ROW FOR STATUS */}
+                                      {section.title.includes('Status') && (
+                                        <Col md={12} className="mt-3">
+                                          <div className="p-3 rounded-4 border border-white border-opacity-5" style={{ background: 'rgba(255,255,255,0.02)', backdropFilter: 'blur(4px)' }}>
+                                            <div className="d-flex align-items-center gap-4">
+                                              <div className="flex-shrink-0">
+                                                <small className={`text-${section.color} fw-black uppercase tracking-widest fs-10 opacity-75 d-block mb-1`}>Logic Condition</small>
+                                                <div className="fs-11 text-secondary fw-bold opacity-40 uppercase tracking-tighter">Threshold Logic</div>
+                                              </div>
 
-                                               <div className="ms-auto text-end opacity-20">
-                                                 <Settings size={24} className={`text-${section.color}`} />
-                                               </div>
-                                             </div>
-                                           </div>
-                                         </Col>
-                                       )}
+                                              <div className="flex-grow-1 d-flex gap-3">
+                                                <div style={{ width: '120px' }}>
+                                                  <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Operator</Form.Label>
+                                                  <Form.Select
+                                                    className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                    style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
+                                                    value={section.state.operator}
+                                                    onChange={(e) => handleConfigChange(section.state, section.setter, 'operator', e.target.value)}
+                                                  >
+                                                    <option value="=">EQUAL (=)</option>
+                                                    <option value=">">GREATER (&gt;)</option>
+                                                    <option value="<">LESS (&lt;)</option>
+                                                  </Form.Select>
+                                                </div>
+
+                                                <div style={{ width: '120px' }}>
+                                                  <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-40 mb-1 d-block">Value</Form.Label>
+                                                  <Form.Control
+                                                    type="text"
+                                                    className={`premium-input py-2 px-3 fs-12 fw-bold border-${section.color} border-opacity-10 shadow-inner text-white`}
+                                                    style={{ height: '38px', background: 'rgba(15, 23, 42, 0.6)' }}
+                                                    value={section.state.value}
+                                                    placeholder="ENTER VALUE"
+                                                    onChange={(e) => {
+                                                      handleConfigChange(section.state, section.setter, 'value', e.target.value);
+                                                    }}
+                                                  />
+                                                </div>
+                                              </div>
+
+                                              <div className="ms-auto text-end opacity-20">
+                                                <Settings size={24} className={`text-${section.color}`} />
+                                              </div>
+                                            </div>
+                                          </div>
+                                        </Col>
+                                      )}
                                     </>
                                   )}
                                 </Row>
@@ -2768,8 +2768,8 @@ const ConfigTemplates = () => {
                                   <div>
                                     <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
                                       {section.title} {
-                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
-                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
+                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
+                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
                                           : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
                                       }
                                     </h6>
@@ -2942,12 +2942,12 @@ const ConfigTemplates = () => {
                               />
                               <div className="status-indicator-pulse"></div>
                             </div>
-                            
+
                             <div
                               className="preview-badge-premium d-flex align-items-center gap-2 cursor-pointer transition-all hover-glow-blue"
-                              style={{ 
-                                padding: '4px 12px', 
-                                borderRadius: '8px', 
+                              style={{
+                                padding: '4px 12px',
+                                borderRadius: '8px',
                                 background: 'rgba(56, 189, 248, 0.12)',
                                 border: '1px solid rgba(56, 189, 248, 0.2)',
                                 backdropFilter: 'blur(8px)',
@@ -3144,8 +3144,8 @@ const ConfigTemplates = () => {
                                 { title: 'Upper Limits', key: 'ugUpperConfig' },
                                 { title: 'Auto Setting', key: 'ugAutoConfig' },
                                 { title: 'Manual Setting', key: 'ugManualConfig' },
-                                { title: 'Start Command', key: 'ugStartCmdConfig' },
-                                { title: 'Stop Command', key: 'ugStopCmdConfig' },
+                                { title: 'StartWater Level', key: 'ugStartCmdConfig' },
+                                { title: 'StopWater Level', key: 'ugStopCmdConfig' },
                                 { title: 'Start Press', key: 'ugStartPressConfig' },
                                 { title: 'Stop Press', key: 'ugStopPressConfig' },
                                 { title: 'Local Mode', key: 'ugLocalModeConfig' },
@@ -3153,13 +3153,13 @@ const ConfigTemplates = () => {
                               ].filter(section => previewTemplate.mapping[section.key]?.field).map((section, idx) => (
                                 <Col md={4} key={idx}>
                                   <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
-                                      <span className="fs-13 text-success fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
-                                        {section.title} {
-                                          (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
-                                            ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
-                                            : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
-                                        }
-                                      </span>
+                                    <span className="fs-13 text-success fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
+                                      {section.title} {
+                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
+                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
+                                          : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                      }
+                                    </span>
                                     {['location', 'device', 'module', 'field'].map(f => (
                                       <div key={f} className="d-flex justify-content-between">
                                         <span className="fs-13 text-secondary uppercase fw-bold opacity-40">{f}</span>
@@ -3256,13 +3256,13 @@ const ConfigTemplates = () => {
                           ].map((section, idx) => (
                             <Col md={6} key={idx}>
                               <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
-                                  <span className="fs-13 text-warning fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
-                                    {section.title} {
-                                      (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
-                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
-                                        : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
-                                    }
-                                  </span>
+                                <span className="fs-13 text-warning fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
+                                  {section.title} {
+                                    (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
+                                      ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
+                                      : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                  }
+                                </span>
                                 {['location', 'device', 'module', ...section.fields].map(f => (
                                   <div key={f} className="d-flex justify-content-between">
                                     <span className="fs-13 text-secondary uppercase fw-bold opacity-40">{f}</span>
@@ -3298,13 +3298,13 @@ const ConfigTemplates = () => {
                             <Col md={4} key={idx}>
                               <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                 <div className="d-flex justify-content-between align-items-center mb-1 border-bottom border-white border-opacity-5 pb-1">
-                                    <span className="fs-12 text-info fw-black uppercase">
-                                      {section.title} {
-                                        (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits')) 
-                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE COMMAND)</span>
-                                          : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
-                                      }
-                                    </span>
+                                  <span className="fs-12 text-info fw-black uppercase">
+                                    {section.title} {
+                                      (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
+                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
+                                        : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                    }
+                                  </span>
                                   {previewTemplate.mapping[section.key]?.enabled !== undefined && (
                                     <Badge bg={previewTemplate.mapping[section.key].enabled ? "success" : "secondary"} className="fs-13 py-0">
                                       {previewTemplate.mapping[section.key].enabled ? 'ON' : 'OFF'}
