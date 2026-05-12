@@ -185,8 +185,8 @@ const ConfigTemplates = () => {
       'PUMP STATUS': true,
       'AUTO LOGIC': true,
       'MANUAL CONTROL': true,
-      'STARTWater Level': true,
-      'STOPWater Level': true,
+      'START COMMAND': true,
+      'STOP COMMAND': true,
       'PRESSURE SENSOR': true
     },
     electrical: {
@@ -1007,6 +1007,32 @@ const ConfigTemplates = () => {
     localStorage.setItem('scada_templates', JSON.stringify(savedTemplates));
   }, [savedTemplates]);
 
+  // Cleanup function for corrupted database entries
+  const cleanCorruptedMapping = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const cleaned = {};
+    Object.keys(obj).forEach(key => {
+      let newKey = key;
+      // Fix 'Water Level' corruption back to 'COMMAND' or 'MODE'
+      if (key.includes('Water Level') && key !== 'agLevelConfig' && key !== 'ugTankLevelConfig' && key !== 'Water Level' && key !== 'agLevel' && key !== 'waterLevel') {
+        // Only replace if it looks like a suffix corruption
+        newKey = key.replace('Water Level', (key.startsWith('START') || key.startsWith('STOP')) ? ' COMMAND' : ' MODE');
+      }
+      
+      let value = obj[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        value = cleanCorruptedMapping(value);
+      } else if (typeof value === 'string' && value.includes('Water Level')) {
+        // Fix string values if needed (e.g. titles)
+        if (value.includes('STARTWater Level')) value = value.replace('STARTWater Level', 'START COMMAND');
+        if (value.includes('STOPWater Level')) value = value.replace('STOPWater Level', 'STOP COMMAND');
+      }
+      
+      cleaned[newKey] = value;
+    });
+    return cleaned;
+  };
+
   // Fetch from backend on mount
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -1020,7 +1046,7 @@ const ConfigTemplates = () => {
             name: t.name,
             category: t.category || 'Water Management', // Fallback
             module: t.settings[0]?.eventKey || 'AG Tank',
-            mapping: t.defaultValues || t.settings[0]?.meta || {},
+            mapping: cleanCorruptedMapping(t.defaultValues || t.settings[0]?.meta || {}),
             timestamp: new Date(t.createdAt).toLocaleString()
           }));
           if (mappedData.length > 0) {
@@ -1445,7 +1471,7 @@ const ConfigTemplates = () => {
   const handleBulkRemove = async () => {
     if (window.confirm(`Are you sure you want to remove ${selectedTemplates.length} selected mappings?`)) {
       try {
-        await Promise.all(selectedTemplates.map(id => fetch(`/api/templates/${id}`, { method: 'DELETE' })));
+        await Promise.all(selectedTemplates.map(id => fetch(`http://localhost:5000/api/templates/${id}`, { method: 'DELETE' })));
       } catch (error) {
         console.error('Error deleting multiple from backend:', error);
       }
@@ -1489,7 +1515,7 @@ const ConfigTemplates = () => {
       setElecSystemConfig(template.mapping.elecSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
       setElecConsumptionConfig(template.mapping.elecConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
       setUgConfig(template.mapping.ugConfig || {
-        integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'STARTWater Level': true, 'STOPWater Level': true, 'PRESSURE SENSOR': true },
+        integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
         stationMode: 'REMOTE'
       });
@@ -1969,12 +1995,12 @@ const ConfigTemplates = () => {
                       {[
                         { title: 'Lower Limits', state: agLowerConfig, setter: setAgLowerConfig, icon: <ArrowDownCircle size={18} />, color: 'info' },
                         { title: 'Upper Limits', state: agUpperConfig, setter: setAgUpperConfig, icon: <ArrowUpCircle size={18} />, color: 'primary' },
-                        { title: 'AutoWater Level', state: agAutoConfig, setter: setAgAutoConfig, icon: <Activity size={18} />, color: 'success' },
-                        { title: 'ManualWater Level', state: agManualConfig, setter: setAgManualConfig, icon: <Settings size={18} />, color: 'warning' },
-                        { title: 'BypassWater Level', state: agBypassConfig, setter: setAgBypassConfig, icon: <Zap size={18} />, color: 'danger' },
+                        { title: 'Auto Mode', state: agAutoConfig, setter: setAgAutoConfig, icon: <Activity size={18} />, color: 'success' },
+                        { title: 'Manual Mode', state: agManualConfig, setter: setAgManualConfig, icon: <Settings size={18} />, color: 'warning' },
+                        { title: 'Bypass Mode', state: agBypassConfig, setter: setAgBypassConfig, icon: <Zap size={18} />, color: 'danger' },
                         { title: 'Water Level', state: agLevelConfig, setter: setAgLevelConfig, icon: <Layers size={18} />, color: 'info' },
-                        { title: 'Open ValveWater Level', state: agOpenConfig, setter: setAgOpenConfig, icon: <Droplets size={18} />, color: 'primary' },
-                        { title: 'Close ValveWater Level', state: agCloseConfig, setter: setAgCloseConfig, icon: <X size={18} />, color: 'danger' },
+                        { title: 'Open Valve', state: agOpenConfig, setter: setAgOpenConfig, icon: <Droplets size={18} />, color: 'primary' },
+                        { title: 'Close Valve', state: agCloseConfig, setter: setAgCloseConfig, icon: <X size={18} />, color: 'danger' },
                         { title: 'Valve Status  Start', state: agStatusStartConfig, setter: setAgStatusStartConfig, icon: <Activity size={18} />, color: 'success' },
                         { title: 'Valve Status  Stop', state: agStatusStopConfig, setter: setAgStatusStopConfig, icon: <Activity size={18} />, color: 'warning' },
                         { title: 'Current Monitor', state: agAmpsConfig, setter: setAgAmpsConfig, icon: <Zap size={18} />, color: 'info' },
@@ -1991,9 +2017,9 @@ const ConfigTemplates = () => {
                                 </div>
                                 <div>
                                   <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
-                                    {section.title} {
+                                    { section.title } {
                                       (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
-                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
+                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE)</span>
                                         : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
                                     }
                                   </h6>
@@ -2238,8 +2264,8 @@ const ConfigTemplates = () => {
                           { title: 'Upper Limits', state: ugUpperConfig, setter: setUgUpperConfig, icon: <ArrowUpCircle size={18} />, color: 'primary' },
                           { title: 'Auto Setting', state: ugAutoConfig, setter: setUgAutoConfig, icon: <Activity size={18} />, color: 'success' },
                           { title: 'Manual Setting', state: ugManualConfig, setter: setUgManualConfig, icon: <Settings size={18} />, color: 'warning' },
-                          { title: 'StartWater Level', state: ugStartCmdConfig, setter: setUgStartCmdConfig, icon: <Zap size={18} />, color: 'info' },
-                          { title: 'StopWater Level', state: ugStopCmdConfig, setter: setUgStopCmdConfig, icon: <X size={18} />, color: 'danger' },
+                          { title: 'Start Command', state: ugStartCmdConfig, setter: setUgStartCmdConfig, icon: <Zap size={18} />, color: 'info' },
+                          { title: 'Stop Command', state: ugStopCmdConfig, setter: setUgStopCmdConfig, icon: <X size={18} />, color: 'danger' },
                           { title: 'Valve Status Start', state: ugStatusStartConfig, setter: setUgStatusStartConfig, icon: <Activity size={18} />, color: 'success' },
                           { title: 'Valve Status Stop', state: ugStatusStopConfig, setter: setUgStatusStopConfig, icon: <Activity size={18} />, color: 'danger' },
                           { title: 'Start Pressure', state: ugStartPressConfig, setter: setUgStartPressConfig, icon: <Activity size={18} />, color: 'primary' },
@@ -2262,7 +2288,7 @@ const ConfigTemplates = () => {
                                     <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
                                       {section.title} {
                                         (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
-                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
+                                          ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE)</span>
                                           : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
                                       }
                                     </h6>
@@ -3299,9 +3325,9 @@ const ConfigTemplates = () => {
                               <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                 <div className="d-flex justify-content-between align-items-center mb-1 border-bottom border-white border-opacity-5 pb-1">
                                   <span className="fs-12 text-info fw-black uppercase">
-                                    {section.title} {
+                                    { section.title } {
                                       (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
-                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITEWater Level)</span>
+                                        ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE)</span>
                                         : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
                                     }
                                   </span>
