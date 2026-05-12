@@ -260,7 +260,7 @@ const AgTank = () => {
       return;
     }
 
-    // Handle Manual RemoteWater Level via API
+    // Handle Manual Remote Control via API
     if (updates.valveStatus && selectedTank && selectedTank.valveMode === 'MANUAL') {
       if (!selectedTank.isOnline) {
         setActionFeedback("DEVICE OFFLINE");
@@ -300,13 +300,13 @@ const AgTank = () => {
               body: JSON.stringify(payload)
             });
 
-            if (!response.ok) throw new Error("RemoteWater Level failed");
+            if (!response.ok) throw new Error("Remote Control failed");
 
             setActionFeedback("COMMAND SUCCESS");
             setTimeout(() => setActionFeedback(null), 800);
           }
         } catch (error) {
-          console.error("ManualWater Level error:", error);
+          console.error("Manual Control error:", error);
           setActionFeedback("COMMAND FAILED");
           setTimeout(() => setActionFeedback(null), 2000);
           setIsSendingCommand(false);
