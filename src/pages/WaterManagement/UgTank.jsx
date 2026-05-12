@@ -26,6 +26,7 @@ const UgTank = () => {
     });
     return cleaned;
   };
+  useEffect(() => {
     const handleFsChange = () => setIsFullscreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
