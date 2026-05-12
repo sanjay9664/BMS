@@ -528,9 +528,14 @@ const AgTank = () => {
 
                 // Helper to evaluate condition based on operator
                 const evaluateCondition = (val, operator, threshold) => {
-                  const v = Number(val);
-                  const t = Number(threshold);
-                  if (isNaN(v)) return false;
+                  const vNum = parseFloat(val);
+                  const tNum = parseFloat(threshold);
+                  
+                  const isNumeric = !isNaN(vNum) && !isNaN(tNum);
+                  
+                  const v = isNumeric ? vNum : String(val).trim();
+                  const t = isNumeric ? tNum : String(threshold).trim();
+                  
                   switch (operator) {
                     case '=': return v === t;
                     case '>': return v > t;
