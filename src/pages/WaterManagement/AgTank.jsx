@@ -3,6 +3,7 @@ import { Row, Col, Card, Tooltip, OverlayTrigger, Form, Button, Modal, Badge, Sp
 import { Home, Waves, LayoutGrid, Settings, Save, AlertCircle, CheckCircle2, XCircle, Activity, X, Droplets, ToggleRight, ToggleLeft, Maximize, Minimize, ShieldCheck, ArrowUp, ArrowDown, Zap } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
 import { getSochiotDeviceDetails } from '../../services/authService';
+import { io } from 'socket.io-client';
 
 const AgTank = () => {
   const [sectorFilter, setSectorFilter] = useState('ALL');
@@ -449,7 +450,14 @@ const AgTank = () => {
   }, []);
 
   useEffect(() => {
-    const fetchDynamicLevels = async () => {
+    const socket = io('/', { path: '/socket.io' });
+
+    socket.on('connect', () => {
+      console.log('AgTank WebSocket Connected - Listening for Telemetry');
+    });
+
+    socket.on('telemetry_update', (stats) => {
+      if (!Array.isArray(stats)) return;
       try {
         const saved = localStorage.getItem('scada_templates');
         if (!saved) return;
@@ -458,217 +466,188 @@ const AgTank = () => {
           mapping: cleanCorruptedMapping(t.mapping)
         }));
 
-        const moduleIds = new Set();
-        templates.forEach(t => {
-          if (t.module === 'AG Tank') {
-            if (t.mapping?.agOpenConfig?.module) moduleIds.add(t.mapping.agOpenConfig.module);
-            if (t.mapping?.agCloseConfig?.module) moduleIds.add(t.mapping.agCloseConfig.module);
-            if (t.mapping?.agStatusStartConfig?.module) moduleIds.add(t.mapping.agStatusStartConfig.module);
-            if (t.mapping?.agStatusStopConfig?.module) moduleIds.add(t.mapping.agStatusStopConfig.module);
-            if (t.mapping?.agStatusConfig?.module) moduleIds.add(t.mapping.agStatusConfig.module);
-            if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
-            if (t.mapping?.agAmpsConfig?.module) moduleIds.add(t.mapping.agAmpsConfig.module);
-          }
-        });
+        setAllTanks(prev => {
+          let updated = false;
 
-        const modulesQuery = Array.from(moduleIds).join(',');
-        const url = modulesQuery ? `/api/templates/stats?modules=${modulesQuery}` : '/api/templates/stats';
+          const agTemplates = templates.filter(t => t.module === 'AG Tank');
+          const genericAgTemplates = agTemplates.filter(t =>
+            (!t.mapping?.agTankRange?.domStart && !t.mapping?.agTankRange?.flushStart) ||
+            t.mapping?.agTankRange?.domStart === 'AG TANK' || t.mapping?.agTankRange?.flushStart === 'AG TANK'
+          );
 
-        const response = await fetch(url);
-        if (response.ok) {
-          const stats = await response.json();
-          if (!Array.isArray(stats)) {
-            console.warn("Expected stats array but got:", stats);
-            return;
-          }
+          const next = prev.map((tank, index) => {
+            const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
 
-          setAllTanks(prev => {
-            let updated = false;
-
-            const agTemplates = templates.filter(t => t.module === 'AG Tank');
-            const genericAgTemplates = agTemplates.filter(t =>
-              (!t.mapping?.agTankRange?.domStart && !t.mapping?.agTankRange?.flushStart) ||
-              t.mapping?.agTankRange?.domStart === 'AG TANK' || t.mapping?.agTankRange?.flushStart === 'AG TANK'
+            let template = agTemplates.find(t =>
+              (tank.type === 'DOMESTIC' && t.mapping?.agTankRange?.domStart === tankName) ||
+              (tank.type === 'FLUSHING' && t.mapping?.agTankRange?.flushStart === tankName)
             );
 
-            const next = prev.map((tank, index) => {
-              const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
+            if (!template && genericAgTemplates.length > index) {
+              template = genericAgTemplates[index];
+            }
 
-              let template = agTemplates.find(t =>
-                (tank.type === 'DOMESTIC' && t.mapping?.agTankRange?.domStart === tankName) ||
-                (tank.type === 'FLUSHING' && t.mapping?.agTankRange?.flushStart === tankName)
-              );
+            let newTank = { ...tank };
 
-              if (!template && genericAgTemplates.length > index) {
-                template = genericAgTemplates[index];
+            if (template && template.mapping) {
+              // Sync Rules Limits for visualization (Grid markers)
+              const isEditing = showValveModal && selectedTank?.globalId === tank.globalId;
+              if (!isEditing) {
+                if (template.mapping.rule1Config?.consequence?.value) {
+                  const newMin = Number(template.mapping.rule1Config.consequence.value);
+                  if (newTank.minLevel !== newMin) {
+                    newTank.minLevel = newMin;
+                    updated = true;
+                  }
+                }
+                if (template.mapping.rule2Config?.consequence?.value) {
+                  const newMax = Number(template.mapping.rule2Config.consequence.value);
+                  if (newTank.maxLevel !== newMax) {
+                    newTank.maxLevel = newMax;
+                    updated = true;
+                  }
+                }
               }
 
-              let newTank = { ...tank };
-
-              if (template && template.mapping) {
-                // Sync Rules Limits for visualization (Grid markers)
-                // Avoid overwriting if this tank is currently being edited in modal
-                const isEditing = showValveModal && selectedTank?.globalId === tank.globalId;
-                if (!isEditing) {
-                  if (template.mapping.rule1Config?.consequence?.value) {
-                    const newMin = Number(template.mapping.rule1Config.consequence.value);
-                    if (newTank.minLevel !== newMin) {
-                      newTank.minLevel = newMin;
-                      updated = true;
-                    }
-                  }
-                  if (template.mapping.rule2Config?.consequence?.value) {
-                    const newMax = Number(template.mapping.rule2Config.consequence.value);
-                    if (newTank.maxLevel !== newMax) {
-                      newTank.maxLevel = newMax;
-                      updated = true;
-                    }
-                  }
-                }
-
-                // Level Config
-                if (template.mapping.agLevelConfig?.field && template.mapping.agLevelConfig?.module) {
-                  const config = template.mapping.agLevelConfig;
-                  const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-                  if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-                    updated = true;
-                    newTank.level = Math.round(Number(stat.meta[config.field]));
-                  }
-                }
-
-                // Amps/Current Config
-                if (template.mapping.agAmpsConfig?.field && template.mapping.agAmpsConfig?.module) {
-                  const config = template.mapping.agAmpsConfig;
-                  const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-                  if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-                    updated = true;
-                    newTank.amps = Number(stat.meta[config.field]).toFixed(1);
-                  }
-                }
-
-                // Helper to evaluate condition based on operator
-                const evaluateCondition = (val, operator, threshold) => {
-                  const vNum = parseFloat(val);
-                  const tNum = parseFloat(threshold);
-                  
-                  const isNumeric = !isNaN(vNum) && !isNaN(tNum);
-                  
-                  const v = isNumeric ? vNum : String(val).trim();
-                  const t = isNumeric ? tNum : String(threshold).trim();
-                  
-                  switch (operator) {
-                    case '=': return v === t;
-                    case '>': return v > t;
-                    case '<': return v < t;
-                    default: return v === t;
-                  }
-                };
-
-                // Status Interpretation (Start/Stop with Operator/Value logic)
-                const startCfg = template.mapping.agStatusStartConfig || template.mapping.agStatusConfig;
-                const stopCfg = template.mapping.agStatusStopConfig;
-
-                let conditionMet = false;
-
-                // 1. Check for START condition (OPEN)
-                if (startCfg?.field && startCfg?.module) {
-                  // Update Online Status
-                  let isOnline = tank.isOnline;
-
-                  // 1. Check real-time polled device connection status (Reliable even without telemetry)
-                  if (startCfg?.device && deviceStatuses[startCfg.device] !== undefined) {
-                    isOnline = deviceStatuses[startCfg.device];
-                  }
-
-                  const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
-                  if (stat && stat.meta) {
-                    const modeObj = stat.meta?.mode || stat.mode;
-
-                    // 2. Only use telemetry fallback if real-time polling didn't cover it
-                    if (startCfg?.device && deviceStatuses[startCfg.device] === undefined) {
-                      if (modeObj && modeObj.name) {
-                        isOnline = modeObj.name === 'ONLINE';
-                      }
-                      else if (stat.meta.created_at_timestamp) {
-                        const ts = stat.meta.created_at_timestamp;
-                        const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
-                        if (!isNaN(lastSeen)) {
-                          isOnline = (Date.now() - lastSeen) < 86400000;
-                        }
-                      }
-                    }
-
-                    const currentVal = stat.meta[startCfg.field];
-                    const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
-
-                    if (isStartMet) {
-                      updated = true;
-                      conditionMet = true;
-                      newTank.valveStatus = 'OPEN';
-                      newTank.status = 'Running';
-                    }
-                  }
-
-                  if (newTank.isOnline !== isOnline) {
-                    newTank.isOnline = isOnline;
-                    updated = true;
-                  }
-                }
-
-                // 2. Check for STOP condition (CLOSE) - if start not met
-                if (!conditionMet && stopCfg?.field && stopCfg?.module) {
-                  const stat = stats.find(s => String(s.moduleId) === String(stopCfg.module) || String(s.meta?.module_id) === String(stopCfg.module));
-                  if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
-                    const currentVal = stat.meta[stopCfg.field];
-                    const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
-
-                    if (isStopMet) {
-                      updated = true;
-                      conditionMet = true;
-                      newTank.valveStatus = 'CLOSE';
-                      newTank.status = 'Stopped';
-                    }
-                  }
-                }
-
-                // 3. Final Fallback: If Start is mapped but NOT met, default to CLOSE
-                if (!conditionMet && startCfg?.field && startCfg?.module) {
+              // Level Config
+              if (template.mapping.agLevelConfig?.field && template.mapping.agLevelConfig?.module) {
+                const config = template.mapping.agLevelConfig;
+                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
                   updated = true;
-                  newTank.valveStatus = 'CLOSE';
-                  newTank.status = 'Stopped';
+                  newTank.level = Math.round(Number(stat.meta[config.field]));
+                }
+              }
+
+              // Amps/Current Config
+              if (template.mapping.agAmpsConfig?.field && template.mapping.agAmpsConfig?.module) {
+                const config = template.mapping.agAmpsConfig;
+                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                  updated = true;
+                  newTank.amps = Number(stat.meta[config.field]).toFixed(1);
+                }
+              }
+
+              // Helper to evaluate condition based on operator
+              const evaluateCondition = (val, operator, threshold) => {
+                const vNum = parseFloat(val);
+                const tNum = parseFloat(threshold);
+                
+                const isNumeric = !isNaN(vNum) && !isNaN(tNum);
+                
+                const v = isNumeric ? vNum : String(val).trim();
+                const t = isNumeric ? tNum : String(threshold).trim();
+                
+                switch (operator) {
+                  case '=': return v === t;
+                  case '>': return v > t;
+                  case '<': return v < t;
+                  default: return v === t;
+                }
+              };
+
+              // Status Interpretation
+              const startCfg = template.mapping.agStatusStartConfig || template.mapping.agStatusConfig;
+              const stopCfg = template.mapping.agStatusStopConfig;
+
+              let conditionMet = false;
+
+              // 1. Check for START condition (OPEN)
+              if (startCfg?.field && startCfg?.module) {
+                let isOnline = tank.isOnline;
+
+                if (startCfg?.device && deviceStatuses[startCfg.device] !== undefined) {
+                  isOnline = deviceStatuses[startCfg.device];
                 }
 
-                // Legacy Fallback for agOpenConfig (only if no status start/stop is configured)
-                if (!updated && template.mapping.agOpenConfig?.field && template.mapping.agOpenConfig?.module) {
-                  const config = template.mapping.agOpenConfig;
-                  const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-                  if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-                    updated = true;
-                    const val = stat.meta[config.field];
-                    if (val > 0) {
-                      newTank.valveStatus = 'OPEN';
-                      newTank.status = 'Running';
-                    } else {
-                      newTank.valveStatus = 'CLOSE';
-                      newTank.status = 'Stopped';
+                const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+                if (stat && stat.meta) {
+                  const modeObj = stat.meta?.mode || stat.mode;
+
+                  if (startCfg?.device && deviceStatuses[startCfg.device] === undefined) {
+                    if (modeObj && modeObj.name) {
+                      isOnline = modeObj.name === 'ONLINE';
                     }
+                    else if (stat.meta.created_at_timestamp) {
+                      const ts = stat.meta.created_at_timestamp;
+                      const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
+                      if (!isNaN(lastSeen)) {
+                        isOnline = (Date.now() - lastSeen) < 86400000;
+                      }
+                    }
+                  }
+
+                  const currentVal = stat.meta[startCfg.field];
+                  const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
+
+                  if (isStartMet) {
+                    updated = true;
+                    conditionMet = true;
+                    newTank.valveStatus = 'OPEN';
+                    newTank.status = 'Running';
+                  }
+                }
+
+                if (newTank.isOnline !== isOnline) {
+                  newTank.isOnline = isOnline;
+                  updated = true;
+                }
+              }
+
+              // 2. Check for STOP condition (CLOSE)
+              if (!conditionMet && stopCfg?.field && stopCfg?.module) {
+                const stat = stats.find(s => String(s.moduleId) === String(stopCfg.module) || String(s.meta?.module_id) === String(stopCfg.module));
+                if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
+                  const currentVal = stat.meta[stopCfg.field];
+                  const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
+
+                  if (isStopMet) {
+                    updated = true;
+                    conditionMet = true;
+                    newTank.valveStatus = 'CLOSE';
+                    newTank.status = 'Stopped';
                   }
                 }
               }
-              return newTank;
-            });
-            return updated ? next : prev;
-          });
-        }
-      } catch (error) {
-        console.error('Error fetching dynamic tank levels:', error);
-      }
-    };
 
-    fetchDynamicLevels();
-    const interval = setInterval(fetchDynamicLevels, 5000); // Fetch every 5s for realtime UI
-    return () => clearInterval(interval);
-  }, [selectedTank, showValveModal]);
+              // 3. Fallback
+              if (!conditionMet && startCfg?.field && startCfg?.module) {
+                updated = true;
+                newTank.valveStatus = 'CLOSE';
+                newTank.status = 'Stopped';
+              }
+
+              // Legacy Open Config
+              if (!updated && template.mapping.agOpenConfig?.field && template.mapping.agOpenConfig?.module) {
+                const config = template.mapping.agOpenConfig;
+                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                  updated = true;
+                  const val = stat.meta[config.field];
+                  if (val > 0) {
+                    newTank.valveStatus = 'OPEN';
+                    newTank.status = 'Running';
+                  } else {
+                    newTank.valveStatus = 'CLOSE';
+                    newTank.status = 'Stopped';
+                  }
+                }
+              }
+            }
+            return newTank;
+          });
+          return updated ? next : prev;
+        });
+      } catch (error) {
+        console.error('Error handling WebSocket dynamic ag level:', error);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [selectedTank, showValveModal, deviceStatuses]);
 
   const isTankDisabled = (tank) => {
     const name = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;

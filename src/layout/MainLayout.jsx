@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { io } from 'socket.io-client';
 
 const MainLayout = ({ children }) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -98,6 +99,24 @@ const MainLayout = ({ children }) => {
     };
 
     fetchTemplates();
+
+    // Set up WebSocket listener to fetch updated templates instantly without reload
+    const socket = io('/', { path: '/socket.io' });
+
+    socket.on('templates_updated', (payload) => {
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      const tenantId = userData?.tenantId;
+
+      // If the payload matches current tenantId or is global, sync templates
+      if (!payload || payload.tenantId === undefined || Number(payload.tenantId) === Number(tenantId)) {
+        console.log('[MainLayout] Templates updated via WebSocket. Fetching fresh settings...');
+        fetchTemplates();
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   const toggleSidebar = () => {

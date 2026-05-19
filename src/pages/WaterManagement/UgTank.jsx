@@ -3,6 +3,7 @@ import { Row, Col, Card, Button, Form, Badge, Modal, Spinner } from 'react-boots
 import { Activity, Zap, ShieldCheck, Info, Droplets, ToggleRight, ToggleLeft, Layers, Maximize, Minimize, XCircle, X } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
 import { getSochiotDeviceDetails } from '../../services/authService';
+import { io } from 'socket.io-client';
 
 const UgTank = () => {
   const [activeStation, setActiveStation] = useState(1);
@@ -130,7 +131,14 @@ const UgTank = () => {
   }, []);
 
   useEffect(() => {
-    const fetchUgDynamicLevels = async () => {
+    const socket = io('/', { path: '/socket.io' });
+
+    socket.on('connect', () => {
+      console.log('UgTank WebSocket Connected - Listening for Telemetry');
+    });
+
+    socket.on('telemetry_update', (stats) => {
+      if (!Array.isArray(stats)) return;
       try {
         const saved = localStorage.getItem('scada_templates');
         if (!saved) return;
@@ -139,269 +147,220 @@ const UgTank = () => {
           mapping: cleanCorruptedMapping(t.mapping)
         }));
 
-        const moduleIds = new Set();
-        templates.forEach(t => {
-          if ((t.module === 'UG Tank' || t.module === 'UG Pump') && t.mapping?.ugTankLevelConfig?.module) {
-            moduleIds.add(t.mapping.ugTankLevelConfig.module);
-          }
-          if (t.module === 'UG Pump') {
-            if (t.mapping?.ugStatusStartConfig?.module) moduleIds.add(t.mapping.ugStatusStartConfig.module);
-            if (t.mapping?.ugStatusStopConfig?.module) moduleIds.add(t.mapping.ugStatusStopConfig.module);
-            if (t.mapping?.ugAmpsConfig?.module) moduleIds.add(t.mapping.ugAmpsConfig.module);
-          }
-          if (t.module === 'AG Tank') {
-            if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
-            if (t.mapping?.agStatusStartConfig?.module) moduleIds.add(t.mapping.agStatusStartConfig.module);
-            if (t.mapping?.agStatusStopConfig?.module) moduleIds.add(t.mapping.agStatusStopConfig.module);
-            if (t.mapping?.agStatusConfig?.module) moduleIds.add(t.mapping.agStatusConfig.module);
-          }
-          if (t.module === 'Pressure') {
-            if (t.mapping?.pressureConfig?.module) moduleIds.add(t.mapping.pressureConfig.module);
-          }
+        setTanks(prev => {
+          let updated = false;
+
+          const ugTemplates = templates.filter(t =>
+            t.module === 'UG Tank' || t.module === 'UG Pump'
+          );
+
+          const genericUgTemplates = ugTemplates.filter(t =>
+            !t.mapping?.ugTankRange?.name || t.mapping?.ugTankRange?.name === "" || t.mapping?.ugTankRange?.name === "UG TANK"
+          );
+
+          const next = prev.map((tank, index) => {
+            let template = ugTemplates.find(t => t.mapping?.ugTankRange?.name === tank.name);
+
+            if (!template && genericUgTemplates.length > index) {
+              template = genericUgTemplates[index];
+            }
+
+            let config = null;
+
+            if (template && template.mapping && template.mapping.ugTankLevelConfig && template.mapping.ugTankLevelConfig.module) {
+              config = template.mapping.ugTankLevelConfig;
+            }
+
+            if (config && config.field && config.module) {
+              const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+              if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                updated = true;
+                return { ...tank, level: Math.round(Number(stat.meta[config.field])) };
+              }
+            }
+            return tank;
+          });
+          return updated ? next : prev;
         });
 
-        const modulesQuery = Array.from(moduleIds).join(',');
-        const url = modulesQuery ? `/api/templates/stats?modules=${modulesQuery}` : '/api/templates/stats';
-
-        const response = await fetch(url);
-        if (response.ok) {
-          const stats = await response.json();
-          if (!Array.isArray(stats)) {
-            console.warn("Expected stats array but got:", stats);
-            return;
+        // Helper to evaluate condition based on operator
+        const evaluateCondition = (val, operator, threshold) => {
+          const vNum = parseFloat(val);
+          const tNum = parseFloat(threshold);
+          
+          const isNumeric = !isNaN(vNum) && !isNaN(tNum);
+          
+          const v = isNumeric ? vNum : String(val).trim();
+          const t = isNumeric ? tNum : String(threshold).trim();
+          
+          switch (operator) {
+            case '=': return v === t;
+            case '>': return v > t;
+            case '<': return v < t;
+            default: return v === t;
           }
+        };
 
-          setTanks(prev => {
-            let updated = false;
+        let commonPressureValue = null;
+        const anyPressureTemplate = templates.find(t => t.module === 'Pressure' && t.mapping?.pressureConfig?.module);
+        if (anyPressureTemplate) {
+          const config = anyPressureTemplate.mapping.pressureConfig;
+          const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+          if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+            commonPressureValue = Number(stat.meta[config.field]);
+          }
+        }
 
-            // Get all generic UG Tank templates (those without a specific valid name)
-            const ugTemplates = templates.filter(t =>
-              t.module === 'UG Tank' || t.module === 'UG Pump'
+        const updatePumpsStatus = (prevPumps) => {
+          let pumpUpdated = false;
+          const nextPumps = prevPumps.map(pump => {
+            const template = templates.find(t =>
+              t.module === 'UG Pump' &&
+              Number(t.mapping?.ugPumpRange?.pumpNo) === Number(pump.id)
             );
 
-            const genericUgTemplates = ugTemplates.filter(t =>
-              !t.mapping?.ugTankRange?.name || t.mapping?.ugTankRange?.name === "" || t.mapping?.ugTankRange?.name === "UG TANK"
-            );
-
-            const next = prev.map((tank, index) => {
-              // 1. Try to find exact match
-              let template = ugTemplates.find(t => t.mapping?.ugTankRange?.name === tank.name);
-
-              // 2. If no exact match, fallback to generic templates by index
-              if (!template && genericUgTemplates.length > index) {
-                template = genericUgTemplates[index];
-              }
-
-              let config = null;
-
-              if (template && template.mapping && template.mapping.ugTankLevelConfig && template.mapping.ugTankLevelConfig.module) {
-                config = template.mapping.ugTankLevelConfig;
-              }
-
-              if (config && config.field && config.module) {
-                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-                  updated = true;
-                  console.log(`Matched ${tank.name} with module: ${config.module}, field: ${config.field}, value: ${stat.meta[config.field]}`);
-                  return { ...tank, level: Math.round(Number(stat.meta[config.field])) };
-                } else {
-                  console.log(`${tank.name} configured for module: ${config.module}, field: ${config.field} but no valid data found`);
-                }
-              } else {
-                console.log(`No valid template configuration found for UG Tank: ${tank.name}`);
-              }
-              return tank;
-            });
-            return updated ? next : prev;
-          });
-
-          // Helper to evaluate condition based on operator
-          const evaluateCondition = (val, operator, threshold) => {
-            const vNum = parseFloat(val);
-            const tNum = parseFloat(threshold);
-            
-            const isNumeric = !isNaN(vNum) && !isNaN(tNum);
-            
-            const v = isNumeric ? vNum : String(val).trim();
-            const t = isNumeric ? tNum : String(threshold).trim();
-            
-            switch (operator) {
-              case '=': return v === t;
-              case '>': return v > t;
-              case '<': return v < t;
-              default: return v === t;
-            }
-          };
-
-          let commonPressureValue = null;
-          const anyPressureTemplate = templates.find(t => t.module === 'Pressure' && t.mapping?.pressureConfig?.module);
-          if (anyPressureTemplate) {
-            const config = anyPressureTemplate.mapping.pressureConfig;
-            const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-            if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-              commonPressureValue = Number(stat.meta[config.field]);
-            }
-          }
-
-          const updatePumpsStatus = (prevPumps) => {
-            let pumpUpdated = false;
-            const nextPumps = prevPumps.map(pump => {
-              const template = templates.find(t =>
-                t.module === 'UG Pump' &&
-                Number(t.mapping?.ugPumpRange?.pumpNo) === Number(pump.id)
-              );
-
-              if (!template || !template.mapping) {
-                if (pump.status !== 'Stopped') {
-                  pumpUpdated = true;
-                  return { ...pump, status: 'Stopped', hz: '0.0', amp: '0.0', pressure: 0.0 };
-                }
-                return pump;
-              }
-
-              const startCfg = template.mapping.ugStatusStartConfig;
-              const stopCfg = template.mapping.ugStatusStopConfig;
-
-              let newStatus = pump.status;
-              let conditionMet = false;
-
-              // 1. Check for START condition (Running)
-              if (startCfg?.field && startCfg?.module) {
-                const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
-                if (stat && stat.meta && stat.meta[startCfg.field] !== undefined) {
-                  const currentVal = stat.meta[startCfg.field];
-                  const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
-
-                  if (isStartMet) {
-                    newStatus = 'Running';
-                    conditionMet = true;
-                  }
-                }
-              }
-
-              // 2. Check for STOP condition (Stopped) - if start not met
-              if (!conditionMet && stopCfg?.field && stopCfg?.module) {
-                const stat = stats.find(s => String(s.moduleId) === String(stopCfg.module) || String(s.meta?.module_id) === String(stopCfg.module));
-                if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
-                  const currentVal = stat.meta[stopCfg.field];
-                  const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
-
-                  if (isStopMet) {
-                    newStatus = 'Stopped';
-                    conditionMet = true;
-                  }
-                }
-              }
-
-              // 3. Final Fallback: If Start is mapped but NOT met, default to Stopped
-              if (!conditionMet && startCfg?.field && startCfg?.module) {
-                newStatus = 'Stopped';
-              }
-
-              // Update Online Status
-              let isOnline = pump.isOnline;
-
-              // 1. Find any device ID in the mapping to check status if explicit status mapping is missing
-              let deviceToCheck = startCfg?.device;
-              if (!deviceToCheck && template.mapping) {
-                const anyConfigWithDevice = Object.values(template.mapping).find(cfg => cfg && cfg.device);
-                if (anyConfigWithDevice) deviceToCheck = anyConfigWithDevice.device;
-              }
-
-              if (deviceToCheck && deviceStatuses[deviceToCheck] !== undefined) {
-                isOnline = deviceStatuses[deviceToCheck];
-              }
-
-              const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
-              if (stat) {
-                const modeObj = stat.meta?.mode || stat.mode;
-
-                // 2. Only use telemetry fallback if real-time polling didn't cover it
-                if (startCfg?.device === undefined || deviceStatuses[startCfg.device] === undefined) {
-                  if (modeObj && modeObj.name) {
-                    isOnline = modeObj.name === 'ONLINE';
-                  }
-                  else if (stat.meta?.created_at_timestamp) {
-                    const ts = stat.meta.created_at_timestamp;
-                    const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
-                    if (!isNaN(lastSeen)) {
-                      isOnline = (Date.now() - lastSeen) < 86400000;
-                    }
-                  }
-                }
-              }
-
-              // 4. Sync Thresholds from Rules
-              const startLimit = template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : pump.startLimit;
-              const stopLimit = template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : pump.stopLimit;
-
-              let newAmp = pump.amp;
-              // Amps/Current Config
-              if (template.mapping.ugAmpsConfig?.field && template.mapping.ugAmpsConfig?.module) {
-                const config = template.mapping.ugAmpsConfig;
-                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-                  newAmp = Number(stat.meta[config.field]).toFixed(1);
-                }
-              } else if (startCfg?.module) {
-                const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
-                if (stat && stat.meta) {
-                  // Fallback: Dynamically find current/amp value in telemetry if not explicitly mapped
-                  const currentKey = Object.keys(stat.meta).find(k => k.toLowerCase().includes('current'));
-                  if (currentKey && stat.meta[currentKey] !== undefined) {
-                    newAmp = Number(stat.meta[currentKey]);
-                  }
-                }
-              }
-
-              let newPressure = commonPressureValue !== null ? commonPressureValue : pump.pressure;
-              
-              // Only override with specific mapping if a unique one exists for this pump
-              const pressureTemplate = templates.find(t => 
-                t.module === 'Pressure' && 
-                t.mapping?.pressureTarget === `PUMP ${String(pump.id).padStart(2, '0')} PRESSURE`
-              );
-              
-              if (pressureTemplate?.mapping?.pressureConfig?.field && pressureTemplate?.mapping?.pressureConfig?.module) {
-                const config = pressureTemplate.mapping.pressureConfig;
-                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-                  newPressure = Number(stat.meta[config.field]);
-                }
-              }
-
-              if (newStatus !== pump.status || isOnline !== pump.isOnline || startLimit !== pump.startLimit || stopLimit !== pump.stopLimit || newAmp !== pump.amp || newPressure !== pump.pressure) {
+            if (!template || !template.mapping) {
+              if (pump.status !== 'Stopped') {
                 pumpUpdated = true;
-                return { ...pump, status: newStatus, isOnline, startLimit, stopLimit, amp: newAmp, pressure: newPressure };
+                return { ...pump, status: 'Stopped', hz: '0.0', amp: '0.0', pressure: 0.0 };
               }
               return pump;
-            });
-            return pumpUpdated ? nextPumps : prevPumps;
-          };
+            }
 
-          setPumps1(prev => updatePumpsStatus(prev));
-          setPumps2(prev => updatePumpsStatus(prev));
+            const startCfg = template.mapping.ugStatusStartConfig;
+            const stopCfg = template.mapping.ugStatusStopConfig;
 
-          let newOutletPressure = commonPressureValue; // Fallback to common pressure if specific outlet mapping doesn't exist
-          const outletTemplate = templates.find(t => t.module === 'Pressure' && t.mapping?.pressureTarget === 'OUTLET PRESSURE');
-          if (outletTemplate?.mapping?.pressureConfig?.field && outletTemplate?.mapping?.pressureConfig?.module) {
-             const config = outletTemplate.mapping.pressureConfig;
-             const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
-             if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-               newOutletPressure = Number(stat.meta[config.field]);
-             }
-          }
-          setMappedOutletPressure(newOutletPressure);
+            let newStatus = pump.status;
+            let conditionMet = false;
+
+            // 1. Check for START condition (Running)
+            if (startCfg?.field && startCfg?.module) {
+              const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+              if (stat && stat.meta && stat.meta[startCfg.field] !== undefined) {
+                const currentVal = stat.meta[startCfg.field];
+                const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
+
+                if (isStartMet) {
+                  newStatus = 'Running';
+                  conditionMet = true;
+                }
+              }
+            }
+
+            // 2. Check for STOP condition (Stopped)
+            if (!conditionMet && stopCfg?.field && stopCfg?.module) {
+              const stat = stats.find(s => String(s.moduleId) === String(stopCfg.module) || String(s.meta?.module_id) === String(stopCfg.module));
+              if (stat && stat.meta && stat.meta[stopCfg.field] !== undefined) {
+                const currentVal = stat.meta[stopCfg.field];
+                const isStopMet = evaluateCondition(currentVal, stopCfg.operator || '=', stopCfg.value || '10');
+
+                if (isStopMet) {
+                  newStatus = 'Stopped';
+                  conditionMet = true;
+                }
+              }
+            }
+
+            // 3. Fallback
+            if (!conditionMet && startCfg?.field && startCfg?.module) {
+              newStatus = 'Stopped';
+            }
+
+            // Online status
+            let isOnline = pump.isOnline;
+            let deviceToCheck = startCfg?.device;
+            if (!deviceToCheck && template.mapping) {
+              const anyConfigWithDevice = Object.values(template.mapping).find(cfg => cfg && cfg.device);
+              if (anyConfigWithDevice) deviceToCheck = anyConfigWithDevice.device;
+            }
+
+            if (deviceToCheck && deviceStatuses[deviceToCheck] !== undefined) {
+              isOnline = deviceStatuses[deviceToCheck];
+            }
+
+            const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+            if (stat) {
+              const modeObj = stat.meta?.mode || stat.mode;
+
+              if (startCfg?.device === undefined || deviceStatuses[startCfg.device] === undefined) {
+                if (modeObj && modeObj.name) {
+                  isOnline = modeObj.name === 'ONLINE';
+                }
+                else if (stat.meta?.created_at_timestamp) {
+                  const ts = stat.meta.created_at_timestamp;
+                  const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
+                  if (!isNaN(lastSeen)) {
+                    isOnline = (Date.now() - lastSeen) < 86400000;
+                  }
+                }
+              }
+            }
+
+            const startLimit = template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : pump.startLimit;
+            const stopLimit = template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : pump.stopLimit;
+
+            let newAmp = pump.amp;
+            if (template.mapping.ugAmpsConfig?.field && template.mapping.ugAmpsConfig?.module) {
+              const config = template.mapping.ugAmpsConfig;
+              const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+              if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                newAmp = Number(stat.meta[config.field]).toFixed(1);
+              }
+            } else if (startCfg?.module) {
+              const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+              if (stat && stat.meta) {
+                const currentKey = Object.keys(stat.meta).find(k => k.toLowerCase().includes('current'));
+                if (currentKey && stat.meta[currentKey] !== undefined) {
+                  newAmp = Number(stat.meta[currentKey]);
+                }
+              }
+            }
+
+            let newPressure = commonPressureValue !== null ? commonPressureValue : pump.pressure;
+            const pressureTemplate = templates.find(t => 
+              t.module === 'Pressure' && 
+              t.mapping?.pressureTarget === `PUMP ${String(pump.id).padStart(2, '0')} PRESSURE`
+            );
+            
+            if (pressureTemplate?.mapping?.pressureConfig?.field && pressureTemplate?.mapping?.pressureConfig?.module) {
+              const config = pressureTemplate.mapping.pressureConfig;
+              const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+              if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                newPressure = Number(stat.meta[config.field]);
+              }
+            }
+
+            if (newStatus !== pump.status || isOnline !== pump.isOnline || startLimit !== pump.startLimit || stopLimit !== pump.stopLimit || newAmp !== pump.amp || newPressure !== pump.pressure) {
+              pumpUpdated = true;
+              return { ...pump, status: newStatus, isOnline, startLimit, stopLimit, amp: newAmp, pressure: newPressure };
+            }
+            return pump;
+          });
+          return pumpUpdated ? nextPumps : prevPumps;
+        };
+
+        setPumps1(prev => updatePumpsStatus(prev));
+        setPumps2(prev => updatePumpsStatus(prev));
+
+        let newOutletPressure = commonPressureValue;
+        const outletTemplate = templates.find(t => t.module === 'Pressure' && t.mapping?.pressureTarget === 'OUTLET PRESSURE');
+        if (outletTemplate?.mapping?.pressureConfig?.field && outletTemplate?.mapping?.pressureConfig?.module) {
+           const config = outletTemplate.mapping.pressureConfig;
+           const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+           if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+             newOutletPressure = Number(stat.meta[config.field]);
+           }
         }
+        setMappedOutletPressure(newOutletPressure);
       } catch (error) {
-        console.error('Error fetching dynamic UG tank levels:', error);
+        console.error('Error handling WebSocket dynamic ug level:', error);
       }
-    };
+    });
 
-    fetchUgDynamicLevels();
-    const interval = setInterval(fetchUgDynamicLevels, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      socket.disconnect();
+    };
+  }, [deviceStatuses]);
 
   const activePumps = activeStation === 1 ? pumps1 : pumps2;
   const isAnyPumpRunning = useMemo(() => activePumps.some(p => p.status === 'Running'), [activePumps]);
