@@ -1042,7 +1042,11 @@ const ConfigTemplates = () => {
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
-        const response = await fetch('/api/templates');
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        const tenantId = userData?.tenantId;
+        const url = tenantId ? `/api/templates?tenantId=${tenantId}` : '/api/templates';
+
+        const response = await fetch(url);
         if (response.ok) {
           const data = await response.json();
           // Map backend data to frontend format if necessary
@@ -1360,6 +1364,9 @@ const ConfigTemplates = () => {
     const uniqueName = templateName || `${autoName} (#${String(savedTemplates.length + 1).padStart(2, '0')})`;
 
     try {
+      const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+      const tenantId = userData?.tenantId;
+
       const response = await fetch('/api/templates/save', {
         method: 'POST',
         headers: {
@@ -1370,7 +1377,8 @@ const ConfigTemplates = () => {
           name: uniqueName.toUpperCase(),
           category: selectedCategory,
           module: selectedModule,
-          mapping: templateData.mapping
+          mapping: templateData.mapping,
+          tenantId: tenantId
         }),
       });
 

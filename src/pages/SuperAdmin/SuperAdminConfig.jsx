@@ -5,7 +5,7 @@ import {
   Search, Filter, RefreshCcw, CheckCircle2, XCircle, ChevronRight,
   LayoutDashboard, Settings, Bell, Zap, Droplets, Activity, Database,
   ShieldAlert, ClipboardList, PenTool, History, Gauge, Lock, Users,
-  Building2, UserPlus, Trash2, Edit, ExternalLink
+  Building2, UserPlus, Trash2, Edit, ExternalLink, Sliders
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PremiumLoader from '../../components/PremiumLoader';
@@ -293,6 +293,51 @@ const SuperAdminConfig = () => {
       setTimeout(() => {
         window.location.href = '/admin/manage-users';
       }, 1200);
+    } else if (action === 'templates') {
+      // Impersonate as the Tenant's Admin to set Templates
+      const tenantConfig = tenant.config?.features || defaultConfig;
+
+      if (!localStorage.getItem('impersonator_backup_role')) {
+        localStorage.setItem('impersonator_backup_user', localStorage.getItem('userData'));
+        localStorage.setItem('impersonator_backup_role', localStorage.getItem('userRole'));
+      }
+
+      const mockAdminData = {
+        id: tenant.admin?.id || 0,
+        name: `Preview: ${tenant.admin?.name || tenant.name}`,
+        email: tenant.admin?.email,
+        role: 'ADMIN',
+        tenantId: tenant.id
+      };
+
+      localStorage.setItem('userData', JSON.stringify(mockAdminData));
+      localStorage.setItem('userRole', 'ADMIN');
+
+      const sidebarMapping = {
+        "Dashboard": tenantConfig.showDashboard,
+        "Water Management": tenantConfig.showWaterManagement,
+        "Motors": tenantConfig.showMotors,
+        "DG Monitoring": tenantConfig.showDGSet,
+        "Setting Templates": tenantConfig.showSettingTemplates,
+        "Alarm System": tenantConfig.showAlarms,
+        "LT Panel": tenantConfig.showLTPanel,
+        "Transformer": tenantConfig.showTransformers,
+        "Fire Pumps": tenantConfig.showFirePumps,
+        "Ticketing": tenantConfig.showTicketing,
+        "Maintenance": tenantConfig.showMaintenance,
+        "Service History": tenantConfig.showServiceHistory,
+        "Daily DPR": tenantConfig.showDailyDPR,
+
+      };
+
+      localStorage.setItem('scada_modules_config', JSON.stringify(sidebarMapping));
+      localStorage.setItem('scada_submodules_config', JSON.stringify(tenantConfig.submoduleVisibility));
+      window.dispatchEvent(new Event('storage-update'));
+
+      setMessage({ type: 'success', text: `Entering templates configuration for ${tenant.name}...` });
+      setTimeout(() => {
+        window.location.href = '/config/templates';
+      }, 1200);
     } else if (action === 'delete') {
       if (window.confirm(`Are you sure you want to delete ${tenant.name}? This will remove all users and settings.`)) {
         try {
@@ -418,6 +463,9 @@ const SuperAdminConfig = () => {
                         <div className="d-flex gap-2">
                           <Button variant="outline-info" size="sm" onClick={() => handleTenantAction(tenant, 'configure')} title="Configure Permissions">
                             <Settings size={14} />
+                          </Button>
+                          <Button variant="outline-primary" size="sm" onClick={() => handleTenantAction(tenant, 'templates')} title="Set Settings Template">
+                            <Sliders size={14} />
                           </Button>
                           <Button variant="outline-success" size="sm" onClick={() => handleTenantAction(tenant, 'view')} title="View Tenant Dashboard">
                             <Eye size={14} />

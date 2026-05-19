@@ -58,6 +58,7 @@ const UgTank = () => {
   const [limitForm, setLimitForm] = useState({ start: 0, stop: 0 });
   const [actionFeedback, setActionFeedback] = useState(null);
   const [isSendingRules, setIsSendingRules] = useState(false);
+  const [mappedOutletPressure, setMappedOutletPressure] = useState(null);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) pageRef.current.requestFullscreen();
@@ -146,12 +147,16 @@ const UgTank = () => {
           if (t.module === 'UG Pump') {
             if (t.mapping?.ugStatusStartConfig?.module) moduleIds.add(t.mapping.ugStatusStartConfig.module);
             if (t.mapping?.ugStatusStopConfig?.module) moduleIds.add(t.mapping.ugStatusStopConfig.module);
+            if (t.mapping?.ugAmpsConfig?.module) moduleIds.add(t.mapping.ugAmpsConfig.module);
           }
           if (t.module === 'AG Tank') {
             if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
             if (t.mapping?.agStatusStartConfig?.module) moduleIds.add(t.mapping.agStatusStartConfig.module);
             if (t.mapping?.agStatusStopConfig?.module) moduleIds.add(t.mapping.agStatusStopConfig.module);
             if (t.mapping?.agStatusConfig?.module) moduleIds.add(t.mapping.agStatusConfig.module);
+          }
+          if (t.module === 'Pressure') {
+            if (t.mapping?.pressureConfig?.module) moduleIds.add(t.mapping.pressureConfig.module);
           }
         });
 
@@ -227,6 +232,16 @@ const UgTank = () => {
               default: return v === t;
             }
           };
+
+          let commonPressureValue = null;
+          const anyPressureTemplate = templates.find(t => t.module === 'Pressure' && t.mapping?.pressureConfig?.module);
+          if (anyPressureTemplate) {
+            const config = anyPressureTemplate.mapping.pressureConfig;
+            const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+            if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+              commonPressureValue = Number(stat.meta[config.field]);
+            }
+          }
 
           const updatePumpsStatus = (prevPumps) => {
             let pumpUpdated = false;
@@ -339,9 +354,25 @@ const UgTank = () => {
                 }
               }
 
-              if (newStatus !== pump.status || isOnline !== pump.isOnline || startLimit !== pump.startLimit || stopLimit !== pump.stopLimit || newAmp !== pump.amp) {
+              let newPressure = commonPressureValue !== null ? commonPressureValue : pump.pressure;
+              
+              // Only override with specific mapping if a unique one exists for this pump
+              const pressureTemplate = templates.find(t => 
+                t.module === 'Pressure' && 
+                t.mapping?.pressureTarget === `PUMP ${String(pump.id).padStart(2, '0')} PRESSURE`
+              );
+              
+              if (pressureTemplate?.mapping?.pressureConfig?.field && pressureTemplate?.mapping?.pressureConfig?.module) {
+                const config = pressureTemplate.mapping.pressureConfig;
+                const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+                if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+                  newPressure = Number(stat.meta[config.field]);
+                }
+              }
+
+              if (newStatus !== pump.status || isOnline !== pump.isOnline || startLimit !== pump.startLimit || stopLimit !== pump.stopLimit || newAmp !== pump.amp || newPressure !== pump.pressure) {
                 pumpUpdated = true;
-                return { ...pump, status: newStatus, isOnline, startLimit, stopLimit, amp: newAmp };
+                return { ...pump, status: newStatus, isOnline, startLimit, stopLimit, amp: newAmp, pressure: newPressure };
               }
               return pump;
             });
@@ -350,6 +381,17 @@ const UgTank = () => {
 
           setPumps1(prev => updatePumpsStatus(prev));
           setPumps2(prev => updatePumpsStatus(prev));
+
+          let newOutletPressure = commonPressureValue; // Fallback to common pressure if specific outlet mapping doesn't exist
+          const outletTemplate = templates.find(t => t.module === 'Pressure' && t.mapping?.pressureTarget === 'OUTLET PRESSURE');
+          if (outletTemplate?.mapping?.pressureConfig?.field && outletTemplate?.mapping?.pressureConfig?.module) {
+             const config = outletTemplate.mapping.pressureConfig;
+             const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
+             if (stat && stat.meta && stat.meta[config.field] !== undefined) {
+               newOutletPressure = Number(stat.meta[config.field]);
+             }
+          }
+          setMappedOutletPressure(newOutletPressure);
         }
       } catch (error) {
         console.error('Error fetching dynamic UG tank levels:', error);
@@ -365,10 +407,12 @@ const UgTank = () => {
   const isAnyPumpRunning = useMemo(() => activePumps.some(p => p.status === 'Running'), [activePumps]);
 
   const masterPressureValue = useMemo(() => {
+    if (mappedOutletPressure !== null) return mappedOutletPressure;
     if (!isAnyPumpRunning) return 0.0;
-    const active = activePumps.filter(p => p.status === 'Running');
-    return active.reduce((acc, curr) => acc + curr.pressure, 0) / active.length;
-  }, [activePumps, isAnyPumpRunning]);
+    const activeWithPressure = activePumps.filter(p => p.status === 'Running' && p.pressure > 0);
+    if (activeWithPressure.length === 0) return 0.0;
+    return activeWithPressure.reduce((acc, curr) => acc + curr.pressure, 0) / activeWithPressure.length;
+  }, [activePumps, isAnyPumpRunning, mappedOutletPressure]);
 
   const technicalData = {
     custom_name: "UG-TANK-01-SEC-A",
@@ -806,8 +850,8 @@ const UgTank = () => {
 
                         <g transform={`translate(540, ${y + 5})`}>
                           <rect width="200" height="60" rx="8" fill="#0f172a" fillOpacity="0.9" stroke={!p.isOnline ? "#334155" : "#1e293b"} strokeWidth="2" />
-                          <text x="14" y="20" fill="#94a3b8" fontSize="9" fontWeight="bold">PUMP P{p.id}</text>
-                          <text x="65" y="20" fill="#f59e0b" fontSize="9" fontWeight="bold">
+                          <text x="14" y="20" fill="#94a3b8" fontSize="10" fontWeight="bold">PUMP P{p.id}</text>
+                          <text x="70" y="20" fill="#f59e0b" fontSize="13" fontWeight="900">
                             {p.isOnline && p.amp !== undefined ? `| ${Number(p.amp).toFixed(1)} A` : ''}
                           </text>
                           <text x="14" y="44" fill={!p.isOnline ? "#64748b" : (active ? "#22c55e" : "#475569")} fontSize={!p.isOnline ? "12" : "16"} fontWeight="900">
@@ -844,7 +888,7 @@ const UgTank = () => {
                             <line x1="0" y1="0" x2="0" y2="-19" stroke={active && p.isOnline ? "#ef4444" : "#475569"} strokeWidth="2" strokeLinecap="round" transform={`rotate(${(p.pressure / 10) * 270 - 135})`} style={{ transition: 'transform 0.8s ease-out' }} />
                             <circle r="2.5" fill="#fff" />
 
-                            <text y="24" textAnchor="middle" fill={p.isOnline ? "#38bdf8" : "#475569"} fontSize="9" fontWeight="900">{active && p.isOnline ? p.pressure.toFixed(1) : "0.0"} <small style={{ fontSize: '6px' }}>kg/cm²</small></text>
+                            <text y="24" textAnchor="middle" fill={p.isOnline ? "#38bdf8" : "#475569"} fontSize="9" fontWeight="900">{active && p.isOnline ? p.pressure.toFixed(1) : "0.0"} <tspan fontSize="6" dy="-1">BAR</tspan></text>
                           </g>
                         </g>
                         {/* Pump Output Connection to Final Manifold */}

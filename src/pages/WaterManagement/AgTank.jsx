@@ -467,6 +467,7 @@ const AgTank = () => {
             if (t.mapping?.agStatusStopConfig?.module) moduleIds.add(t.mapping.agStatusStopConfig.module);
             if (t.mapping?.agStatusConfig?.module) moduleIds.add(t.mapping.agStatusConfig.module);
             if (t.mapping?.agLevelConfig?.module) moduleIds.add(t.mapping.agLevelConfig.module);
+            if (t.mapping?.agAmpsConfig?.module) moduleIds.add(t.mapping.agAmpsConfig.module);
           }
         });
 
@@ -856,8 +857,8 @@ const AgTank = () => {
                 <div className={`d-flex justify-content-center gap-2 opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
                   <span style={{ color: !tank.isOnline ? '#475569' : getTankColor(tank.type, tank.level, tank.status) }}>{!tank.isOnline ? '--' : tank.level}%</span>
                   {tank.isOnline && tank.amps !== undefined && (
-                    <span className="text-warning d-flex align-items-center gap-1">
-                      <Zap size={8} className="pulse-icon" /> {tank.amps}A
+                    <span className="text-warning d-flex align-items-center gap-1 fw-bold fs-7">
+                      <Zap size={12} className="pulse-icon" /> {tank.amps}A
                     </span>
                   )}
                 </div>
