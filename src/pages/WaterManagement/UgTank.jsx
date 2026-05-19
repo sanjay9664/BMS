@@ -137,7 +137,7 @@ const UgTank = () => {
       console.log('UgTank WebSocket Connected - Listening for Telemetry');
     });
 
-    socket.on('telemetry_update', (stats) => {
+    const processTelemetry = (stats) => {
       if (!Array.isArray(stats)) return;
       try {
         const saved = localStorage.getItem('scada_templates');
@@ -355,10 +355,28 @@ const UgTank = () => {
       } catch (error) {
         console.error('Error handling WebSocket dynamic ug level:', error);
       }
-    });
+    };
+
+    socket.on('telemetry_update', processTelemetry);
+
+    // Fallback polling for production (where serverless doesn't support WebSockets)
+    const pollInterval = setInterval(async () => {
+      if (!socket.connected) {
+        try {
+          const res = await fetch('/api/templates/stats');
+          if (res.ok) {
+            const stats = await res.json();
+            processTelemetry(stats);
+          }
+        } catch (err) {
+          console.error('Error polling telemetry stats:', err);
+        }
+      }
+    }, 4000);
 
     return () => {
       socket.disconnect();
+      clearInterval(pollInterval);
     };
   }, [deviceStatuses]);
 
