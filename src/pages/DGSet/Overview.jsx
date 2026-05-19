@@ -3,11 +3,13 @@ import { Row, Col, Card, Badge, ProgressBar, Toast, ToastContainer, Table } from
 import { 
   Factory, ShieldAlert, Zap, Activity, Gauge, Fuel, History, 
   Fan, Settings, Thermometer, Droplets, FileDown, Home, 
-  Database, AlertCircle, AlertTriangle, TrendingDown, 
+  Database, AlertCircle, AlertTriangle, TrendingDown,
   ChevronRight, ArrowRightCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import PdfButton from '../../components/PdfButton';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { io } from 'socket.io-client';
 
 // VIBRANT BUT BALANCED SCADA PALETTE
 const SCADA_COLORS = {
@@ -36,7 +38,7 @@ const SiemensStyleDG = () => {
     voltage: { ry: 415.7, yb: 416.1, br: 414.9, rn: 239.8, yn: 239.5, bn: 241.2 },
     current: { r: 145, y: 142, b: 148, avg: 145 },
     power: { kw: 125.5, kvar: 12.4, kva: 130.2, pf: 0.98 },
-    engine: { coolant: 82.2, oilPressure: 4.5, speed: 1500, runtime: 1245 },
+    engine: { coolant: 82.2, oilPressure: 4.5, speed: 1500, runtime: 1245, freq: 50.1, battery: 24.5 },
     diesel: { 
         level: 82.5, 
         remaining: 1650, 
@@ -50,37 +52,234 @@ const SiemensStyleDG = () => {
     generation: { today: 450.2, yesterday: 1250, month: 14200, morning: 0.000 }
   });
 
+  // Helper to clean corrupted template keys
+  const cleanCorruptedMapping = (obj) => {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+    const cleaned = {};
+    Object.keys(obj).forEach(key => {
+      let newKey = key;
+      if (key.includes('Water Level') && key !== 'agLevelConfig' && key !== 'ugTankLevelConfig' && key !== 'Water Level' && key !== 'agLevel' && key !== 'waterLevel') {
+        newKey = key.replace('Water Level', '').trim();
+      }
+      let value = obj[key];
+      if (value && typeof value === 'object' && !Array.isArray(value)) value = cleanCorruptedMapping(value);
+      cleaned[newKey] = value;
+    });
+    return cleaned;
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setData(prev => ({
-        ...prev,
-        voltage: {
-          ry: 415 + (Math.random() - 0.5) * 1.5,
-          yb: 416 + (Math.random() - 0.5) * 1.5,
-          br: 414 + (Math.random() - 0.5) * 1.5,
-          rn: 240 + (Math.random() - 0.5),
-          yn: 239 + (Math.random() - 0.5),
-          bn: 241 + (Math.random() - 0.5),
-        },
-        engine: {
-          ...prev.engine,
-          speed: 1500 + (Math.random() - 0.5) * 10
-        },
-        power: {
-            ...prev.power,
-            kw: 125 + (Math.random() - 0.5) * 2
-        }
-      }));
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
+    const socket = io('/', { path: '/socket.io' });
+
+    socket.on('connect', () => {
+      console.log('SCADA WebSocket Connected - Listening for Telemetry');
+    });
+
+    const saved = localStorage.getItem('scada_templates');
+    if (!saved) return;
+    const templates = JSON.parse(saved).map(t => ({
+      ...t,
+      mapping: cleanCorruptedMapping(t.mapping)
+    }));
+    
+    const targetModuleName = `DG Set-${activeDG.replace('DG', '')}`;
+    const template = templates.find(t => t.module === targetModuleName);
+
+    if (!template || !template.mapping) return;
+
+    const mapping = template.mapping;
+
+    socket.on('telemetry_update', (stats) => {
+        if (!Array.isArray(stats)) return;
+
+        setData(prev => {
+          let newData = { ...prev };
+          let updated = false;
+          
+          // Helper to extract value
+          const getValue = (config, fieldKey) => {
+            if (!config || config.enabled === false || !config[fieldKey]) return null;
+            
+            let moduleId = config.module;
+            let fieldId = config[fieldKey];
+            
+            if (fieldId.includes('::')) {
+              const parts = fieldId.split('::');
+              moduleId = parts[0];
+              fieldId = parts[1];
+            } else if (!moduleId || moduleId === 'ALL') {
+              return null;
+            }
+
+            const stat = stats.find(s => String(s.moduleId) === String(moduleId) || String(s.meta?.module_id) === String(moduleId));
+            if (stat && stat.meta && stat.meta[fieldId] !== undefined) {
+              return Number(stat.meta[fieldId]);
+            }
+            return null;
+          };
+
+          // Engine
+          const speed = getValue(mapping.dgEngineConfig, 'speed');
+          if (speed !== null) { newData.engine.speed = speed; updated = true; }
+          
+          const coolant = getValue(mapping.dgEngineConfig, 'coolant');
+          if (coolant !== null) { newData.engine.coolant = coolant; updated = true; }
+
+          const oilPress = getValue(mapping.dgEngineConfig, 'oilPress');
+          if (oilPress !== null) { newData.engine.oilPressure = oilPress; updated = true; }
+
+          const battery = getValue(mapping.dgEngineConfig, 'battery');
+          if (battery !== null) { newData.engine.battery = battery; updated = true; }
+
+          const freq = getValue(mapping.dgEngineConfig, 'freq');
+          if (freq !== null) { newData.engine.freq = freq; updated = true; }
+          
+          const runtime = getValue(mapping.dgEngineConfig, 'runtime');
+          if (runtime !== null) { newData.engine.runtime = runtime; updated = true; }
+
+          // Power
+          const vL1L2 = getValue(mapping.dgPowerConfig, 'vL1L2');
+          if (vL1L2 !== null) { newData.voltage.ry = vL1L2; updated = true; } 
+
+          const iL1 = getValue(mapping.dgPowerConfig, 'iL1');
+          if (iL1 !== null) { newData.current.r = iL1; updated = true; }
+          
+          const iL2 = getValue(mapping.dgPowerConfig, 'iL2');
+          if (iL2 !== null) { newData.current.y = iL2; updated = true; }
+          
+          const iL3 = getValue(mapping.dgPowerConfig, 'iL3');
+          if (iL3 !== null) { newData.current.b = iL3; updated = true; }
+
+          const loadKW = getValue(mapping.dgPowerConfig, 'loadKW');
+          if (loadKW !== null) { newData.power.kw = loadKW; updated = true; }
+
+          const appKVA = getValue(mapping.dgPowerConfig, 'appKVA');
+          if (appKVA !== null) { newData.power.kva = appKVA; updated = true; }
+
+          const pf = getValue(mapping.dgPowerConfig, 'pf');
+          if (pf !== null) { newData.power.pf = pf; updated = true; }
+          
+          const kwh = getValue(mapping.dgPowerConfig, 'kwh');
+          if (kwh !== null) { newData.generation.today = kwh; updated = true; }
+
+          // Fuel
+          const fuelLvl = getValue(mapping.dgFuelConfig, 'level');
+          if (fuelLvl !== null) {
+              newData.diesel.level = fuelLvl;
+              newData.diesel.remaining = (newData.diesel.capacity * fuelLvl) / 100;
+              updated = true;
+          }
+
+          return updated ? newData : prev;
+        });
+    });
+
+    return () => {
+        socket.disconnect();
+    };
+  }, [activeDG]);
 
   const handlePdfDownload = () => {
     setGeneratingPdf(true);
-    setTimeout(() => {
-        setGeneratingPdf(false);
+    try {
+        const doc = new jsPDF();
+        const dateStr = new Date().toLocaleString();
+        
+        // Header
+        doc.setFontSize(22);
+        doc.setTextColor(15, 23, 42); // slate-900
+        doc.text(`DG SET TELEMETRY REPORT`, 14, 22);
+        
+        doc.setFontSize(10);
+        doc.setTextColor(100, 116, 139); // slate-500
+        doc.text(`Generated on: ${dateStr}`, 14, 30);
+        doc.text(`Target Asset: ${activeDG}`, 14, 35);
+        
+        doc.setDrawColor(226, 232, 240); // slate-200
+        doc.line(14, 40, 196, 40);
+
+        let startY = 48;
+
+        // --- Engine Health ---
+        autoTable(doc, {
+            startY: startY,
+            head: [['Engine Health', 'Value']],
+            body: [
+                ['Engine Speed (RPM)', data.engine.speed],
+                ['Coolant Temp (°C)', data.engine.coolant.toFixed(1)],
+                ['Oil Pressure (BAR)', data.engine.oilPressure.toFixed(1)],
+                ['Frequency (Hz)', (data.engine.freq || 50.1).toFixed(1)],
+                ['Battery Voltage (V)', (data.engine.battery || 24.5).toFixed(1)],
+                ['Run Time (Hrs)', data.engine.runtime]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [15, 23, 42], textColor: 255 },
+            styles: { fontSize: 10, cellPadding: 5 }
+        });
+        startY = doc.lastAutoTable.finalY + 10;
+
+        // --- Power Matrix ---
+        autoTable(doc, {
+            startY: startY,
+            head: [['Power Matrix', 'Value']],
+            body: [
+                ['Total Watts (KW)', data.power.kw],
+                ['Total Apparent (KVA)', data.power.kva],
+                ['Power Factor', data.power.pf],
+                ['KWH Total Generation', data.generation.today]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [15, 23, 42], textColor: 255 },
+            styles: { fontSize: 10, cellPadding: 5 }
+        });
+        startY = doc.lastAutoTable.finalY + 10;
+
+        // --- Electrical ---
+        autoTable(doc, {
+            startY: startY,
+            head: [['Electrical Phase', 'Voltage (V)', 'Current (A)']],
+            body: [
+                ['Phase 1 (R/L1)', data.voltage.ry, data.current.r],
+                ['Phase 2 (Y/L2)', data.voltage.yb, data.current.y],
+                ['Phase 3 (B/L3)', data.voltage.br, data.current.b]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [15, 23, 42], textColor: 255 },
+            styles: { fontSize: 10, cellPadding: 5 }
+        });
+        startY = doc.lastAutoTable.finalY + 10;
+
+        // --- Fuel Management ---
+        autoTable(doc, {
+            startY: startY,
+            head: [['Fuel Management', 'Status']],
+            body: [
+                ['Fuel Level (%)', data.diesel.level.toFixed(1)],
+                ['Remaining Volume (L)', data.diesel.remaining.toFixed(1)],
+                ['Today Used (L)', data.diesel.spentToday.toFixed(1)],
+                ['Refill Date', data.diesel.lastFill]
+            ],
+            theme: 'grid',
+            headStyles: { fillColor: [15, 23, 42], textColor: 255 },
+            styles: { fontSize: 10, cellPadding: 5 }
+        });
+        
+        // Footer
+        const pageCount = doc.internal.getNumberOfPages();
+        for(let i = 1; i <= pageCount; i++) {
+            doc.setPage(i);
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(`Page ${i} of ${pageCount} - SCADA Automated Report`, 14, 285);
+        }
+
+        doc.save(`DG_SET_REPORT_${activeDG}.pdf`);
         setShowToast(true);
-    }, 2000);
+    } catch (e) {
+        console.error('Error generating PDF', e);
+    } finally {
+        setGeneratingPdf(false);
+    }
   };
 
   const DataBox = ({ label, value, unit, labelBg = SCADA_COLORS.info, valueColor = '#38bdf8' }) => (
@@ -103,7 +302,7 @@ const SiemensStyleDG = () => {
   );
 
   return (
-    <div className="fade-in p-2 min-vh-100" style={{ backgroundColor: SCADA_COLORS.bg, color: SCADA_COLORS.textMain }}>
+    <div id="pdf-content" className="fade-in p-2 min-vh-100" style={{ backgroundColor: SCADA_COLORS.bg, color: SCADA_COLORS.textMain }}>
       {/* PREMIUM HIGH-GLOW NAV BAR */}
       <div className="d-flex align-items-center bg-black border border-white border-opacity-10 p-2 mb-3 shadow-2xl justify-content-between rounded-3">
         <div className="d-flex align-items-center gap-3 ps-3">
@@ -163,9 +362,9 @@ const SiemensStyleDG = () => {
                         <img src="/dg_set.png" alt="DG" className="img-fluid" style={{ width: '100%', height: '240px', objectFit: 'cover' }} />
                         <div className="position-absolute bottom-0 start-0 w-100 p-2 bg-gradient-scada border-top border-white border-opacity-10">
                              <div className="d-flex justify-content-around text-center py-1">
-                                <div><small className="text-muted d-block fs-13 uppercase fw-black">RPM</small><span className="text-white fw-black fs-10 digital-font">{data.engine.speed.toFixed(0)}</span></div>
-                                <div className="border-start border-white border-opacity-10 px-4"><small className="text-muted d-block fs-13 uppercase fw-black">Load</small><span className="text-info fw-black fs-10 digital-font">{data.power.kw.toFixed(1)} <small className="fs-13">KW</small></span></div>
-                                <div className="border-start border-white border-opacity-10 ps-4"><small className="text-muted d-block fs-13 uppercase fw-black">Line</small><span className="text-warning fw-black fs-10 digital-font">{data.voltage.ry.toFixed(0)} <small className="fs-13">V</small></span></div>
+                                <div><small className="text-muted d-block fs-13 uppercase fw-black">SPEED</small><span className="text-white fw-black fs-10 digital-font">{data.engine.speed.toFixed(0)}</span></div>
+                                <div className="border-start border-white border-opacity-10 px-4"><small className="text-muted d-block fs-13 uppercase fw-black">TOTAL WATTS</small><span className="text-info fw-black fs-10 digital-font">{data.power.kw.toFixed(1)} <small className="fs-13">KW</small></span></div>
+                                <div className="border-start border-white border-opacity-10 ps-4"><small className="text-muted d-block fs-13 uppercase fw-black">L1-L2 VOLTS</small><span className="text-warning fw-black fs-10 digital-font">{data.voltage.ry.toFixed(0)} <small className="fs-13">V</small></span></div>
                              </div>
                         </div>
                     </div>
@@ -195,50 +394,64 @@ const SiemensStyleDG = () => {
                     <Col xs={6}>
                         <SectionHeader title="HV Line Bus" icon={<Zap size={16} />} color="#f59e0b" />
                         <div className="p-2 pt-0">
-                            <DataBox label="R-Y VOLTS" value={data.voltage.ry} unit="V" labelBg={SCADA_COLORS.red} valueColor={SCADA_COLORS.textMain} />
-                            <DataBox label="Y-B VOLTS" value={data.voltage.yb} unit="V" labelBg={SCADA_COLORS.yellow} valueColor={SCADA_COLORS.textMain} />
-                            <DataBox label="B-R VOLTS" value={data.voltage.br} unit="V" labelBg={SCADA_COLORS.blue} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L1-L2 VOLTS" value={data.voltage.ry} unit="V" labelBg={SCADA_COLORS.red} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L2-L3 VOLTS" value={data.voltage.yb} unit="V" labelBg={SCADA_COLORS.yellow} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L3-L1 VOLTS" value={data.voltage.br} unit="V" labelBg={SCADA_COLORS.blue} valueColor={SCADA_COLORS.textMain} />
                         </div>
                     </Col>
                     <Col xs={6}>
                         <SectionHeader title="LV Phase Bus" icon={<Zap size={16} />} color="#f59e0b" />
                         <div className="p-2 pt-0">
-                            <DataBox label="R-N VOLTS" value={data.voltage.rn} unit="V" labelBg={SCADA_COLORS.red} valueColor={SCADA_COLORS.textMain} />
-                            <DataBox label="Y-N VOLTS" value={data.voltage.yn} unit="V" labelBg={SCADA_COLORS.yellow} valueColor={SCADA_COLORS.textMain} />
-                            <DataBox label="B-N VOLTS" value={data.voltage.bn} unit="V" labelBg={SCADA_COLORS.blue} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L1-N VOLTS" value={data.voltage.rn} unit="V" labelBg={SCADA_COLORS.red} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L2-N VOLTS" value={data.voltage.yn} unit="V" labelBg={SCADA_COLORS.yellow} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L3-N VOLTS" value={data.voltage.bn} unit="V" labelBg={SCADA_COLORS.blue} valueColor={SCADA_COLORS.textMain} />
                         </div>
                     </Col>
                     <Col xs={6}>
                         <SectionHeader title="Amperage" icon={<Activity size={16} />} color="#06b6d4" />
                         <div className="p-2 pt-0">
-                            <DataBox label="PH-R AMPS" value={data.current.r} unit="A" labelBg={SCADA_COLORS.red} valueColor={SCADA_COLORS.textMain} />
-                            <DataBox label="PH-Y AMPS" value={data.current.y} unit="A" labelBg={SCADA_COLORS.yellow} valueColor={SCADA_COLORS.textMain} />
-                            <DataBox label="PH-B AMPS" value={data.current.b} unit="A" labelBg={SCADA_COLORS.blue} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L1 CURRENT" value={data.current.r} unit="A" labelBg={SCADA_COLORS.red} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L2 CURRENT" value={data.current.y} unit="A" labelBg={SCADA_COLORS.yellow} valueColor={SCADA_COLORS.textMain} />
+                            <DataBox label="L3 CURRENT" value={data.current.b} unit="A" labelBg={SCADA_COLORS.blue} valueColor={SCADA_COLORS.textMain} />
                         </div>
                     </Col>
                     <Col xs={6}>
                         <SectionHeader title="Power Matrix" icon={<TrendingDown size={16} />} color="#10b981" />
                         <div className="p-2 pt-0">
-                            <DataBox label="LOAD (KW)" value={data.power.kw} unit="" labelBg={SCADA_COLORS.cyan} valueColor="#fff" />
-                            <DataBox label="APP. (KVA)" value={data.power.kva} unit="" labelBg="#334155" valueColor="#fff" />
-                            <DataBox label="EFF. (P.F)" value={data.power.pf} unit="" labelBg={SCADA_COLORS.green} valueColor="#fff" />
+                            <DataBox label="TOTAL WATTS" value={data.power.kw} unit="KW" labelBg={SCADA_COLORS.cyan} valueColor="#fff" />
+                            <DataBox label="TOTAL VA" value={data.power.kva} unit="KVA" labelBg="#334155" valueColor="#fff" />
+                            <DataBox label="POWER FACTOR" value={data.power.pf} unit="PF" labelBg={SCADA_COLORS.green} valueColor="#fff" />
                         </div>
                     </Col>
                     <Col xs={12}>
                         <SectionHeader title="Engine Health" icon={<Gauge size={16} />} color="#94a3b8" />
-                        <div className="p-4 pt-1 d-flex gap-3 justify-content-around">
-                            <div className="health-card text-center min-w-85 p-2 rounded-3 border border-white border-opacity-5">
-                                <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Coolant</small>
-                                <span className="text-warning fw-black fs-9">{data.engine.coolant.toFixed(1)}°C</span>
-                            </div>
-                            <div className="health-card text-center min-w-85 p-2 rounded-3 border border-white border-opacity-5">
-                                <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Oil PR.</small>
-                                <span className="text-white fw-black fs-9">{data.engine.oilPressure.toFixed(1)} <small className="fs-13 text-muted">BAR</small></span>
-                            </div>
-                            <div className="health-card text-center min-w-85 p-2 rounded-3 border border-white border-opacity-5">
-                                <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Freq</small>
-                                <span className="text-success fw-black fs-9">50.1 <small className="fs-13 text-muted">HZ</small></span>
-                            </div>
+                        <div className="p-3 pt-1">
+                            <Row className="g-2">
+                                <Col xs={6}>
+                                    <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
+                                        <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Coolant Temp</small>
+                                        <span className="text-warning fw-black fs-9">{data.engine.coolant.toFixed(1)}°C</span>
+                                    </div>
+                                </Col>
+                                <Col xs={6}>
+                                    <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
+                                        <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Oil Pressure</small>
+                                        <span className="text-white fw-black fs-9">{data.engine.oilPressure.toFixed(1)} <small className="fs-13 text-muted">BAR</small></span>
+                                    </div>
+                                </Col>
+                                <Col xs={6}>
+                                    <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
+                                        <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Frequency</small>
+                                        <span className="text-success fw-black fs-9">{data.engine.freq?.toFixed(1) || 50.1} <small className="fs-13 text-muted">HZ</small></span>
+                                    </div>
+                                </Col>
+                                <Col xs={6}>
+                                    <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
+                                        <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Battery V</small>
+                                        <span className="text-info fw-black fs-9">{data.engine.battery?.toFixed(1) || 24.5} <small className="fs-13 text-muted">V</small></span>
+                                    </div>
+                                </Col>
+                            </Row>
                         </div>
                     </Col>
                 </Row>
@@ -248,8 +461,8 @@ const SiemensStyleDG = () => {
                     <Table borderless variant="dark" className="bg-transparent mb-0">
                         <tbody>
                             <tr className="border-bottom border-white border-opacity-5">
-                                <td className="py-2 text-muted fw-black fs-12 uppercase">Today's Generation</td>
-                                <td className="py-2 text-end text-info fw-black fs-10">{data.generation.today} MWH</td>
+                                <td className="py-2 text-muted fw-black fs-12 uppercase">KWH Total</td>
+                                <td className="py-2 text-end text-info fw-black fs-10">{data.generation.today} KWH</td>
                             </tr>
                             <tr>
                                 <td className="py-2 text-muted fw-black fs-12 uppercase">Monthly Total</td>
@@ -327,7 +540,6 @@ const SiemensStyleDG = () => {
                     >
                          <ArrowRightCircle size={18} /> {isAdmin ? 'CONTROL SYNC ACTIVE' : 'VIEW ONLY MODE'}
                     </button>
-                    <PdfButton onClick={handlePdfDownload} />
                  </div>
              </div>
         </Col>

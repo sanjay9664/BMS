@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Row, Col, Card, Form, Button, Badge, Modal } from 'react-bootstrap';
-import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle, MapPin } from 'lucide-react';
+import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle, MapPin, AlertTriangle } from 'lucide-react';
 import { loginToSochiot, getSochiotUserMe, getSochiotLocationData, getSochiotDeviceDetails, getSochiotZoneData } from '../../services/authService';
 
 const ConfigTemplates = () => {
@@ -176,6 +176,12 @@ const ConfigTemplates = () => {
   const [elecCurrentConfig, setElecCurrentConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
   const [elecSystemConfig, setElecSystemConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
   const [elecConsumptionConfig, setElecConsumptionConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+  
+  const [dgEngineConfig, setDgEngineConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
+  const [dgPowerConfig, setDgPowerConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
+  const [dgFuelConfig, setDgFuelConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', level: '', enabled: true });
+  const [dgFaultConfig, setDgFaultConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', emergencyStop: '', failToStart: '', enabled: true });
+
   const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
   const [pressureTarget, setPressureTarget] = useState('');
   const [electricalTarget, setElectricalTarget] = useState('');
@@ -256,6 +262,9 @@ const ConfigTemplates = () => {
     if (selectedModule === 'Pressure') {
       return [pressureConfig.module].filter(m => m);
     }
+    if (selectedModule && selectedModule.startsWith('DG Set')) {
+      return [dgEngineConfig.module, dgPowerConfig.module, dgFuelConfig.module, dgFaultConfig.module].filter(m => m);
+    }
     return [];
   }, [
     selectedModule,
@@ -266,7 +275,8 @@ const ConfigTemplates = () => {
     ugManualConfig.module, ugStartCmdConfig.module, ugStopCmdConfig.module,
     ugStartPressConfig.module, ugStopPressConfig.module,
     ugLocalModeConfig.module, ugRemoteModeConfig.module,
-    ugTankLevelConfig.module, pressureConfig.module
+    ugTankLevelConfig.module, pressureConfig.module,
+    dgEngineConfig.module, dgPowerConfig.module, dgFuelConfig.module, dgFaultConfig.module
   ]);
 
   const handleUgPumpNoChange = (no) => {
@@ -643,7 +653,8 @@ const ConfigTemplates = () => {
       ugStartCmdConfig, ugStopCmdConfig, ugStatusStartConfig, ugStatusStopConfig,
       ugStartPressConfig, ugStopPressConfig, ugLocalModeConfig, ugRemoteModeConfig,
       ugTankLevelConfig, pressureConfig,
-      elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig
+      elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig,
+      dgEngineConfig, dgPowerConfig, dgFuelConfig, dgFaultConfig
     ];
 
     configsToWatch.forEach(config => {
@@ -994,8 +1005,19 @@ const ConfigTemplates = () => {
     }
 
     const selectedModuleId = rowState?.module;
-    const moduleData = devInfo.modules[selectedModuleId];
+    const isDGConfig = rowState?.speed !== undefined || rowState?.vL1L2 !== undefined || rowState?.level !== undefined || rowState?.emergencyStop !== undefined;
+
     if (key === 'field') {
+      if (selectedModuleId === 'ALL' || isDGConfig) {
+         const allFields = [];
+         Object.values(devInfo.modules).forEach(m => {
+            (m.fields || []).forEach(f => {
+               allFields.push({ label: `[${m.name}] ${f.label}`, id: `${m.id}::${f.id}` });
+            });
+         });
+         return allFields;
+      }
+      const moduleData = devInfo.modules[selectedModuleId];
       return (moduleData?.fields || []).map(f => ({ label: f.label, id: f.id }));
     }
 
@@ -1290,6 +1312,10 @@ const ConfigTemplates = () => {
       mapping = {
         elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig, electricalTarget
       };
+    } else if (selectedModule && selectedModule.startsWith('DG Set')) {
+      mapping = {
+        dgEngineConfig, dgPowerConfig, dgFuelConfig, dgFaultConfig
+      };
     } else {
       // Fallback
       mapping = {
@@ -1444,6 +1470,10 @@ const ConfigTemplates = () => {
     setElecCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
     setElecSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
     setElecConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+    setDgEngineConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
+    setDgPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
+    setDgFuelConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', level: '', enabled: true });
+    setDgFaultConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', failToStart: '', enabled: true });
     setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
     setTemplateName('');
@@ -1527,6 +1557,10 @@ const ConfigTemplates = () => {
       setElecCurrentConfig(template.mapping.elecCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
       setElecSystemConfig(template.mapping.elecSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
       setElecConsumptionConfig(template.mapping.elecConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+      setDgEngineConfig({ ...template.mapping.dgEngineConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
+      setDgPowerConfig({ ...template.mapping.dgPowerConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
+      setDgFuelConfig({ ...template.mapping.dgFuelConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', level: '', enabled: true });
+      setDgFaultConfig({ ...template.mapping.dgFaultConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', failToStart: '', enabled: true });
       setUgConfig(template.mapping.ugConfig || {
         integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
@@ -2888,6 +2922,95 @@ const ConfigTemplates = () => {
                                                 onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
                                               />
                                               <datalist id={`datalist-elec-${section.title.replace(/\s+/g, '-')}-${f.key}`}>
+                                                {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                                  <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                                ))}
+                                              </datalist>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </Col>
+                                    </>
+                                  )}
+                                </Row>
+                              </div>
+                            </div>
+                          </Col>
+                        ))}
+                      </Row>
+                    </div>
+                  </div>
+                </div>
+              ) : selectedModule && selectedModule.startsWith('DG Set') ? (
+                <div className="config-form-container scale-in">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center gap-2">
+                      <Zap className="text-info shadow-glow-blue" size={18} />
+                      <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">DG Set Parameters Mapping <span className="opacity-40">(Generator Telemetry)</span></h6>
+                    </div>
+                    <div className="p-4 bg-dark bg-opacity-20">
+                      <Row className="g-4">
+                        {[
+                          { title: 'Engine Health', state: dgEngineConfig, setter: setDgEngineConfig, icon: <Activity size={18} />, color: 'info', fields: [{ label: 'SPEED (RPM)', key: 'speed' }, { label: 'COOLANT TEMP', key: 'coolant' }, { label: 'OIL PRESSURE', key: 'oilPress' }, { label: 'BATTERY V', key: 'battery' }, { label: 'FREQ (Hz)', key: 'freq' }, { label: 'RUN TIME (Hrs)', key: 'runtime' }] },
+                          { title: 'Power Matrix', state: dgPowerConfig, setter: setDgPowerConfig, icon: <Zap size={18} />, color: 'warning', fields: [{ label: 'L1-L2 VOLTS', key: 'vL1L2' }, { label: 'L1 AMPS', key: 'iL1' }, { label: 'L2 AMPS', key: 'iL2' }, { label: 'L3 AMPS', key: 'iL3' }, { label: 'LOAD (KW)', key: 'loadKW' }, { label: 'APP (KVA)', key: 'appKVA' }, { label: 'POWER FACTOR', key: 'pf' }, { label: 'KWH TOTAL', key: 'kwh' }] },
+                          { title: 'Fuel Management', state: dgFuelConfig, setter: setDgFuelConfig, icon: <Droplets size={18} />, color: 'success', fields: [{ label: 'FUEL LEVEL (%)', key: 'level' }] },
+                          { title: 'Fault & Status', state: dgFaultConfig, setter: setDgFaultConfig, icon: <AlertTriangle size={18} />, color: 'danger', fields: [{ label: 'EMERGENCY STOP', key: 'emergencyStop' }, { label: 'FAIL TO START', key: 'failToStart' }] }
+                        ].map((section, idx) => (
+                          <Col md={6} key={idx}>
+                            <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-${section.color}`}>
+                              <div className={`card-inner-glow bg-${section.color} opacity-5`}></div>
+                              <div className="mb-4 d-flex align-items-center justify-content-between">
+                                <div className="d-flex align-items-center gap-3">
+                                  <div className={`icon-box-premium ${section.color} p-2 shadow-glow-${section.color}`}>
+                                    {section.icon}
+                                  </div>
+                                  <div>
+                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                    <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>DG Mapping</small>
+                                  </div>
+                                </div>
+                                <Form.Check type="switch" className={`scada-switch ${section.color}`} checked={section.state.enabled} onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })} />
+                              </div>
+                              <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
+                                <Row className="g-3 position-relative z-1">
+                                  {!isHierarchyUnlocked ? (
+                                    <Col md={12}>
+                                      <div className={`p-3 rounded bg-dark bg-opacity-40 border border-${section.color} border-opacity-20 text-center shadow-glow-${section.color}-box`}>
+                                        <small className={`text-${section.color} fw-black uppercase tracking-widest fs-12`}>
+                                          <Info size={14} className="me-2" /> Select hierarchy level to unlock
+                                        </small>
+                                      </div>
+                                    </Col>
+                                  ) : (
+                                    <>
+                                      <Col md={6}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                        <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.building || globalLocation.building} onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}>
+                                          <option value="">SELECT OPTION</option>
+                                          {getFieldList('building', { ...globalLocation, ...section.state }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={6}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                        <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.device} onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}>
+                                          <option value="">SELECT DEVICE</option>
+                                          {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={12} className="d-none">
+                                        <Form.Select value="ALL" onChange={() => {}} />
+                                      </Col>
+                                      <Col md={12}>
+                                        <div className="d-flex flex-column gap-2 mt-2">
+                                          {section.fields.map((f, fIdx) => (
+                                            <div key={fIdx}>
+                                              <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
+                                              <Form.Control as="input" list={`datalist-dg-${section.title.replace(/\s+/g, '-')}-${f.key}`} className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '35px' }} value={section.state[f.key]} placeholder={`TYPE ${f.label}`} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)} />
+                                              <datalist id={`datalist-dg-${section.title.replace(/\s+/g, '-')}-${f.key}`}>
                                                 {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
                                                   <option key={opt.id} value={opt.id}>{opt.label}</option>
                                                 ))}
