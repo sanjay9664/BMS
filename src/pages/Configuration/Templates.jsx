@@ -190,6 +190,16 @@ const ConfigTemplates = () => {
   const [emChangeConfig, setEmChangeConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
   const [emWarningConfig, setEmWarningConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
   const [emReadConfig, setEmReadConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+  const [emLimitsConfig, setEmLimitsConfig] = useState({
+    vR: { low: '', normalMin: '', normalMax: '', high: '' },
+    vY: { low: '', normalMin: '', normalMax: '', high: '' },
+    vB: { low: '', normalMin: '', normalMax: '', high: '' },
+    iR: { low: '', normalMin: '', normalMax: '', high: '' },
+    iY: { low: '', normalMin: '', normalMax: '', high: '' },
+    iB: { low: '', normalMin: '', normalMax: '', high: '' },
+    totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+    totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+  });
   const [energyMeteringTarget, setEnergyMeteringTarget] = useState('');
 
   const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
@@ -733,7 +743,7 @@ const ConfigTemplates = () => {
     meterSrno: ['3,150', 'METER SERIAL', 'SERIAL NUMBER', 'SR NO', 'METER SR', 'METER_NO', 'METERSRNO'],
     noOfOverloadCheck: ['3,169', 'OVERLOAD CHECK', 'OL CHECK', 'OVERLOAD_COUNT', 'NOOFOVERLOADCHECK'],
     ebDgStatus: ['3,170', 'EB DG STATUS', 'EB/DG STATUS', 'SOURCE STATUS', 'EB_DG', 'EBDGSTATUS'],
-    ebTariff: ['3,171', 'EB TARIFF', 'GRID TARIFF', 'EB_RATE', 'EBTARIFF'],
+    ebTariff: ['3,160', 'EB TARIFF', 'GRID TARIFF', 'EB_RATE', 'EBTARIFF'],
     dgTariff: ['3,172', 'DG TARIFF', 'GEN RATE', 'DG_RATE', 'DGTARIFF'],
     ebRLoadSet: ['3,173', 'EB R LOAD', 'EB_R_LOAD', 'EB_R_LIMIT', 'EBRLOADSET'],
     ebYLoadSet: ['3,174', 'EB Y LOAD', 'EB_Y_LOAD', 'EB_Y_LIMIT', 'EBYLOADSET'],
@@ -2150,7 +2160,7 @@ const ConfigTemplates = () => {
     } else if (selectedCategory === 'Energy Metering' || selectedModule === 'Main Meter' || selectedModule === 'Sub Meters') {
       mapping = {
         emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
-        emChangeConfig, emWarningConfig, emReadConfig, energyMeteringTarget
+        emChangeConfig, emWarningConfig, emReadConfig, emLimitsConfig, energyMeteringTarget
       };
     } else {
       // Fallback
@@ -2318,6 +2328,16 @@ const ConfigTemplates = () => {
     setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
     setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
     setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+    setEmLimitsConfig({
+      vR: { low: '', normalMin: '', normalMax: '', high: '' },
+      vY: { low: '', normalMin: '', normalMax: '', high: '' },
+      vB: { low: '', normalMin: '', normalMax: '', high: '' },
+      iR: { low: '', normalMin: '', normalMax: '', high: '' },
+      iY: { low: '', normalMin: '', normalMax: '', high: '' },
+      iB: { low: '', normalMin: '', normalMax: '', high: '' },
+      totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+      totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+    });
     setEnergyMeteringTarget('');
     setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
@@ -2414,6 +2434,16 @@ const ConfigTemplates = () => {
       setEmChangeConfig(template.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
       setEmWarningConfig(template.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
       setEmReadConfig(template.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+      setEmLimitsConfig(template.mapping.emLimitsConfig || {
+        vR: { low: '', normalMin: '', normalMax: '', high: '' },
+        vY: { low: '', normalMin: '', normalMax: '', high: '' },
+        vB: { low: '', normalMin: '', normalMax: '', high: '' },
+        iR: { low: '', normalMin: '', normalMax: '', high: '' },
+        iY: { low: '', normalMin: '', normalMax: '', high: '' },
+        iB: { low: '', normalMin: '', normalMax: '', high: '' },
+        totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+        totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+      });
       setEnergyMeteringTarget(template.mapping.energyMeteringTarget || '');
       setUgConfig(template.mapping.ugConfig || {
         integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
@@ -2600,6 +2630,16 @@ const ConfigTemplates = () => {
                 setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                 setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                 setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                setEmLimitsConfig({
+                  vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                });
                 setEnergyMeteringTarget('');
                 setTemplateName('');
 
@@ -2656,6 +2696,16 @@ const ConfigTemplates = () => {
                 setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                 setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                 setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                setEmLimitsConfig({
+                  vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                });
                 setEnergyMeteringTarget('');
                 setTemplateName('');
                 
@@ -3898,6 +3948,16 @@ const ConfigTemplates = () => {
                               setEmChangeConfig(existing.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                               setEmWarningConfig(existing.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                               setEmReadConfig(existing.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                              setEmLimitsConfig(existing.mapping.emLimitsConfig || {
+                                vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                              });
                               if (existing.mapping.globalHierarchy) setGlobalLocation(existing.mapping.globalHierarchy);
                             } else {
                               setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
@@ -3908,6 +3968,16 @@ const ConfigTemplates = () => {
                               setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                               setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                               setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                              setEmLimitsConfig({
+                                vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                              });
                             }
                           }}
                         >
@@ -4069,6 +4139,117 @@ const ConfigTemplates = () => {
                             </Col>
                           ))}
                         </Row>
+
+                        <div className="mt-4 p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card position-relative overflow-hidden transition-all hover-glow-info">
+                          <div className="card-inner-glow bg-info opacity-5"></div>
+                          <div className="mb-4 d-flex align-items-center justify-content-between">
+                            <div className="d-flex align-items-center gap-3">
+                              <div className="icon-box-premium info p-2 shadow-glow-info">
+                                <Settings size={18} />
+                              </div>
+                              <div>
+                                <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">Threshold Limits Configuration</h6>
+                                <small className="text-info opacity-50 uppercase fs-12 fw-bold tracking-widest">Alarm & Warning Ranges</small>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="position-relative z-1">
+                            <Row className="g-3">
+                              {[
+                                { label: 'R-PHASE VOLTAGE (V)', key: 'vR' },
+                                { label: 'Y-PHASE VOLTAGE (V)', key: 'vY' },
+                                { label: 'B-PHASE VOLTAGE (V)', key: 'vB' },
+                                { label: 'R-CURRENT (A)', key: 'iR' },
+                                { label: 'Y-CURRENT (A)', key: 'iY' },
+                                { label: 'B-CURRENT (A)', key: 'iB' },
+                                { label: 'ACTIVE POWER (kW)', key: 'totalKw' },
+                                { label: 'APPARENT POWER (kVA)', key: 'totalKva' }
+                              ].map((param, pIdx) => (
+                                <Col md={12} key={pIdx} className="mb-3 p-3 rounded bg-dark bg-opacity-20 border border-white border-opacity-5">
+                                  <Row className="align-items-center">
+                                    <Col lg={4} md={12} className="mb-2 mb-lg-0">
+                                      <span className="text-white fw-black uppercase tracking-widest fs-10">{param.label}</span>
+                                    </Col>
+                                    <Col lg={8} md={12}>
+                                      <Row className="g-2">
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">below</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="Low"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.low || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], low: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">Normal Min</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="Min"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.normalMin || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], normalMin: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">Normal Max</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="Max"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.normalMax || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], normalMax: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">above</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="High"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.high || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], high: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                      </Row>
+                                    </Col>
+                                  </Row>
+                                </Col>
+                              ))}
+                            </Row>
+                          </div>
+                        </div>
+
                       </div>
                     ) : (
                       <Card className="bg-dark bg-opacity-20 border border-white border-opacity-5 rounded-4 p-5 text-center">

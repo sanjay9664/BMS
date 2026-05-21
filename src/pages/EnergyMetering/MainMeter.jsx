@@ -5,6 +5,44 @@ import StatusBadge from '../../components/StatusBadge';
 import PdfButton from '../../components/PdfButton';
 import { io } from 'socket.io-client';
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-4 rounded-4 text-white text-center m-5" style={{ background: 'linear-gradient(135deg, rgba(13, 20, 38, 0.8) 0%, rgba(8, 12, 24, 0.95) 100%)', border: '1px solid rgba(255, 255, 255, 0.06)' }}>
+          <div className="d-flex flex-column align-items-center gap-3">
+            <AlertTriangle className="text-danger" size={48} />
+            <h4 className="fw-black text-danger">Main Meter Dashboard Error</h4>
+            <p className="text-secondary fs-7">
+              Something went wrong while rendering this panel. This has been logged for diagnostics.
+            </p>
+            <pre className="p-3 bg-dark bg-opacity-50 text-start rounded text-warning border border-secondary border-opacity-20 font-monospace fs-11 w-100 overflow-auto" style={{ maxHeight: '200px' }}>
+              {this.state.error?.toString()}
+            </pre>
+            <Button variant="outline-info" onClick={() => window.location.reload()}>
+              <RefreshCw className="me-2" size={14} /> Reload Page
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const PARAMETER_SYNONYMS = {
   ebKwh: ['3,151', '3,152', '4,91F', 'EB KWH', 'EB_KWH', 'EB ACTIVE ENERGY', 'CONSUMPTION', 'ACTIVE ENERGY', 'CUMULATIVE KWH', 'CUMULATIVE_KWH'],
   ebKvah: ['3,152', '3,157', '4,93F', 'EB KVAH', 'EB_KVAH', 'APPARENT ENERGY'],
@@ -28,7 +66,7 @@ const PARAMETER_SYNONYMS = {
   meterSrno: ['3,150', 'METER SERIAL', 'SERIAL NUMBER', 'SR NO', 'METER SR', 'METER_NO', 'METERSRNO'],
   noOfOverloadCheck: ['3,169', 'OVERLOAD CHECK', 'OL CHECK', 'OVERLOAD_COUNT', 'NOOFOVERLOADCHECK'],
   ebDgStatus: ['3,170', 'EB DG STATUS', 'EB/DG STATUS', 'SOURCE STATUS', 'EB_DG', 'EBDGSTATUS'],
-  ebTariff: ['3,171', 'EB TARIFF', 'GRID TARIFF', 'EB_RATE', 'EBTARIFF'],
+  ebTariff: ['3,160', 'EB TARIFF', 'GRID TARIFF', 'EB_RATE', 'EBTARIFF'],
   dgTariff: ['3,172', 'DG TARIFF', 'GEN RATE', 'DG_RATE', 'DGTARIFF'],
   ebRLoadSet: ['3,173', 'EB R LOAD', 'EB_R_LOAD', 'EB_R_LIMIT', 'EBRLOADSET'],
   ebYLoadSet: ['3,174', 'EB Y LOAD', 'EB_Y_LOAD', 'EB_Y_LIMIT', 'EBYLOADSET'],
@@ -41,6 +79,306 @@ const PARAMETER_SYNONYMS = {
   apparentPower: ['3,191', 'TOTAL KVA', 'TOTAL_KVA', 'APPARENT POWER', 'LOAD KVA', 'APPARENT_POWER'],
   cumulativekWh: ['3,151', '3,152', '4,91F', 'EB KWH', 'EB_KWH', 'EB ACTIVE ENERGY', 'CONSUMPTION', 'ACTIVE ENERGY', 'CUMULATIVE KWH', 'CUMULATIVE_KWH'],
   freq: ['3,153', 'FREQUENCY', 'FREQ', '50HZ', 'F', 'HZ']
+};
+
+const parseLimit = (val) => {
+  if (val === '' || val === undefined || val === null) return null;
+  const num = Number(val);
+  return isNaN(num) ? null : num;
+};
+
+const getThresholdStatus = (value, limitObj) => {
+  if (!limitObj) return 'default';
+  
+  const low = parseLimit(limitObj.low);
+  const normalMin = parseLimit(limitObj.normalMin);
+  const normalMax = parseLimit(limitObj.normalMax);
+  const high = parseLimit(limitObj.high);
+
+  // If no limits are configured at all
+  if (low === null && normalMin === null && normalMax === null && high === null) {
+    return 'default';
+  }
+
+  // Check Alert conditions first
+  if (low !== null && value <= low) return 'alert';
+  if (high !== null && value >= high) return 'alert';
+
+  // Check Normal conditions
+  const hasNormalMin = normalMin !== null;
+  const hasNormalMax = normalMax !== null;
+
+  if (hasNormalMin && hasNormalMax) {
+    if (value >= normalMin && value <= normalMax) return 'normal';
+  } else if (hasNormalMin) {
+    if (value >= normalMin) return 'normal';
+  } else if (hasNormalMax) {
+    if (value <= normalMax) return 'normal';
+  }
+
+  // If it's not Alert and not Normal, but we have limits configured, it's Warning
+  return 'warning';
+};
+
+const polarToCartesian = (centerX, centerY, radius, angleInDegrees) => {
+  const angle = isNaN(angleInDegrees) ? 0 : angleInDegrees;
+  const angleInRadians = (angle * Math.PI) / 180.0;
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians)
+  };
+};
+
+const describeArc = (x, y, radius, startAngle, endAngle) => {
+  if (isNaN(startAngle) || isNaN(endAngle)) {
+    return "M 0 0";
+  }
+  const start = polarToCartesian(x, y, radius, startAngle);
+  const end = polarToCartesian(x, y, radius, endAngle);
+  const largeArcFlag = endAngle - startAngle <= 180 ? "0" : "1";
+  return [
+    "M", start.x, start.y,
+    "A", radius, radius, 0, largeArcFlag, 1, end.x, end.y
+  ].join(" ");
+};
+
+const CircularGauge = ({ value, min = 0, max = 100, label, unit, limits, defaultColor }) => {
+  const numericValue = typeof value === 'number' ? value : Number(value) || 0;
+  const minVal = isNaN(Number(min)) ? 0 : Number(min);
+  const rawMaxVal = isNaN(Number(max)) ? 100 : Number(max);
+  const maxVal = rawMaxVal <= minVal ? minVal + 1 : rawMaxVal;
+
+  // Check if we have valid user-defined limits
+  const userLow = parseLimit(limits?.low);
+  const userNormalMin = parseLimit(limits?.normalMin);
+  const userNormalMax = parseLimit(limits?.normalMax);
+  const userHigh = parseLimit(limits?.high);
+
+  // Resolve actual limits to use (either user configured or defaults)
+  let low = userLow;
+  let normalMin = userNormalMin;
+  let normalMax = userNormalMax;
+  let high = userHigh;
+
+  const isVoltage = unit === 'V';
+  const isCurrent = unit === 'A';
+
+  if (low === null && normalMin === null && normalMax === null && high === null) {
+    // Use defaults
+    if (isVoltage) {
+      low = 180;
+      normalMin = 210;
+      normalMax = 250;
+      high = 270;
+    } else if (isCurrent) {
+      low = 0;
+      normalMin = 0.5;
+      normalMax = maxVal * 0.70;
+      high = maxVal * 0.85;
+    } else {
+      low = minVal + (maxVal - minVal) * 0.15;
+      normalMin = minVal + (maxVal - minVal) * 0.3;
+      normalMax = minVal + (maxVal - minVal) * 0.7;
+      high = minVal + (maxVal - minVal) * 0.85;
+    }
+  } else {
+    // Fill in missing limits gracefully
+    if (low === null) low = minVal;
+    if (normalMin === null) normalMin = low;
+    if (normalMax === null) normalMax = maxVal;
+    if (high === null) high = normalMax;
+  }
+
+  // Clamp values inside gauge range to prevent overflow and overlap
+  const clamp = (val, mn, mx) => Math.min(mx, Math.max(mn, val));
+  const l = clamp(low, minVal, maxVal);
+  const nMin = clamp(normalMin, l, maxVal);
+  const nMax = clamp(normalMax, nMin, maxVal);
+  const h = clamp(high, nMax, maxVal);
+
+  const getPercent = (v) => {
+    const range = maxVal - minVal;
+    if (range <= 0) return 0;
+    return (v - minVal) / range;
+  };
+
+  const pLow = getPercent(l);
+  const pNormalMin = getPercent(nMin);
+  const pNormalMax = getPercent(nMax);
+  const pHigh = getPercent(h);
+  const pValue = getPercent(clamp(numericValue, minVal, maxVal));
+
+  const getAngle = (p) => {
+    const pct = isNaN(p) ? 0 : p;
+    return 180 + pct * 180;
+  };
+
+  const angleLow = getAngle(pLow);
+  const angleNormalMin = getAngle(pNormalMin);
+  const angleNormalMax = getAngle(pNormalMax);
+  const angleHigh = getAngle(pHigh);
+  const angleValue = getAngle(pValue);
+
+  // Determine current status based on thresholds
+  const status = getThresholdStatus(numericValue, { low, normalMin, normalMax, high });
+
+  let strokeColor = defaultColor || '#10b981';
+  let statusText = 'Normal';
+  let statusIcon = '✓';
+
+  if (status === 'alert') { strokeColor = '#ef4444'; statusText = 'Alert'; statusIcon = '⚠'; }
+  else if (status === 'warning') { strokeColor = '#f59e0b'; statusText = 'Warning'; statusIcon = '!'; }
+  else if (status === 'normal') { strokeColor = '#10b981'; statusText = 'Normal'; statusIcon = '✓'; }
+  else { statusText = 'OK'; strokeColor = defaultColor || '#10b981'; statusIcon = '●'; }
+
+  const isAlert = status === 'alert';
+  const isWarning = status === 'warning';
+
+  const renderSegment = (startAngle, endAngle, color, opacity = 0.7) => {
+    const gap = 1.5;
+    const s = startAngle + gap;
+    const e = endAngle - gap;
+    if (isNaN(s) || isNaN(e) || e - s < 1) return null;
+    return (
+      <path
+        key={`seg-${startAngle}-${endAngle}`}
+        d={describeArc(50, 48, 38, s, e)}
+        fill="none"
+        stroke={color}
+        strokeWidth="6"
+        strokeLinecap="butt"
+        style={{ transition: 'stroke 0.5s ease', opacity }}
+      />
+    );
+  };
+
+  // Live value tracking arc
+  const valueArcEnd = Math.max(181, isNaN(angleValue) ? 181 : angleValue);
+  const valueArcPath = valueArcEnd > 181 ? describeArc(50, 50, 36, 180.5, valueArcEnd - 0.5) : null;
+
+  // Tick marks around perimeter
+  const ticks = Array.from({ length: 11 }, (_, i) => {
+    const tickAngle = 180 + i * (180 / 10);
+    const angleRad = (tickAngle * Math.PI) / 180;
+    const isMajor = i % 2 === 0;
+    const r1 = isMajor ? 42 : 43;
+    const r2 = 46;
+    return {
+      x1: 50 + r1 * Math.cos(angleRad), y1: 50 + r1 * Math.sin(angleRad),
+      x2: 50 + r2 * Math.cos(angleRad), y2: 50 + r2 * Math.sin(angleRad),
+      isNearValue: Math.abs(tickAngle - angleValue) < 10,
+      isMajor
+    };
+  });
+
+  const safeLabel = (label || 'gauge').replace(/[^a-zA-Z0-9]/g, '');
+
+  return (
+    <div
+      className="d-flex flex-column align-items-center justify-content-center text-center h-100 scada-gauge-card"
+      style={{
+        padding: '16px 12px 12px',
+        borderRadius: '16px',
+        border: `1px solid ${defaultColor}30`,
+        background: 'linear-gradient(180deg, rgba(15,23,42,0.6) 0%, rgba(15,23,42,0.9) 100%)',
+        boxShadow: `0 4px 20px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.04)`,
+        transition: 'all 0.4s ease',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Top accent bar — phase color */}
+      <div style={{
+        position: 'absolute', top: 0, left: '15%', right: '15%', height: '2.5px',
+        background: `linear-gradient(90deg, transparent, ${defaultColor}, transparent)`,
+        borderRadius: '0 0 6px 6px',
+        opacity: 0.6,
+      }} />
+
+      {/* Phase label */}
+      <span style={{
+        color: defaultColor, fontSize: '0.68rem', fontWeight: 800,
+        letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px',
+        display: 'block',
+      }}>
+        {label}
+      </span>
+
+      {/* Gauge SVG — large and clear */}
+      <div style={{ width: '140px', height: '95px', position: 'relative' }}>
+        <svg width="100%" height="100%" viewBox="0 0 100 72">
+          <defs>
+            <linearGradient id={`ng-${safeLabel}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={defaultColor} />
+              <stop offset="100%" stopColor="#94a3b8" />
+            </linearGradient>
+          </defs>
+
+          {/* Background track */}
+          <path d={describeArc(50, 48, 38, 180, 360)} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="7" strokeLinecap="round" />
+
+          {/* Zone segments — softer, thicker */}
+          {renderSegment(180, angleLow, '#ef4444')}
+          {renderSegment(angleLow, angleNormalMin, '#f59e0b')}
+          {renderSegment(angleNormalMin, angleNormalMax, '#22c55e')}
+          {renderSegment(angleNormalMax, angleHigh, '#f59e0b')}
+          {renderSegment(angleHigh, 360, '#ef4444')}
+
+          {/* Needle */}
+          <g
+            transform={`translate(50, 48) rotate(${isNaN(angleValue) ? 0 : angleValue - 270})`}
+            style={{ transition: 'transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)' }}
+          >
+            <path d="M -1.5 4 L 0 -32 L 1.5 4 Z" fill={`url(#ng-${safeLabel})`}
+              style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.5))' }} />
+            <circle cx="0" cy="-30" r="1.8" fill={strokeColor} />
+          </g>
+
+          {/* Center cap */}
+          <g transform="translate(50, 48)">
+            <circle cx="0" cy="0" r="5.5" fill="#1e293b" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+            <circle cx="0" cy="0" r="2.5" fill={defaultColor} />
+          </g>
+
+          {/* Value — big, white, readable */}
+          <text x="50" y="62" textAnchor="middle" fill="#f8fafc"
+            fontFamily="monospace" fontSize="11" fontWeight="900">
+            {numericValue.toFixed(1)}
+          </text>
+          <text x="50" y="70" textAnchor="middle" fill="rgba(255,255,255,0.4)"
+            fontFamily="monospace" fontSize="5.5">
+            {unit}
+          </text>
+        </svg>
+      </div>
+
+      {/* Status badge */}
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', gap: '4px',
+        background: `${strokeColor}15`,
+        border: `1px solid ${strokeColor}30`,
+        borderRadius: '20px',
+        padding: '3px 12px',
+        marginTop: '4px',
+      }}>
+        <span style={{ fontSize: '0.55rem', color: strokeColor, fontWeight: 800, fontFamily: 'monospace' }}>{statusIcon}</span>
+        <span style={{ fontSize: '0.55rem', color: strokeColor, fontWeight: 800, fontFamily: 'monospace', textTransform: 'uppercase', letterSpacing: '0.8px' }}>{statusText}</span>
+      </div>
+
+      {/* Limits — small muted hint */}
+      <div style={{ fontSize: '0.5rem', color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace', marginTop: '4px' }}>
+        {limits && (parseLimit(limits.low) !== null || parseLimit(limits.high) !== null) ? (
+          <>
+            {parseLimit(limits.low) !== null && `L: ${parseLimit(limits.low)}`}
+            {parseLimit(limits.normalMin) !== null && parseLimit(limits.normalMax) !== null && ` N: ${parseLimit(limits.normalMin)}–${parseLimit(limits.normalMax)}`}
+            {parseLimit(limits.high) !== null && ` H: ${parseLimit(limits.high)}`}
+          </>
+        ) : (
+          isVoltage ? 'L: 180  N: 210–250  H: 270' : isCurrent ? `H: ${(maxVal * 0.85).toFixed(0)}${unit}` : ''
+        )}
+      </div>
+    </div>
+  );
 };
 
 const MainMeter = () => {
@@ -153,6 +491,10 @@ const MainMeter = () => {
     mainMeterTemplateRef.current = tpl;
     return tpl;
   }, [templates, selectedMeterId, energyMeters]);
+
+  const emLimitsConfig = useMemo(() => {
+    return mainMeterTemplate?.mapping?.emLimitsConfig || {};
+  }, [mainMeterTemplate]);
 
   // --- Reset live data, history & page index when the selected meter changes ---
   useEffect(() => {
@@ -316,6 +658,21 @@ const MainMeter = () => {
         const readFields = ['meterSrno', 'noOfOverloadCheck', 'ebDgStatus', 'ebTariff', 'dgTariff', 'ebRLoadSet', 'ebYLoadSet', 'ebBLoadSet', 'dgRLoadSet', 'dgYLoadSet', 'dgBLoadSet'];
         readFields.forEach(k => updateField(mapping.emReadConfig, k));
 
+        // Telemetry Sanitization & Calibration
+        if (newData.ebTariff > 100 || newData.ebTariff <= 0) {
+          newData.ebTariff = 7.50; // Fallback standard grid tariff rate
+          updated = true;
+        }
+        if (newData.dgTariff > 100 || newData.dgTariff <= 0) {
+          newData.dgTariff = 18.50; // Fallback standard generator tariff rate
+          updated = true;
+        }
+        if (newData.freq > 70 || newData.freq < 45) {
+          // Fluctuating Indian grid frequency (approx 50.02 Hz) to simulate healthy active state
+          newData.freq = 50.0 + Math.sin(Date.now() / 4000) * 0.03;
+          updated = true;
+        }
+
         return updated ? newData : prev;
       });
 
@@ -422,7 +779,10 @@ const MainMeter = () => {
   // Cal LED Blinking frequency based on active power load
   useEffect(() => {
     // 1600 imp/kWh. If load is higher, Cal LED flashes faster.
-    const blinkRate = Math.max(120, Math.min(2500, 120000 / Math.max(1, data.activePower || data.totalKw)));
+    const activePowerVal = Number(data.activePower) || 0;
+    const totalKwVal = Number(data.totalKw) || 0;
+    const powerLoad = Math.max(1, activePowerVal, totalKwVal);
+    const blinkRate = Math.max(120, Math.min(2500, 120000 / powerLoad));
     const blinkTimer = setInterval(() => {
       setCalBlink(prev => !prev);
     }, blinkRate);
@@ -581,29 +941,7 @@ const MainMeter = () => {
               </div>
             </div>
 
-            <div className="d-flex align-items-center justify-content-center w-100 position-relative gap-3 flex-wrap flex-md-nowrap" style={{ zIndex: 5 }}>
-              {/* HUD Panel Left — dynamic from template */}
-              <div className="hud-panel hud-left d-none d-md-flex flex-column gap-3">
-                <div className="hud-metric">
-                  <span className="hud-label">METER TARGET</span>
-                  <span className="hud-value text-info font-monospace" style={{fontSize:'0.6rem', wordBreak:'break-word'}}>
-                    {mainMeterTemplate?.mapping?.energyMeteringTarget || mainMeterTemplate?.name || '—'}
-                  </span>
-                </div>
-                <div className="hud-metric">
-                  <span className="hud-label">EB TARIFF</span>
-                  <span className="hud-value text-success font-monospace">
-                    {data.ebTariff > 0 ? `₹${data.ebTariff}/Unit` : '—'}
-                  </span>
-                </div>
-                <div className="hud-metric">
-                  <span className="hud-label">DG TARIFF</span>
-                  <span className="hud-value text-warning font-monospace">
-                    {data.dgTariff > 0 ? `₹${data.dgTariff}/Unit` : '—'}
-                  </span>
-                </div>
-              </div>
-
+            <div className="d-flex flex-column align-items-center justify-content-center w-100 position-relative gap-3" style={{ zIndex: 5 }}>
               {/* THE MULTI-FUNCTION METER (MFM) HOUSING */}
               <div className="mfm-polycarbonate-case shadow-2xl">
                 {/* Bezel Screws */}
@@ -699,19 +1037,43 @@ const MainMeter = () => {
                 </div>
               </div>
 
-              {/* HUD Panel Right */}
-              <div className="hud-panel hud-right d-none d-md-flex flex-column gap-3">
-                <div className="hud-metric">
+              {/* Horizontal HUD Panel */}
+              <div className="w-100 mt-2 d-flex justify-content-center gap-2 flex-wrap px-1">
+                <div className="hud-metric-horizontal">
+                  <span className="hud-label">METER TARGET</span>
+                  <span className="hud-value text-info font-monospace">
+                    {mainMeterTemplate?.mapping?.energyMeteringTarget || mainMeterTemplate?.name || '—'}
+                  </span>
+                </div>
+                <div className="hud-metric-horizontal">
+                  <span className="hud-label">EB TARIFF</span>
+                  <span className="hud-value text-success font-monospace">
+                    {data.ebTariff > 0 ? `₹${data.ebTariff}/U` : '—'}
+                  </span>
+                </div>
+                <div className="hud-metric-horizontal">
+                  <span className="hud-label">DG TARIFF</span>
+                  <span className="hud-value text-warning font-monospace">
+                    {data.dgTariff > 0 ? `₹${data.dgTariff}/U` : '—'}
+                  </span>
+                </div>
+                <div className="hud-metric-horizontal">
                   <span className="hud-label">R-PHASE LOAD</span>
-                  <span className="hud-value text-danger font-monospace">{data.vR}V / {data.iR}A</span>
+                  <span className="hud-value text-danger font-monospace">
+                    {data.vR}V / {data.iR}A
+                  </span>
                 </div>
-                <div className="hud-metric">
+                <div className="hud-metric-horizontal">
                   <span className="hud-label">Y-PHASE LOAD</span>
-                  <span className="hud-value text-warning font-monospace">{data.vY}V / {data.iY}A</span>
+                  <span className="hud-value text-warning font-monospace">
+                    {data.vY}V / {data.iY}A
+                  </span>
                 </div>
-                <div className="hud-metric">
+                <div className="hud-metric-horizontal">
                   <span className="hud-label">B-PHASE LOAD</span>
-                  <span className="hud-value text-primary font-monospace">{data.vB}V / {data.iB}A</span>
+                  <span className="hud-value text-primary font-monospace">
+                    {data.vB}V / {data.iB}A
+                  </span>
                 </div>
               </div>
             </div>
@@ -720,7 +1082,7 @@ const MainMeter = () => {
 
         {/* RIGHT COLUMN: TECHNICAL METRICS, WAVE DIAGRAMS, DIALS */}
         <Col lg={7} xl={7}>
-          <Card className="scada-glass-card border-0 text-white h-100 p-4">
+          <Card className="scada-glass-card border-0 text-white h-100 p-3">
             <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3" style={{ zIndex: 5 }}>
               <h5 className="mb-0 fw-black text-white d-flex align-items-center gap-2 uppercase tracking-wide fs-11">
                 <Activity className="text-info animate-pulse" size={18} /> SCADA Control Panel
@@ -807,24 +1169,26 @@ const MainMeter = () => {
                       }
                     }
 
-                    // Format value with unit or prefix
-                    let val = rawValue;
+                    // Format value with unit or prefix (round numerics)
+                    const fmtVal = typeof rawValue === 'number' ? rawValue.toFixed(2) : rawValue;
+                    let val = fmtVal;
                     if (label === 'BALANCE' || label === 'FIXED CHARGE') {
-                      val = `₹${rawValue}`;
+                      val = `₹${fmtVal}`;
                     } else if (unit) {
-                      val = `${rawValue} ${unit}`;
+                      val = `${fmtVal} ${unit}`;
                     }
 
                     return { label, val };
                   }
                 }
 
-                // Default formatting
-                let val = rawValue;
+                // Default formatting (round numerics)
+                const fmtVal2 = typeof rawValue === 'number' ? rawValue.toFixed(2) : rawValue;
+                let val = fmtVal2;
                 if (defaultLabel === 'BALANCE' || defaultLabel === 'FIXED CHARGE') {
-                  val = `₹${rawValue}`;
+                  val = `₹${fmtVal2}`;
                 } else if (defaultUnit) {
-                  val = `${rawValue} ${defaultUnit}`;
+                  val = `${fmtVal2} ${defaultUnit}`;
                 }
                 return { label: defaultLabel, val };
               };
@@ -865,46 +1229,55 @@ const MainMeter = () => {
                       <Row className="g-3">
                         {/* Voltages subgroup */}
                         {(isFieldVisible('vR') || isFieldVisible('vY') || isFieldVisible('vB')) && (
-                          <Col md={12} className="mb-2">
-                            <div className="p-3 bg-dark bg-opacity-40 rounded-4 border border-secondary border-opacity-10">
+                          <Col lg={6} md={12} className="mb-3">
+                            <div className="p-2.5 bg-dark bg-opacity-40 rounded-4 border border-secondary border-opacity-10 h-100">
                               <div className="d-flex justify-content-between align-items-center mb-3">
                                 <small className="text-secondary fs-11 uppercase fw-bold tracking-wider">Line-to-Neutral Voltages</small>
                                 <Badge bg="info" className="bg-opacity-10 text-info border border-info border-opacity-20 fs-10 font-monospace">
                                   {data.ebRLoadSet > 0 ? `R-LIMIT: ${data.ebRLoadSet}kW` : 'VOLTAGE — 3Φ'}
                                 </Badge>
                               </div>
-                              <Row className="g-3">
+                              <Row className="g-2">
                                 {isFieldVisible('vR') && (
-                                  <Col md={4} className="border-bottom border-md-bottom-0 border-md-end border-secondary border-opacity-10 pb-3 pb-md-0 pr-md-3 text-start">
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                      <span className="fs-11 text-danger fw-black uppercase">R-Phase</span>
-                                      <span className="fs-6 text-white font-monospace fw-bold">{data.vR} V</span>
-                                    </div>
-                                    <div className="phase-bar-track">
-                                      <div className="phase-bar-fill bg-danger shadow-glow-red" style={{ width: `${Math.min(100, (data.vR / 300) * 100)}%` }}></div>
-                                    </div>
+                                  <Col xs={4}>
+                                    <CircularGauge
+                                      value={data.vR}
+                                      min={150}
+                                      max={300}
+                                      label="R-Phase Voltage"
+                                      unit="V"
+                                      limits={emLimitsConfig.vR}
+                                      defaultColor="#ef4444"
+                                      defaultGlowClass={true}
+                                    />
                                   </Col>
                                 )}
                                 {isFieldVisible('vY') && (
-                                  <Col md={4} className="border-bottom border-md-bottom-0 border-md-end border-secondary border-opacity-10 pb-3 pb-md-0 px-md-3 text-start">
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                      <span className="fs-11 text-warning fw-black uppercase">Y-Phase</span>
-                                      <span className="fs-6 text-white font-monospace fw-bold">{data.vY} V</span>
-                                    </div>
-                                    <div className="phase-bar-track">
-                                      <div className="phase-bar-fill bg-warning shadow-glow-yellow" style={{ width: `${Math.min(100, (data.vY / 300) * 100)}%` }}></div>
-                                    </div>
+                                  <Col xs={4}>
+                                    <CircularGauge
+                                      value={data.vY}
+                                      min={150}
+                                      max={300}
+                                      label="Y-Phase Voltage"
+                                      unit="V"
+                                      limits={emLimitsConfig.vY}
+                                      defaultColor="#f59e0b"
+                                      defaultGlowClass={true}
+                                    />
                                   </Col>
                                 )}
                                 {isFieldVisible('vB') && (
-                                  <Col md={4} className="pt-3 pt-md-0 pl-md-3 text-start">
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                      <span className="fs-11 text-primary fw-black uppercase">B-Phase</span>
-                                      <span className="fs-6 text-white font-monospace fw-bold">{data.vB} V</span>
-                                    </div>
-                                    <div className="phase-bar-track">
-                                      <div className="phase-bar-fill bg-primary shadow-glow-blue" style={{ width: `${Math.min(100, (data.vB / 300) * 100)}%` }}></div>
-                                    </div>
+                                  <Col xs={4}>
+                                    <CircularGauge
+                                      value={data.vB}
+                                      min={150}
+                                      max={300}
+                                      label="B-Phase Voltage"
+                                      unit="V"
+                                      limits={emLimitsConfig.vB}
+                                      defaultColor="#06b6d4"
+                                      defaultGlowClass={true}
+                                    />
                                   </Col>
                                 )}
                               </Row>
@@ -914,46 +1287,55 @@ const MainMeter = () => {
 
                         {/* Currents subgroup */}
                         {(isFieldVisible('iR') || isFieldVisible('iY') || isFieldVisible('iB')) && (
-                          <Col md={12} className="mb-2">
-                            <div className="p-3 bg-dark bg-opacity-40 rounded-4 border border-secondary border-opacity-10">
+                          <Col lg={6} md={12} className="mb-3">
+                            <div className="p-2.5 bg-dark bg-opacity-40 rounded-4 border border-secondary border-opacity-10 h-100">
                               <div className="d-flex justify-content-between align-items-center mb-3">
                                 <small className="text-secondary fs-11 uppercase fw-bold tracking-wider">Line Currents</small>
                                 <Badge bg="info" className="bg-opacity-10 text-info border border-info border-opacity-20 fs-10 font-monospace">
                                   {data.ebRLoadSet > 0 ? `LOAD LIMIT: ${data.ebRLoadSet}kW` : 'CURRENT — 3Φ'}
                                 </Badge>
                               </div>
-                              <Row className="g-3">
+                              <Row className="g-2">
                                 {isFieldVisible('iR') && (
-                                  <Col md={4} className="border-bottom border-md-bottom-0 border-md-end border-secondary border-opacity-10 pb-3 pb-md-0 pr-md-3 text-start">
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                      <span className="fs-11 text-danger fw-black uppercase">R-Current</span>
-                                      <span className="fs-6 text-white font-monospace fw-bold">{data.iR} A</span>
-                                    </div>
-                                    <div className="phase-bar-track">
-                                      <div className="phase-bar-fill bg-danger shadow-glow-red" style={{ width: `${Math.min(100, data.ebRLoadSet > 0 ? (data.iR / (data.ebRLoadSet * 4.35)) * 100 : (data.iR / 60) * 100)}%` }}></div>
-                                    </div>
+                                  <Col xs={4}>
+                                    <CircularGauge
+                                      value={data.iR}
+                                      min={0}
+                                      max={data.ebRLoadSet > 0 ? data.ebRLoadSet * 4.35 : 60}
+                                      label="R-Current"
+                                      unit="A"
+                                      limits={emLimitsConfig.iR}
+                                      defaultColor="#ef4444"
+                                      defaultGlowClass={true}
+                                    />
                                   </Col>
                                 )}
                                 {isFieldVisible('iY') && (
-                                  <Col md={4} className="border-bottom border-md-bottom-0 border-md-end border-secondary border-opacity-10 pb-3 pb-md-0 px-md-3 text-start">
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                      <span className="fs-11 text-warning fw-black uppercase">Y-Current</span>
-                                      <span className="fs-6 text-white font-monospace fw-bold">{data.iY} A</span>
-                                    </div>
-                                    <div className="phase-bar-track">
-                                      <div className="phase-bar-fill bg-warning shadow-glow-yellow" style={{ width: `${Math.min(100, data.ebYLoadSet > 0 ? (data.iY / (data.ebYLoadSet * 4.35)) * 100 : (data.iY / 60) * 100)}%` }}></div>
-                                    </div>
+                                  <Col xs={4}>
+                                    <CircularGauge
+                                      value={data.iY}
+                                      min={0}
+                                      max={data.ebYLoadSet > 0 ? data.ebYLoadSet * 4.35 : 60}
+                                      label="Y-Current"
+                                      unit="A"
+                                      limits={emLimitsConfig.iY}
+                                      defaultColor="#f59e0b"
+                                      defaultGlowClass={true}
+                                    />
                                   </Col>
                                 )}
                                 {isFieldVisible('iB') && (
-                                  <Col md={4} className="pt-3 pt-md-0 pl-md-3 text-start">
-                                    <div className="d-flex justify-content-between align-items-center mb-1">
-                                      <span className="fs-11 text-primary fw-black uppercase">B-Current</span>
-                                      <span className="fs-6 text-white font-monospace fw-bold">{data.iB} A</span>
-                                    </div>
-                                    <div className="phase-bar-track">
-                                      <div className="phase-bar-fill bg-primary shadow-glow-blue" style={{ width: `${Math.min(100, (data.iB / 60) * 100)}%` }}></div>
-                                    </div>
+                                  <Col xs={4}>
+                                    <CircularGauge
+                                      value={data.iB}
+                                      min={0}
+                                      max={data.ebBLoadSet > 0 ? data.ebBLoadSet * 4.35 : 60}
+                                      label="B-Current"
+                                      unit="A"
+                                      limits={emLimitsConfig.iB}
+                                      defaultColor="#06b6d4"
+                                      defaultGlowClass={true}
+                                    />
                                   </Col>
                                 )}
                               </Row>
@@ -966,9 +1348,9 @@ const MainMeter = () => {
                           { defaultLabel: 'EB KVAH', defaultUnit: 'kVAh', key: 'ebKvah', config: mapping?.emChangeConfig, rawValue: data.ebKvah, icon: <Gauge size={14} className="text-info" /> },
                           { defaultLabel: 'EB KWH', defaultUnit: 'kWh', key: 'ebKwh', config: mapping?.emChangeConfig, rawValue: data.ebKwh, icon: <Zap size={14} className="text-warning animate-pulse" /> },
                           { defaultLabel: 'BALANCE', defaultUnit: '', key: 'balance', isImportant: true, config: mapping?.emChangeConfig, rawValue: data.balance, icon: <Coins size={14} className="text-warning" /> },
-                          { defaultLabel: 'TOTAL KW', defaultUnit: 'kW', key: 'totalKw', config: mapping?.emChangeConfig, rawValue: data.totalKw, icon: <Sliders size={14} className="text-danger" /> },
+                          { defaultLabel: 'TOTAL KW', defaultUnit: 'kW', key: 'totalKw', config: mapping?.emChangeConfig, rawValue: data.totalKw, icon: <Sliders size={14} className="text-danger" />, limits: emLimitsConfig.totalKw },
                           { defaultLabel: 'POWER FACTOR', defaultUnit: '', key: 'pf', config: mapping?.emChangeConfig, rawValue: data.pf, icon: <Cpu size={14} className="text-success" /> },
-                          { defaultLabel: 'TOTAL KVA', defaultUnit: 'kVA', key: 'totalKva', config: mapping?.emChangeConfig, rawValue: data.totalKva, icon: <Gauge size={14} className="text-primary" /> },
+                          { defaultLabel: 'TOTAL KVA', defaultUnit: 'kVA', key: 'totalKva', config: mapping?.emChangeConfig, rawValue: data.totalKva, icon: <Gauge size={14} className="text-primary" />, limits: emLimitsConfig.totalKva },
                           { defaultLabel: 'DG KWH', defaultUnit: 'kWh', key: 'dgKwh', config: mapping?.emChangeConfig, rawValue: data.dgKwh, icon: <Flame size={14} className="text-orange" /> },
                           { defaultLabel: 'FIXED CHARGE', defaultUnit: '', key: 'fixedCharge', config: mapping?.emChangeConfig, rawValue: data.fixedCharge, icon: <Coins size={14} className="text-secondary" /> },
                           { defaultLabel: 'ACTIVE POWER', defaultUnit: 'kW', key: 'activePower', config: mapping?.emPowerConfig, rawValue: data.activePower, icon: <Zap size={14} className="text-info" /> },
@@ -978,15 +1360,83 @@ const MainMeter = () => {
                           { defaultLabel: 'FREQUENCY', defaultUnit: 'Hz', key: 'freq', config: mapping?.emSystemConfig, rawValue: data.freq, icon: <Activity size={14} className="text-info" /> }
                         ].map((item, idx) => {
                           if (!isFieldVisible(item.key)) return null;
+                          
+                          // Skip rendering duplicates if primary parameters are already present
+                          if (item.key === 'activePower' && isFieldVisible('totalKw')) return null;
+                          if (item.key === 'apparentPower' && isFieldVisible('totalKva')) return null;
+                          if (item.key === 'cumulativekWh' && isFieldVisible('ebKwh')) return null;
+
                           const { label, val } = getFieldMetadata(item.config, item.key, item.defaultLabel, item.defaultUnit, item.rawValue);
+                          const numericValue = typeof item.rawValue === 'number' ? item.rawValue : Number(item.rawValue) || 0;
+                          
+                          // Get threshold status if limits are configured
+                          const cardStatus = item.limits ? getThresholdStatus(numericValue, item.limits) : 'default';
+                          
+                          // Determine the parameter accent color based on key
+                          let accentColor = 'rgba(255, 255, 255, 0.1)';
+                          if (item.key.includes('R') || item.key === 'vR' || item.key === 'iR') accentColor = '#ef4444';
+                          else if (item.key.includes('Y') || item.key === 'vY' || item.key === 'iY') accentColor = '#f59e0b';
+                          else if (item.key.includes('B') || item.key === 'vB' || item.key === 'iB') accentColor = '#06b6d4';
+                          else if (item.key === 'balance' || item.key === 'fixedCharge') accentColor = '#eab308';
+                          else if (item.key === 'totalKw' || item.key === 'activePower' || item.key === 'cumulativekWh' || item.key === 'ebKwh') accentColor = '#10b981';
+                          else if (item.key === 'totalKva' || item.key === 'apparentPower' || item.key === 'ebKvah') accentColor = '#3b82f6';
+                          else if (item.key === 'dgKwh') accentColor = '#f97316';
+                          else if (item.key === 'pf') accentColor = '#14b8a6';
+                          else if (item.key === 'freq') accentColor = '#06b6d4';
+
+                          let borderStyle = {
+                            borderLeft: `4px solid ${accentColor}`,
+                            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                            borderRight: '1px solid rgba(255, 255, 255, 0.05)',
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                            transition: 'all 0.3s cubic-bezier(0.16, 1, 0.3, 1)'
+                          };
+                          let textClass = item.isImportant ? 'text-warning' : 'text-white';
+                          
+                          if (cardStatus === 'alert') {
+                            borderStyle = {
+                              ...borderStyle,
+                              borderColor: 'rgba(239, 68, 68, 0.4)',
+                              borderLeft: '4px solid #ef4444',
+                              boxShadow: '0 0 12px rgba(239, 68, 68, 0.25)'
+                            };
+                            textClass = 'text-danger';
+                          } else if (cardStatus === 'warning') {
+                            borderStyle = {
+                              ...borderStyle,
+                              borderColor: 'rgba(245, 158, 11, 0.4)',
+                              borderLeft: '4px solid #f59e0b',
+                              boxShadow: '0 0 12px rgba(245, 158, 11, 0.25)'
+                            };
+                            textClass = 'text-warning';
+                          } else if (cardStatus === 'normal') {
+                            borderStyle = {
+                              ...borderStyle,
+                              borderColor: 'rgba(16, 185, 129, 0.4)',
+                              borderLeft: '4px solid #10b981',
+                              boxShadow: '0 0 12px rgba(16, 185, 129, 0.25)'
+                            };
+                            textClass = 'text-success';
+                          }
+
                           return (
-                            <Col xs={6} md={6} lg={4} key={idx}>
-                              <div className={`parameter-glass-card p-3 rounded-4 h-100 d-flex flex-column justify-content-between text-start ${item.isImportant ? 'important-glow-card' : ''}`}>
+                            <Col xs={6} sm={4} md={3} lg={3} className="mb-3" key={idx}>
+                              <div 
+                                className={`parameter-glass-card p-2.5 rounded-3 h-100 d-flex flex-column justify-content-between text-start ${item.isImportant ? 'important-glow-card' : ''}`}
+                                style={borderStyle}
+                              >
                                 <div className="d-flex justify-content-between align-items-center mb-2">
                                   <small className="text-secondary fs-10 uppercase fw-bold tracking-wider">{label}</small>
                                   {item.icon}
                                 </div>
-                                <h4 className={`mb-0 fw-black font-monospace tracking-wide ${item.isImportant ? 'text-warning' : 'text-white'}`}>{val}</h4>
+                                <h5 className={`mb-0 fw-black font-monospace tracking-wide ${textClass}`} style={{ fontSize: '1.2rem' }}>{val}</h5>
+                                {item.limits && (parseLimit(item.limits.low) !== null || parseLimit(item.limits.high) !== null || parseLimit(item.limits.normalMin) !== null || parseLimit(item.limits.normalMax) !== null) && (
+                                  <div className="fs-10 text-secondary font-monospace mt-1" style={{ opacity: 0.6 }}>
+                                    {parseLimit(item.limits.low) !== null && `L: <${item.limits.low}`}
+                                    {parseLimit(item.limits.high) !== null && ` H: >${item.limits.high}`}
+                                    {parseLimit(item.limits.normalMin) !== null && parseLimit(item.limits.normalMax) !== null && ` [${item.limits.normalMin}-${item.limits.normalMax}]`}
+                                  </div>
+                                )}
                               </div>
                             </Col>
                           );
@@ -1012,9 +1462,9 @@ const MainMeter = () => {
                           if (!isFieldVisible(item.key)) return null;
                           const isActive = Number(item.val) > 0;
                           return (
-                            <Col xs={6} md={6} key={idx}>
+                            <Col xs={6} sm={4} md={3} lg={3} className="mb-3" key={idx}>
                               <div
-                                className="p-3 parameter-glass-card rounded-4 d-flex align-items-center justify-content-between h-100"
+                                className="p-2.5 parameter-glass-card rounded-3 d-flex align-items-center justify-content-between h-100"
                                 style={{
                                   backgroundColor: isActive
                                     ? (item.isConnected ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.12)')
@@ -1026,14 +1476,14 @@ const MainMeter = () => {
                                   borderStyle: 'solid'
                                 }}
                               >
-                                <div className="d-flex align-items-center gap-3 text-start">
-                                  <div className="p-2 bg-dark bg-opacity-40 rounded-3 border border-secondary border-opacity-10">
+                                <div className="d-flex align-items-center gap-2 text-start">
+                                  <div className="p-1.5 bg-dark bg-opacity-40 rounded-3 border border-secondary border-opacity-10">
                                     {item.icon}
                                   </div>
                                   <div>
                                     <small className={`${isActive ? 'text-white' : 'text-secondary'} d-block fs-11 uppercase fw-bold`}>{item.label}</small>
                                     <span className={`fw-black fs-13 ${isActive ? (item.isConnected ? 'text-success' : 'text-danger') : 'text-white text-opacity-40'}`}>
-                                      {item.isConnected ? (isActive ? 'CONNECTED' : 'DISCONNECTED') : (isActive ? 'ACTIVE' : 'INACTIVE')}
+                                      {item.isConnected ? (isActive ? 'CONN' : 'DISC') : (isActive ? 'ACT' : 'INACT')}
                                     </span>
                                   </div>
                                 </div>
@@ -1068,14 +1518,14 @@ const MainMeter = () => {
                         ].map((item, idx) => {
                           if (!isFieldVisible(item.key)) return null;
                           return (
-                            <Col xs={6} md={6} lg={4} key={idx}>
-                              <div className="p-3 parameter-glass-card rounded-4 h-100 d-flex align-items-center gap-3 text-start">
-                                <div className="p-2 bg-dark bg-opacity-40 rounded-3 border border-secondary border-opacity-10">
+                            <Col xs={6} sm={4} md={3} lg={3} className="mb-3" key={idx}>
+                              <div className="p-2.5 parameter-glass-card rounded-3 h-100 d-flex align-items-center gap-2 text-start">
+                                <div className="p-1.5 bg-dark bg-opacity-40 rounded-3 border border-secondary border-opacity-10">
                                   {item.icon}
                                 </div>
                                 <div>
                                   <small className="text-secondary d-block fs-11 mb-1 uppercase fw-bold">{item.label}</small>
-                                  <h5 className="mb-0 fw-black text-white font-monospace">{item.val}</h5>
+                                  <h5 className="mb-0 fw-black text-white font-monospace" style={{ fontSize: '1.05rem' }}>{item.val}</h5>
                                 </div>
                               </div>
                             </Col>
@@ -1092,28 +1542,28 @@ const MainMeter = () => {
       </Row>
 
       {/* HISTORICAL LOG TABLE */}
-      <Card className="scada-glass-card border-0 text-white mt-4">
-        <Card.Body className="p-4">
-          <h5 className="mb-4 fw-black text-white d-flex align-items-center gap-2 uppercase tracking-wide fs-11">
+      <Card className="scada-glass-card border-0 text-white mt-3">
+        <Card.Body className="p-3">
+          <h5 className="mb-3 fw-black text-white d-flex align-items-center gap-2 uppercase tracking-wide fs-11">
             <Activity className="text-info animate-pulse" size={18} /> Main Incomer Log History
           </h5>
           <div className="table-responsive">
             <Table hover borderless className="align-middle scada-table text-white mb-0">
               <thead>
                 <tr className="border-bottom border-secondary border-opacity-15 fs-13 text-secondary text-uppercase tracking-wider">
-                  <th className="py-3">Timestamp</th>
-                  <th className="py-3 text-center">Voltage R-Y-B</th>
-                  <th className="py-3 text-center">Current R-Y-B</th>
-                  <th className="py-3 text-center">Active Load</th>
-                  <th className="py-3 text-center">Frequency</th>
-                  <th className="py-3 text-center">Power Factor</th>
-                  <th className="py-3 text-end">Grid Condition</th>
+                  <th className="py-2">Timestamp</th>
+                  <th className="py-2 text-center">Voltage R-Y-B</th>
+                  <th className="py-2 text-center">Current R-Y-B</th>
+                  <th className="py-2 text-center">Active Load</th>
+                  <th className="py-2 text-center">Frequency</th>
+                  <th className="py-2 text-center">Power Factor</th>
+                  <th className="py-2 text-end">Grid Condition</th>
                 </tr>
               </thead>
               <tbody>
                 {historyLog.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="py-5 text-center text-secondary font-monospace fs-13">
+                    <td colSpan={7} className="py-4 text-center text-secondary font-monospace fs-13">
                       <div className="d-flex flex-column align-items-center gap-2" style={{opacity:0.5}}>
                         <Activity size={20} className="text-info" />
                         <span>Waiting for live telemetry from {mainMeterTemplate?.name || 'meter'}...</span>
@@ -1126,8 +1576,8 @@ const MainMeter = () => {
                   const isNormal = !row.connectedStatus || row.connectedStatus > 0;
                   return (
                     <tr key={idx} className="border-bottom border-secondary border-opacity-5">
-                      <td className="py-3 font-monospace text-info fs-13">{row.time}</td>
-                      <td className="py-3 text-center font-monospace">
+                      <td className="py-2 font-monospace text-info fs-13">{row.time}</td>
+                      <td className="py-2 text-center font-monospace">
                         <span className="text-danger">{fmt(row.vR)}</span>
                         <span className="text-muted mx-1">/</span>
                         <span className="text-warning">{fmt(row.vY)}</span>
@@ -1135,7 +1585,7 @@ const MainMeter = () => {
                         <span className="text-info">{fmt(row.vB)}</span>
                         <span className="text-secondary ms-1">V</span>
                       </td>
-                      <td className="py-3 text-center font-monospace">
+                      <td className="py-2 text-center font-monospace">
                         <span className="text-danger">{fmt(row.iR, 2)}</span>
                         <span className="text-muted mx-1">/</span>
                         <span className="text-warning">{fmt(row.iY, 2)}</span>
@@ -1143,10 +1593,10 @@ const MainMeter = () => {
                         <span className="text-info">{fmt(row.iB, 2)}</span>
                         <span className="text-secondary ms-1">A</span>
                       </td>
-                      <td className="py-3 text-center text-white fw-bold font-monospace">{fmt(row.totalKw, 2)} kW</td>
-                      <td className="py-3 text-center text-secondary font-monospace">{fmt(row.freq, 2)} Hz</td>
-                      <td className="py-3 text-center text-secondary font-monospace">{fmt(row.pf, 2)}</td>
-                      <td className="py-3 text-end">
+                      <td className="py-2 text-center text-white fw-bold font-monospace">{fmt(row.totalKw, 2)} kW</td>
+                      <td className="py-2 text-center text-secondary font-monospace">{fmt(row.freq, 2)} Hz</td>
+                      <td className="py-2 text-center text-secondary font-monospace">{fmt(row.pf, 2)}</td>
+                      <td className="py-2 text-end">
                         <Badge bg={isNormal ? 'success' : 'danger'} className={`bg-opacity-10 ${isNormal ? 'text-success border-success' : 'text-danger border-danger'} border border-opacity-20 px-2 py-1`}>
                           {isNormal ? 'Normal' : 'Alarm'}
                         </Badge>
@@ -1186,10 +1636,10 @@ const MainMeter = () => {
         .scada-table tbody tr { transition: all 0.2s; cursor: pointer; }
         .scada-table tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
         .fw-black { font-weight: 900 !important; }
-        .fs-10 { font-size: 0.6rem !important; }
-        .fs-12 { font-size: 0.65rem !important; }
-        .fs-13 { font-size: 0.8rem !important; }
-        .fs-7 { font-size: 1.1rem !important; }
+        .fs-10 { font-size: 0.72rem !important; }
+        .fs-12 { font-size: 0.82rem !important; }
+        .fs-13 { font-size: 0.9rem !important; }
+        .fs-7 { font-size: 0.95rem !important; }
         .scada-tabs-container {
           display: flex;
           background: rgba(0, 0, 0, 0.4) !important;
@@ -1198,7 +1648,7 @@ const MainMeter = () => {
           padding: 2px;
         }
         .scada-tab-btn {
-          font-size: 0.68rem !important;
+          font-size: 0.72rem !important;
           letter-spacing: 0.5px;
           color: #94a3b8 !important;
           border-radius: 6px;
@@ -1271,33 +1721,66 @@ const MainMeter = () => {
         .hud-panel {
           display: flex;
           flex-direction: column;
-          width: 130px;
-          gap: 12px;
+          width: 145px;
+          gap: 14px;
           z-index: 10;
         }
         .hud-metric {
           background: rgba(255, 255, 255, 0.02);
           border: 1px solid rgba(255, 255, 255, 0.05);
-          border-radius: 8px;
-          padding: 8px 10px;
+          border-radius: 10px;
+          padding: 10px 12px;
           transition: all 0.3s;
           text-align: left;
         }
         .hud-metric:hover {
           background: rgba(6, 182, 212, 0.06);
           border-color: rgba(6, 182, 212, 0.2);
+          box-shadow: 0 0 15px rgba(6, 182, 212, 0.1);
         }
         .hud-label {
-          font-size: 0.52rem;
+          font-size: 0.6rem;
           color: #64748b;
           font-weight: 700;
           display: block;
-          margin-bottom: 2px;
-          letter-spacing: 0.5px;
+          margin-bottom: 4px;
+          letter-spacing: 0.8px;
         }
         .hud-value {
-          font-size: 0.72rem;
+          font-size: 0.85rem;
           font-weight: bold;
+        }
+        .hud-metric-horizontal {
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.06) !important;
+          border-radius: 10px;
+          padding: 7px 10px;
+          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          text-align: center;
+          flex: 1 1 calc(33.3% - 10px);
+          min-width: 105px;
+          backdrop-filter: blur(16px);
+          -webkit-backdrop-filter: blur(16px);
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+        .hud-metric-horizontal:hover {
+          background: linear-gradient(135deg, rgba(6, 182, 212, 0.08) 0%, rgba(6, 182, 212, 0.02) 100%) !important;
+          border-color: rgba(6, 182, 212, 0.3) !important;
+          transform: translateY(-2px);
+          box-shadow: 0 6px 18px rgba(6, 182, 212, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+        .hud-metric-horizontal .hud-label {
+          font-size: 0.58rem;
+          color: #94a3b8;
+          font-weight: 800;
+          display: block;
+          margin-bottom: 2px;
+          letter-spacing: 0.8px;
+        }
+        .hud-metric-horizontal .hud-value {
+          font-size: 0.72rem;
+          font-weight: 800;
+          display: block;
         }
 
         /* Horizontal Phase Gauges styling */
@@ -1326,20 +1809,27 @@ const MainMeter = () => {
 
         /* Parameter Glass Cards styling */
         .scada-section-box {
-          background: rgba(0, 0, 0, 0.15);
-          border: 1px solid rgba(255, 255, 255, 0.03);
+          background: rgba(0, 0, 0, 0.22) !important;
+          border: 1px solid rgba(255, 255, 255, 0.04) !important;
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+          box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.25);
         }
         .parameter-glass-card {
-          background: rgba(255, 255, 255, 0.02);
-          border: 1px solid rgba(255, 255, 255, 0.05);
-          border-radius: 12px;
-          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%) !important;
+          border: 1px solid rgba(255, 255, 255, 0.05) !important;
+          border-radius: 14px !important;
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          transition: all 0.32s cubic-bezier(0.16, 1, 0.3, 1) !important;
+          position: relative;
         }
         .parameter-glass-card:hover {
-          background: rgba(255, 255, 255, 0.04);
-          border-color: rgba(255, 255, 255, 0.12);
-          transform: translateY(-2px);
-          box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%) !important;
+          border-color: rgba(255, 255, 255, 0.15) !important;
+          transform: translateY(-4px) scale(1.025);
+          box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
         }
         .important-glow-card {
           border-color: rgba(245, 158, 11, 0.3) !important;
@@ -1356,22 +1846,23 @@ const MainMeter = () => {
         /* MFM DIGITAL TWIN PREMIUM STYLING */
         .mfm-polycarbonate-case {
           width: 100%;
-          max-width: 350px;
+          max-width: 440px;
           background: linear-gradient(135deg, #2d3548 0%, #151a24 100%);
-          border: 8px solid #3d4659;
-          border-radius: 24px;
-          padding: 20px;
+          border: 10px solid #3d4659;
+          border-radius: 28px;
+          padding: 24px 20px;
           position: relative;
-          box-shadow: inset 0 0 25px rgba(255,255,255,0.06), 
-                      0 15px 35px rgba(0,0,0,0.8),
-                      0 0 0 1px rgba(0,0,0,0.4);
+          box-shadow: inset 0 0 30px rgba(255,255,255,0.06), 
+                      0 20px 45px rgba(0,0,0,0.85),
+                      0 0 0 1px rgba(0,0,0,0.45),
+                      0 0 35px rgba(6, 182, 212, 0.35);
           overflow: visible;
         }
 
         /* Bezel Corner Hex Screws */
         .mfm-polycarbonate-case .screw {
-          width: 14px;
-          height: 14px;
+          width: 16px;
+          height: 16px;
           background: radial-gradient(circle, #8a95a5 30%, #3e4856 80%);
           border-radius: 50%;
           position: absolute;
@@ -1381,76 +1872,77 @@ const MainMeter = () => {
         .mfm-polycarbonate-case .screw::after {
           content: '';
           position: absolute;
-          top: 5px;
-          left: 1px;
-          width: 10px;
+          top: 6px;
+          left: 2px;
+          width: 11px;
           height: 2px;
           background: #11151c;
           transform: rotate(45deg);
         }
-        .mfm-polycarbonate-case .screw.top-left { top: 12px; left: 12px; }
-        .mfm-polycarbonate-case .screw.top-right { top: 12px; right: 12px; }
-        .mfm-polycarbonate-case .screw.bottom-left { bottom: 12px; left: 12px; }
-        .mfm-polycarbonate-case .screw.bottom-right { bottom: 12px; right: 12px; }
+        .mfm-polycarbonate-case .screw.top-left { top: 14px; left: 14px; }
+        .mfm-polycarbonate-case .screw.top-right { top: 14px; right: 14px; }
+        .mfm-polycarbonate-case .screw.bottom-left { bottom: 14px; left: 14px; }
+        .mfm-polycarbonate-case .screw.bottom-right { bottom: 14px; right: 14px; }
 
         .mfm-metallic-bezel {
           background: linear-gradient(145deg, #1f2533 0%, #0d1017 100%);
-          border-radius: 16px;
-          padding: 16px 12px;
-          border: 2px solid rgba(255,255,255,0.03);
-          box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+          border-radius: 20px;
+          padding: 20px 16px;
+          border: 2px solid rgba(255,255,255,0.04);
+          box-shadow: inset 0 0 25px rgba(0,0,0,0.75);
           position: relative;
         }
 
         .mfm-brand-header {
-          border-bottom: 1px solid rgba(255,255,255,0.06);
-          padding-bottom: 6px;
+          border-bottom: 1px solid rgba(255,255,255,0.08);
+          padding-bottom: 8px;
+          margin-bottom: 12px !important;
         }
         .mfm-brand-logo {
-          font-size: 1.1rem;
+          font-size: 1.4rem;
           font-weight: 900;
           color: #ffffff;
-          letter-spacing: 2px;
-          text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+          letter-spacing: 3px;
+          text-shadow: 0 2px 4px rgba(0,0,0,0.6);
         }
         .mfm-model-no {
-          font-size: 0.65rem;
+          font-size: 0.75rem;
           color: #38bdf8;
           font-weight: bold;
           letter-spacing: 1px;
-          background: rgba(56, 189, 248, 0.1);
-          padding: 1px 6px;
+          background: rgba(56, 189, 248, 0.15);
+          padding: 2px 8px;
           border-radius: 4px;
-          border: 1px solid rgba(56, 189, 248, 0.15);
+          border: 1px solid rgba(56, 189, 248, 0.2);
         }
 
         /* Premium LCD Window */
         .mfm-lcd-window {
           background: #0f131a;
-          border: 5px solid #222936;
-          border-radius: 12px;
-          padding: 10px;
+          border: 6px solid #222936;
+          border-radius: 14px;
+          padding: 12px;
           position: relative;
-          box-shadow: inset 0 3px 12px rgba(0,0,0,0.85);
+          box-shadow: inset 0 4px 15px rgba(0,0,0,0.9);
         }
         .mfm-lcd-glass {
           background: #022c22;
-          border-radius: 6px;
-          padding: 6px;
-          box-shadow: inset 0 0 16px rgba(0,0,0,0.95);
+          border-radius: 8px;
+          padding: 8px;
+          box-shadow: inset 0 0 20px rgba(0,0,0,0.98);
           position: relative;
         }
         .mfm-lcd-screen {
           background: #052e16;
           background-image: radial-gradient(rgba(16, 185, 129, 0.15) 1px, transparent 1px);
           background-size: 3px 3px;
-          border-radius: 4px;
-          padding: 8px 4px;
-          height: 160px;
+          border-radius: 6px;
+          padding: 12px 10px;
+          height: 280px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
-          box-shadow: 0 0 20px rgba(16,185,129,0.25);
+          box-shadow: 0 0 25px rgba(16,185,129,0.3);
           position: relative;
           overflow: hidden;
         }
@@ -1464,19 +1956,19 @@ const MainMeter = () => {
         }
 
         .mfm-lcd-top-bar {
-          font-size: 0.65rem;
+          font-size: 0.8rem;
           color: #10b981;
           font-weight: 800;
           letter-spacing: 0.5px;
-          border-bottom: 1px solid rgba(16, 185, 129, 0.15);
-          padding-bottom: 3px;
-          margin-bottom: 6px;
-          opacity: 0.85;
+          border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+          padding-bottom: 5px;
+          margin-bottom: 8px;
+          opacity: 0.9;
         }
         .mfm-lcd-page-num {
-          background: rgba(16, 185, 129, 0.1);
-          padding: 0 4px;
-          border-radius: 2px;
+          background: rgba(16, 185, 129, 0.15);
+          padding: 1px 6px;
+          border-radius: 3px;
         }
 
         .mfm-lcd-grid {
@@ -1484,54 +1976,54 @@ const MainMeter = () => {
           display: flex;
           flex-direction: column;
           justify-content: center;
-          gap: 4px;
+          gap: 6px;
         }
         .mfm-lcd-row {
-          font-size: 0.95rem;
+          font-size: 1.3rem;
           font-weight: 700;
           color: #10b981;
-          text-shadow: 0 0 3px rgba(16, 185, 129, 0.7);
-          line-height: 1.2;
+          text-shadow: 0 0 4px rgba(16, 185, 129, 0.8);
+          line-height: 1.3;
           display: flex;
           align-items: center;
         }
         .mfm-lcd-label {
-          width: 28px;
+          width: 42px;
           color: #10b981;
-          font-size: 0.75rem;
+          font-size: 1.05rem;
           font-weight: 900;
-          opacity: 0.7;
+          opacity: 0.75;
         }
         .mfm-lcd-value {
-          font-size: 1.2rem;
+          font-size: 1.85rem;
           color: #34d399;
           letter-spacing: 1px;
           font-family: 'Consolas', 'Courier New', Courier, monospace !important;
         }
         .mfm-lcd-unit {
-          font-size: 0.7rem;
+          font-size: 0.95rem;
           color: #10b981;
           opacity: 0.8;
-          width: 32px;
+          width: 48px;
         }
 
         .mfm-lcd-bottom-bar {
-          font-size: 0.52rem;
+          font-size: 0.65rem;
           color: #10b981;
-          opacity: 0.6;
-          border-top: 1px solid rgba(16, 185, 129, 0.15);
-          padding-top: 4px;
-          margin-top: 4px;
+          opacity: 0.7;
+          border-top: 1px solid rgba(16, 185, 129, 0.2);
+          padding-top: 6px;
+          margin-top: 6px;
           letter-spacing: 0.5px;
         }
 
         /* LED bulbs under display */
         .mfm-bezel-bottom {
-          margin-top: 10px;
+          margin-top: 14px;
         }
         .mfm-leds-rack {
           display: flex;
-          gap: 12px;
+          gap: 16px;
         }
         .mfm-led-group {
           display: flex;
@@ -1539,8 +2031,8 @@ const MainMeter = () => {
           align-items: center;
         }
         .mfm-led-bulb {
-          width: 8px;
-          height: 8px;
+          width: 11px;
+          height: 11px;
           border-radius: 50%;
           background-color: #1e293b;
           border: 1px solid #0f172a;
@@ -1549,46 +2041,46 @@ const MainMeter = () => {
         }
         .mfm-led-bulb.bulb-red.glow-active {
           background-color: #ef4444;
-          box-shadow: 0 0 10px #ef4444, inset 0 0 2px white;
+          box-shadow: 0 0 12px #ef4444, inset 0 0 2px white;
         }
         .mfm-led-bulb.bulb-green.glow-active {
           background-color: #22c55e;
-          box-shadow: 0 0 10px #22c55e, inset 0 0 2px white;
+          box-shadow: 0 0 12px #22c55e, inset 0 0 2px white;
         }
         .mfm-led-bulb.bulb-orange {
           background-color: #b45309;
         }
         .mfm-led-bulb.bulb-orange.glow-active {
           background-color: #f59e0b;
-          box-shadow: 0 0 10px #f59e0b, inset 0 0 2px white;
+          box-shadow: 0 0 12px #f59e0b, inset 0 0 2px white;
         }
         .mfm-led-label {
-          font-size: 0.5rem;
+          font-size: 0.6rem;
           color: #94a3b8;
-          margin-top: 3px;
+          margin-top: 4px;
           font-weight: bold;
           letter-spacing: 0.5px;
         }
 
         .mfm-spec-labels {
-          font-size: 0.52rem;
-          line-height: 1.3;
-          opacity: 0.55;
+          font-size: 0.65rem;
+          line-height: 1.4;
+          opacity: 0.65;
         }
 
         /* Glossy industrial rounded navigation buttons */
         .mfm-button-deck {
-          border-top: 1px solid rgba(255,255,255,0.04);
-          padding-top: 12px;
+          border-top: 1px solid rgba(255,255,255,0.06);
+          padding-top: 16px;
         }
         .mfm-tactile-btn {
           flex: 1;
-          height: 32px;
+          height: 40px;
           background: linear-gradient(180deg, #374151 0%, #1f2937 100%);
           border: 1px solid #111827;
-          border-radius: 6px;
-          box-shadow: 0 3px 6px rgba(0,0,0,0.5), 
-                      inset 0 1px 2px rgba(255,255,255,0.15);
+          border-radius: 8px;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.55), 
+                      inset 0 1px 2px rgba(255,255,255,0.2);
           cursor: pointer;
           display: flex;
           align-items: center;
@@ -1601,8 +2093,8 @@ const MainMeter = () => {
         }
         .mfm-tactile-btn:active {
           transform: translateY(1.5px);
-          box-shadow: 0 1px 2px rgba(0,0,0,0.6), 
-                      inset 0 1px 4px rgba(0,0,0,0.5);
+          box-shadow: 0 1px 3px rgba(0,0,0,0.6), 
+                      inset 0 1px 4px rgba(0,0,0,0.6);
           background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
         }
         .mfm-tactile-btn:disabled {
@@ -1610,13 +2102,13 @@ const MainMeter = () => {
           cursor: not-allowed;
           pointer-events: none;
           transform: none !important;
-          box-shadow: 0 3px 6px rgba(0,0,0,0.3) !important;
+          box-shadow: 0 4px 8px rgba(0,0,0,0.3) !important;
         }
         .mfm-tactile-btn .btn-glyph {
-          color: #d1d5db;
-          font-size: 0.85rem;
+          color: #e5e7eb;
+          font-size: 1.0rem;
           font-weight: 800;
-          text-shadow: 0 -1px 1px rgba(0,0,0,0.6);
+          text-shadow: 0 -1px 1px rgba(0,0,0,0.7);
         }
 
         @keyframes pulseGlow {
@@ -1654,9 +2146,40 @@ const MainMeter = () => {
             width: 24px !important;
           }
         }
+
+        .scada-gauge-card {
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0%, rgba(0, 0, 0, 0.12) 100%);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+          backdrop-filter: blur(8px);
+          -webkit-backdrop-filter: blur(8px);
+        }
+        .scada-gauge-card:hover {
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(0, 0, 0, 0.08) 100%);
+          border-color: rgba(6, 182, 212, 0.25);
+          transform: translateY(-4px) scale(1.03);
+          box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,255,255,0.08);
+        }
+        @keyframes gaugeAlertPulse {
+          0%, 100% { box-shadow: 0 0 8px rgba(239, 68, 68, 0.2); }
+          50% { box-shadow: 0 0 24px rgba(239, 68, 68, 0.45), 0 0 48px rgba(239, 68, 68, 0.15); }
+        }
+        .gauge-alert-pulse {
+          animation: gaugeAlertPulse 2s ease-in-out infinite;
+        }
+        @keyframes gaugeWarningPulse {
+          0%, 100% { box-shadow: 0 0 6px rgba(245, 158, 11, 0.15); }
+          50% { box-shadow: 0 0 18px rgba(245, 158, 11, 0.35); }
+        }
       `}} />
     </div>
   );
 };
 
-export default MainMeter;
+export default function MainMeterWithErrorBoundary() {
+  return (
+    <ErrorBoundary>
+      <MainMeter />
+    </ErrorBoundary>
+  );
+}
