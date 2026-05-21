@@ -40,13 +40,7 @@ const SiemensStyleDG = () => {
 
   // Initialize state with last known stats from localStorage if available, otherwise fallback to 0/empty
   const getInitialData = (dgName) => {
-    const cached = localStorage.getItem(`dg_last_data_${dgName}`);
-    if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch (e) {}
-    }
-    return {
+    let baseData = {
       voltage: { ry: 0, yb: 0, br: 0, rn: 0, yn: 0, bn: 0 },
       current: { r: 0, y: 0, b: 0, avg: 0 },
       power: { kw: 0, kvar: 0, kva: 0, pf: 0 },
@@ -61,16 +55,35 @@ const SiemensStyleDG = () => {
           lastFill: '-',
           temp: 0 
       },
+      faults: {},
       generation: { today: 0, yesterday: 0, month: 0, morning: 0 }
     };
+
+    const cached = localStorage.getItem(`dg_last_data_${dgName}`);
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        return { ...baseData, ...parsed, faults: parsed.faults || {} };
+      } catch (e) {}
+    }
+    
+    return baseData;
   };
 
   const [data, setData] = useState(() => getInitialData(activeDG));
+  const [templateRevision, setTemplateRevision] = useState(0);
 
   // Sync state when activeDG changes
   useEffect(() => {
     setData(getInitialData(activeDG));
   }, [activeDG]);
+
+  // Listen for template updates from MainLayout fetching
+  useEffect(() => {
+    const handleStorage = () => setTemplateRevision(r => r + 1);
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
 
   // Helper to clean corrupted template keys
   const cleanCorruptedMapping = (obj) => {
@@ -190,6 +203,29 @@ const SiemensStyleDG = () => {
               updated = true;
           }
 
+          // Faults
+          const faultKeys = ['emergencyStop', 'masterTrip', 'overVoltage', 'underVoltage', 'overFrequency', 'underFrequency', 'lowOilLevel', 'overTemp'];
+          faultKeys.forEach(key => {
+            const val = getValue(mapping.dgFaultConfig, key);
+            if (val !== null) { 
+               const warnVal = mapping.dgFaultConfig[`${key}_warn`];
+               const alarmVal = mapping.dgFaultConfig[`${key}_alarm`];
+               const healthyVal = mapping.dgFaultConfig[`${key}_healthy`];
+               
+               const effectiveAlarm = (alarmVal !== undefined && alarmVal !== '') ? String(alarmVal) : '0';
+               const effectiveHealthy = (healthyVal !== undefined && healthyVal !== '') ? String(healthyVal) : '1';
+               const effectiveWarn = (warnVal !== undefined && warnVal !== '') ? String(warnVal) : null;
+
+               let status = 'gray';
+               if (String(val) === effectiveAlarm) status = 'red';
+               else if (effectiveWarn !== null && String(val) === effectiveWarn) status = 'orange';
+               else if (String(val) === effectiveHealthy) status = 'green';
+               
+               newData.faults[key] = { value: val, status: status };
+               updated = true; 
+            }
+          });
+
           if (updated) {
             localStorage.setItem(`dg_last_data_${activeDG}`, JSON.stringify(newData));
             return newData;
@@ -208,7 +244,8 @@ const SiemensStyleDG = () => {
         const configFieldsMap = [
           { config: mapping.dgEngineConfig, fields: ['speed', 'coolant', 'oilPress', 'battery', 'freq', 'runtime'] },
           { config: mapping.dgPowerConfig, fields: ['vL1L2', 'iL1', 'iL2', 'iL3', 'loadKW', 'appKVA', 'pf', 'kwh'] },
-          { config: mapping.dgFuelConfig, fields: ['level'] }
+          { config: mapping.dgFuelConfig, fields: ['level'] },
+          { config: mapping.dgFaultConfig, fields: ['emergencyStop', 'masterTrip', 'overVoltage', 'underVoltage', 'overFrequency', 'underFrequency', 'lowOilLevel', 'overTemp'] }
         ];
 
         configFieldsMap.forEach(({ config, fields }) => {
@@ -247,7 +284,7 @@ const SiemensStyleDG = () => {
         socket.disconnect();
         clearInterval(pollInterval);
     };
-  }, [activeDG]);
+  }, [activeDG, templateRevision]);
 
   const handlePdfDownload = () => {
     setGeneratingPdf(true);
@@ -413,14 +450,42 @@ const SiemensStyleDG = () => {
                 <SectionHeader title="Safety Status" icon={<ShieldAlert size={16} />} color="#ef4444" />
                 <Row className="g-1 px-3 mb-4">
                     {[
-                        'EMERGENCY STOP', 'MASTER TRIP', 'OVER VOLTAGE', 'UNDER VOLTAGE', 'OVER FREQUENCY', 'UNDER FREQUENCY', 'LOW OIL LEVEL', 'OVER TEMP'
-                    ].map((item, i) => (
-                        <Col xs={6} key={i}>
-                            <div className="text-white text-center py-2 fw-black fs-13 border border-white border-opacity-5 uppercase transition-all shadow-sm" style={{fontSize: '0.65rem', backgroundColor: 'rgba(34, 197, 94, 0.12)', letterSpacing: '0.5px'}}>
-                                {item}
-                            </div>
-                        </Col>
-                    ))}
+                        { label: 'EMERGENCY STOP', key: 'emergencyStop' }, 
+                        { label: 'MASTER TRIP / OVERLOAD', key: 'masterTrip' }, 
+                        { label: 'OVER VOLTAGE (HIGH)', key: 'overVoltage' }, 
+                        { label: 'UNDER VOLTAGE (LOW)', key: 'underVoltage' }, 
+                        { label: 'OVER FREQ (OVER SPEED)', key: 'overFrequency' }, 
+                        { label: 'UNDER FREQ (UNDER SPEED)', key: 'underFrequency' }, 
+                        { label: 'LOW OIL LEVEL / PRESS', key: 'lowOilLevel' }, 
+                        { label: 'OVER TEMP (HIGH COOLANT)', key: 'overTemp' }
+                    ].filter(item => {
+                        const saved = localStorage.getItem('scada_templates');
+                        let currentMapping = null;
+                        if (saved) {
+                            try {
+                                const templates = JSON.parse(saved);
+                                const targetModuleName = `DG Set-${activeDG.replace('DG', '')}`;
+                                const template = templates.find(t => t.module === targetModuleName);
+                                if (template) currentMapping = template.mapping;
+                            } catch (e) {}
+                        }
+                        return currentMapping && currentMapping.dgFaultConfig && currentMapping.dgFaultConfig[item.key];
+                    }).map((item, i) => {
+                        const faultObj = data.faults ? data.faults[item.key] : null;
+                        let bgColor = 'rgba(255, 255, 255, 0.05)';
+                        if (faultObj && faultObj.status) {
+                             if (faultObj.status === 'red') bgColor = 'rgba(220, 38, 38, 0.4)';
+                             else if (faultObj.status === 'orange') bgColor = 'rgba(245, 158, 11, 0.4)';
+                             else if (faultObj.status === 'green') bgColor = 'rgba(34, 197, 94, 0.4)';
+                        }
+                        return (
+                            <Col xs={6} key={i}>
+                                <div className="text-white text-center py-2 fw-black fs-13 border border-white border-opacity-5 uppercase transition-all shadow-sm" style={{fontSize: '0.65rem', backgroundColor: bgColor, letterSpacing: '0.5px'}}>
+                                    {item.label}
+                                </div>
+                            </Col>
+                        );
+                    })}
                 </Row>
                 
                 {/* HIGH-POP DG IMAGE */}
