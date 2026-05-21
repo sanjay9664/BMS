@@ -180,7 +180,7 @@ const ConfigTemplates = () => {
   const [dgEngineConfig, setDgEngineConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
   const [dgPowerConfig, setDgPowerConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
   const [dgFuelConfig, setDgFuelConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', level: '', enabled: true });
-  const [dgFaultConfig, setDgFaultConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', emergencyStop: '', failToStart: '', enabled: true });
+  const [dgFaultConfig, setDgFaultConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', emergencyStop: '', emergencyStop_warn: '', emergencyStop_alarm: '', emergencyStop_healthy: '', masterTrip: '', masterTrip_warn: '', masterTrip_alarm: '', masterTrip_healthy: '', overVoltage: '', overVoltage_warn: '', overVoltage_alarm: '', overVoltage_healthy: '', underVoltage: '', underVoltage_warn: '', underVoltage_alarm: '', underVoltage_healthy: '', overFrequency: '', overFrequency_warn: '', overFrequency_alarm: '', overFrequency_healthy: '', underFrequency: '', underFrequency_warn: '', underFrequency_alarm: '', underFrequency_healthy: '', lowOilLevel: '', lowOilLevel_warn: '', lowOilLevel_alarm: '', lowOilLevel_healthy: '', overTemp: '', overTemp_warn: '', overTemp_alarm: '', overTemp_healthy: '', enabled: true });
 
   const [emVoltageConfig, setEmVoltageConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
   const [emCurrentConfig, setEmCurrentConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
@@ -190,6 +190,16 @@ const ConfigTemplates = () => {
   const [emChangeConfig, setEmChangeConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
   const [emWarningConfig, setEmWarningConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
   const [emReadConfig, setEmReadConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+  const [emLimitsConfig, setEmLimitsConfig] = useState({
+    vR: { low: '', normalMin: '', normalMax: '', high: '' },
+    vY: { low: '', normalMin: '', normalMax: '', high: '' },
+    vB: { low: '', normalMin: '', normalMax: '', high: '' },
+    iR: { low: '', normalMin: '', normalMax: '', high: '' },
+    iY: { low: '', normalMin: '', normalMax: '', high: '' },
+    iB: { low: '', normalMin: '', normalMax: '', high: '' },
+    totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+    totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+  });
   const [energyMeteringTarget, setEnergyMeteringTarget] = useState('');
 
   const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
@@ -733,7 +743,7 @@ const ConfigTemplates = () => {
     meterSrno: ['3,150', 'METER SERIAL', 'SERIAL NUMBER', 'SR NO', 'METER SR', 'METER_NO', 'METERSRNO'],
     noOfOverloadCheck: ['3,169', 'OVERLOAD CHECK', 'OL CHECK', 'OVERLOAD_COUNT', 'NOOFOVERLOADCHECK'],
     ebDgStatus: ['3,170', 'EB DG STATUS', 'EB/DG STATUS', 'SOURCE STATUS', 'EB_DG', 'EBDGSTATUS'],
-    ebTariff: ['3,171', 'EB TARIFF', 'GRID TARIFF', 'EB_RATE', 'EBTARIFF'],
+    ebTariff: ['3,160', 'EB TARIFF', 'GRID TARIFF', 'EB_RATE', 'EBTARIFF'],
     dgTariff: ['3,172', 'DG TARIFF', 'GEN RATE', 'DG_RATE', 'DGTARIFF'],
     ebRLoadSet: ['3,173', 'EB R LOAD', 'EB_R_LOAD', 'EB_R_LIMIT', 'EBRLOADSET'],
     ebYLoadSet: ['3,174', 'EB Y LOAD', 'EB_Y_LOAD', 'EB_Y_LIMIT', 'EBYLOADSET'],
@@ -1231,6 +1241,13 @@ const ConfigTemplates = () => {
     if (nameLower.includes('dg app') || (nameLower.includes('apparent') && (nameLower.includes('dg') || nameLower.includes('generator')))) return 'APP (KVA)';
     if (nameLower.includes('fuel level') || nameLower.includes('diesel level') || keyLower.includes('fuel') || keyLower.includes('diesel')) return 'FUEL LEVEL (%)';
     if (nameLower.includes('emergency stop') || keyLower.includes('emergencystop') || keyLower.includes('estop')) return 'EMERGENCY STOP';
+    if (nameLower.includes('master trip') || keyLower.includes('mastertrip')) return 'MASTER TRIP';
+    if (nameLower.includes('over voltage') || keyLower.includes('overvoltage') || nameLower.includes('high voltage') || keyLower.includes('highvoltage')) return 'OVER VOLTAGE';
+    if (nameLower.includes('under voltage') || keyLower.includes('undervoltage') || nameLower.includes('low voltage') || keyLower.includes('lowvoltage')) return 'UNDER VOLTAGE';
+    if (nameLower.includes('over frequency') || keyLower.includes('overfrequency') || nameLower.includes('high frequency') || keyLower.includes('highfrequency') || nameLower.includes('over speed')) return 'OVER FREQUENCY';
+    if (nameLower.includes('under frequency') || keyLower.includes('underfrequency') || nameLower.includes('low frequency') || keyLower.includes('lowfrequency') || nameLower.includes('under speed')) return 'UNDER FREQUENCY';
+    if (nameLower.includes('low oil level') || keyLower.includes('lowoillevel') || nameLower.includes('low oil pressure')) return 'LOW OIL LEVEL';
+    if (nameLower.includes('over temp') || keyLower.includes('overtemp') || nameLower.includes('high coolant temperature') || nameLower.includes('high coolant')) return 'OVER TEMP';
     if (nameLower.includes('fail to start') || keyLower.includes('failtostart')) return 'FAIL TO START';
 
     // Check mapping categories
@@ -1265,7 +1282,8 @@ const ConfigTemplates = () => {
 
   const fetchDeviceDetails = async (deviceId) => {
     console.log('Fetching details for device:', deviceId);
-    if (!deviceId || deviceDetails[deviceId]) return;
+    if (!deviceId) return null;
+    if (deviceDetails[deviceId]) return deviceDetails[deviceId].modules;
     try {
       const data = await getSochiotDeviceDetails(deviceId);
       if (data) {
@@ -1296,10 +1314,12 @@ const ConfigTemplates = () => {
           ...prev,
           [deviceId]: { modules: moduleMap }
         }));
+        return moduleMap;
       }
     } catch (error) {
       console.error('Error fetching device details:', error);
     }
+    return null;
   };
 
   const handleConfigChange = async (config, setter, key, value) => {
@@ -1429,7 +1449,7 @@ const ConfigTemplates = () => {
           ...prev,
           building: value,
           device: '',
-          emergencyStop: '', failToStart: ''
+          emergencyStop: '', masterTrip: '', overVoltage: '', underVoltage: '', overFrequency: '', underFrequency: '', lowOilLevel: '', overTemp: ''
         }));
       } else if (key === 'device') {
         setDgEngineConfig(prev => ({ ...prev, device: value }));
@@ -1449,7 +1469,50 @@ const ConfigTemplates = () => {
           }
         }
       } else if (key === 'device') {
-        if (value) fetchDeviceDetails(value);
+        if (value) {
+          fetchDeviceDetails(value).then(modules => {
+            if (modules && [setDgEngineConfig, setDgPowerConfig, setDgFuelConfig, setDgFaultConfig].includes(setter) && !isEMConfig) {
+               const allFields = [];
+               Object.values(modules).forEach(m => {
+                  (m.fields || []).forEach(f => {
+                     allFields.push({ ...f, id: `${m.id}::${f.id}` });
+                  });
+               });
+               
+               const findField = (suggestionKey) => {
+                  return allFields.find(f => f.label.includes(suggestionKey))?.id || '';
+               };
+
+               setDgFaultConfig(prev => ({
+                  ...prev,
+                  emergencyStop: prev.emergencyStop || findField('EMERGENCY STOP'),
+                  emergencyStop_alarm: prev.emergencyStop_alarm || '0',
+                  emergencyStop_healthy: prev.emergencyStop_healthy || '1',
+                  masterTrip: prev.masterTrip || findField('MASTER TRIP'),
+                  masterTrip_alarm: prev.masterTrip_alarm || '0',
+                  masterTrip_healthy: prev.masterTrip_healthy || '1',
+                  overVoltage: prev.overVoltage || findField('OVER VOLTAGE'),
+                  overVoltage_alarm: prev.overVoltage_alarm || '0',
+                  overVoltage_healthy: prev.overVoltage_healthy || '1',
+                  underVoltage: prev.underVoltage || findField('UNDER VOLTAGE'),
+                  underVoltage_alarm: prev.underVoltage_alarm || '0',
+                  underVoltage_healthy: prev.underVoltage_healthy || '1',
+                  overFrequency: prev.overFrequency || findField('OVER FREQUENCY'),
+                  overFrequency_alarm: prev.overFrequency_alarm || '0',
+                  overFrequency_healthy: prev.overFrequency_healthy || '1',
+                  underFrequency: prev.underFrequency || findField('UNDER FREQUENCY'),
+                  underFrequency_alarm: prev.underFrequency_alarm || '0',
+                  underFrequency_healthy: prev.underFrequency_healthy || '1',
+                  lowOilLevel: prev.lowOilLevel || findField('LOW OIL LEVEL'),
+                  lowOilLevel_alarm: prev.lowOilLevel_alarm || '0',
+                  lowOilLevel_healthy: prev.lowOilLevel_healthy || '1',
+                  overTemp: prev.overTemp || findField('OVER TEMP'),
+                  overTemp_alarm: prev.overTemp_alarm || '0',
+                  overTemp_healthy: prev.overTemp_healthy || '1'
+               }));
+            }
+          });
+        }
       }
       return;
     }
@@ -2150,7 +2213,7 @@ const ConfigTemplates = () => {
     } else if (selectedCategory === 'Energy Metering' || selectedModule === 'Main Meter' || selectedModule === 'Sub Meters') {
       mapping = {
         emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
-        emChangeConfig, emWarningConfig, emReadConfig, energyMeteringTarget
+        emChangeConfig, emWarningConfig, emReadConfig, emLimitsConfig, energyMeteringTarget
       };
     } else {
       // Fallback
@@ -2318,6 +2381,16 @@ const ConfigTemplates = () => {
     setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
     setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
     setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+    setEmLimitsConfig({
+      vR: { low: '', normalMin: '', normalMax: '', high: '' },
+      vY: { low: '', normalMin: '', normalMax: '', high: '' },
+      vB: { low: '', normalMin: '', normalMax: '', high: '' },
+      iR: { low: '', normalMin: '', normalMax: '', high: '' },
+      iY: { low: '', normalMin: '', normalMax: '', high: '' },
+      iB: { low: '', normalMin: '', normalMax: '', high: '' },
+      totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+      totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+    });
     setEnergyMeteringTarget('');
     setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
@@ -2405,7 +2478,7 @@ const ConfigTemplates = () => {
       setDgEngineConfig({ ...template.mapping.dgEngineConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
       setDgPowerConfig({ ...template.mapping.dgPowerConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
       setDgFuelConfig({ ...template.mapping.dgFuelConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', level: '', enabled: true });
-      setDgFaultConfig({ ...template.mapping.dgFaultConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', failToStart: '', enabled: true });
+      setDgFaultConfig({ ...template.mapping.dgFaultConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', masterTrip: '', overVoltage: '', underVoltage: '', overFrequency: '', underFrequency: '', lowOilLevel: '', overTemp: '', enabled: true });
       setEmVoltageConfig(template.mapping.emVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
       setEmCurrentConfig(template.mapping.emCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
       setEmPowerConfig(template.mapping.emPowerConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
@@ -2414,6 +2487,16 @@ const ConfigTemplates = () => {
       setEmChangeConfig(template.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
       setEmWarningConfig(template.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
       setEmReadConfig(template.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+      setEmLimitsConfig(template.mapping.emLimitsConfig || {
+        vR: { low: '', normalMin: '', normalMax: '', high: '' },
+        vY: { low: '', normalMin: '', normalMax: '', high: '' },
+        vB: { low: '', normalMin: '', normalMax: '', high: '' },
+        iR: { low: '', normalMin: '', normalMax: '', high: '' },
+        iY: { low: '', normalMin: '', normalMax: '', high: '' },
+        iB: { low: '', normalMin: '', normalMax: '', high: '' },
+        totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+        totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+      });
       setEnergyMeteringTarget(template.mapping.energyMeteringTarget || '');
       setUgConfig(template.mapping.ugConfig || {
         integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
@@ -2600,6 +2683,16 @@ const ConfigTemplates = () => {
                 setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                 setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                 setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                setEmLimitsConfig({
+                  vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                });
                 setEnergyMeteringTarget('');
                 setTemplateName('');
 
@@ -2656,6 +2749,16 @@ const ConfigTemplates = () => {
                 setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                 setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                 setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                setEmLimitsConfig({
+                  vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                  iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                  totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                });
                 setEnergyMeteringTarget('');
                 setTemplateName('');
                 
@@ -3898,6 +4001,16 @@ const ConfigTemplates = () => {
                               setEmChangeConfig(existing.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                               setEmWarningConfig(existing.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                               setEmReadConfig(existing.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                              setEmLimitsConfig(existing.mapping.emLimitsConfig || {
+                                vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                              });
                               if (existing.mapping.globalHierarchy) setGlobalLocation(existing.mapping.globalHierarchy);
                             } else {
                               setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
@@ -3908,6 +4021,16 @@ const ConfigTemplates = () => {
                               setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
                               setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                               setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                              setEmLimitsConfig({
+                                vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                                totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                              });
                             }
                           }}
                         >
@@ -4069,6 +4192,117 @@ const ConfigTemplates = () => {
                             </Col>
                           ))}
                         </Row>
+
+                        <div className="mt-4 p-4 rounded-4 bg-dark bg-opacity-40 border border-info border-opacity-10 premium-figma-card position-relative overflow-hidden transition-all hover-glow-info">
+                          <div className="card-inner-glow bg-info opacity-5"></div>
+                          <div className="mb-4 d-flex align-items-center justify-content-between">
+                            <div className="d-flex align-items-center gap-3">
+                              <div className="icon-box-premium info p-2 shadow-glow-info">
+                                <Settings size={18} />
+                              </div>
+                              <div>
+                                <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">Threshold Limits Configuration</h6>
+                                <small className="text-info opacity-50 uppercase fs-12 fw-bold tracking-widest">Alarm & Warning Ranges</small>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="position-relative z-1">
+                            <Row className="g-3">
+                              {[
+                                { label: 'R-PHASE VOLTAGE (V)', key: 'vR' },
+                                { label: 'Y-PHASE VOLTAGE (V)', key: 'vY' },
+                                { label: 'B-PHASE VOLTAGE (V)', key: 'vB' },
+                                { label: 'R-CURRENT (A)', key: 'iR' },
+                                { label: 'Y-CURRENT (A)', key: 'iY' },
+                                { label: 'B-CURRENT (A)', key: 'iB' },
+                                { label: 'ACTIVE POWER (kW)', key: 'totalKw' },
+                                { label: 'APPARENT POWER (kVA)', key: 'totalKva' }
+                              ].map((param, pIdx) => (
+                                <Col md={12} key={pIdx} className="mb-3 p-3 rounded bg-dark bg-opacity-20 border border-white border-opacity-5">
+                                  <Row className="align-items-center">
+                                    <Col lg={4} md={12} className="mb-2 mb-lg-0">
+                                      <span className="text-white fw-black uppercase tracking-widest fs-10">{param.label}</span>
+                                    </Col>
+                                    <Col lg={8} md={12}>
+                                      <Row className="g-2">
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">below</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="Low"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.low || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], low: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">Normal Min</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="Min"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.normalMin || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], normalMin: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">Normal Max</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="Max"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.normalMax || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], normalMax: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                        <Col xs={3}>
+                                          <Form.Label className="fs-9 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">above</Form.Label>
+                                          <input
+                                            type="number"
+                                            placeholder="High"
+                                            className="premium-input p-2 fs-10 fw-bold border-info border-opacity-20 shadow-inner text-white w-100"
+                                            style={{ height: '35px', background: 'rgba(255, 255, 255, 0.03)' }}
+                                            value={emLimitsConfig[param.key]?.high || ''}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setEmLimitsConfig(prev => ({
+                                                ...prev,
+                                                [param.key]: { ...prev[param.key], high: val }
+                                              }));
+                                            }}
+                                          />
+                                        </Col>
+                                      </Row>
+                                    </Col>
+                                  </Row>
+                                </Col>
+                              ))}
+                            </Row>
+                          </div>
+                        </div>
+
                       </div>
                     ) : (
                       <Card className="bg-dark bg-opacity-20 border border-white border-opacity-5 rounded-4 p-5 text-center">
@@ -4092,7 +4326,7 @@ const ConfigTemplates = () => {
                           { title: 'Engine Health', state: dgEngineConfig, setter: setDgEngineConfig, icon: <Activity size={18} />, color: 'info', fields: [{ label: 'SPEED (RPM)', key: 'speed' }, { label: 'COOLANT TEMP', key: 'coolant' }, { label: 'OIL PRESSURE', key: 'oilPress' }, { label: 'BATTERY V', key: 'battery' }, { label: 'FREQ (Hz)', key: 'freq' }, { label: 'RUN TIME (Hrs)', key: 'runtime' }] },
                           { title: 'Power Matrix', state: dgPowerConfig, setter: setDgPowerConfig, icon: <Zap size={18} />, color: 'warning', fields: [{ label: 'L1-L2 VOLTS', key: 'vL1L2' }, { label: 'L1 AMPS', key: 'iL1' }, { label: 'L2 AMPS', key: 'iL2' }, { label: 'L3 AMPS', key: 'iL3' }, { label: 'LOAD (KW)', key: 'loadKW' }, { label: 'APP (KVA)', key: 'appKVA' }, { label: 'POWER FACTOR', key: 'pf' }, { label: 'KWH TOTAL', key: 'kwh' }] },
                           { title: 'Fuel Management', state: dgFuelConfig, setter: setDgFuelConfig, icon: <Droplets size={18} />, color: 'success', fields: [{ label: 'FUEL LEVEL (%)', key: 'level' }] },
-                          { title: 'Fault & Status', state: dgFaultConfig, setter: setDgFaultConfig, icon: <AlertTriangle size={18} />, color: 'danger', fields: [{ label: 'EMERGENCY STOP', key: 'emergencyStop' }, { label: 'FAIL TO START', key: 'failToStart' }] }
+                          { title: 'Fault & Status', state: dgFaultConfig, setter: setDgFaultConfig, icon: <AlertTriangle size={18} />, color: 'danger', fields: [{ label: 'EMERGENCY STOP', key: 'emergencyStop' }, { label: 'MASTER TRIP / OVERLOAD', key: 'masterTrip' }, { label: 'OVER VOLTAGE (HIGH)', key: 'overVoltage' }, { label: 'UNDER VOLTAGE (LOW)', key: 'underVoltage' }, { label: 'OVER FREQ (OVER SPEED)', key: 'overFrequency' }, { label: 'UNDER FREQ (UNDER SPEED)', key: 'underFrequency' }, { label: 'LOW OIL LEVEL / PRESS', key: 'lowOilLevel' }, { label: 'OVER TEMP (HIGH COOLANT)', key: 'overTemp' }] }
                         ].map((section, idx) => (
                           <Col md={6} key={idx}>
                             <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-${section.color}`}>
@@ -4164,6 +4398,19 @@ const ConfigTemplates = () => {
                                                     <option key={opt.id} value={opt.id}>{opt.label}</option>
                                                   ))}
                                                 </Form.Select>
+                                                {section.title === 'Fault & Status' && (
+                                                  <div className="d-flex gap-2 mt-2">
+                                                    <div className="flex-fill">
+                                                      <Form.Control size="sm" placeholder="Warn (e.g. 1)" className="premium-input bg-dark border-warning border-opacity-50 text-warning fs-10" value={section.state[`${f.key}_warn`] || ''} onChange={(e) => section.setter(prev => ({ ...prev, [`${f.key}_warn`]: e.target.value }))} title="Warning State Value (Orange)" />
+                                                    </div>
+                                                    <div className="flex-fill">
+                                                      <Form.Control size="sm" placeholder="Alarm (e.g. 0)" className="premium-input bg-dark border-danger border-opacity-50 text-danger fs-10" value={section.state[`${f.key}_alarm`] || ''} onChange={(e) => section.setter(prev => ({ ...prev, [`${f.key}_alarm`]: e.target.value }))} title="Alarm State Value (Red)" />
+                                                    </div>
+                                                    <div className="flex-fill">
+                                                      <Form.Control size="sm" placeholder="Healthy (e.g. 1)" className="premium-input bg-dark border-success border-opacity-50 text-success fs-10" value={section.state[`${f.key}_healthy`] || ''} onChange={(e) => section.setter(prev => ({ ...prev, [`${f.key}_healthy`]: e.target.value }))} title="Healthy State Value (Green)" />
+                                                    </div>
+                                                  </div>
+                                                )}
                                               </div>
                                             );
                                           })}
