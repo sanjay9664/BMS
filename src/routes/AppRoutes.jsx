@@ -17,6 +17,12 @@ import ConfigTemplates from '../pages/Configuration/Templates';
 import SuperAdminConfig from '../pages/SuperAdmin/SuperAdminConfig';
 import UserManagement from '../pages/Admin/UserManagement';
 
+// Energy Metering Pages
+import EnergyOverview from '../pages/EnergyMetering/Overview';
+import EnergyMainMeter from '../pages/EnergyMetering/MainMeter';
+import EnergySubMeters from '../pages/EnergyMetering/SubMeters';
+import EnergyPDFReport from '../pages/EnergyMetering/PDFReport';
+
 // Fallback for other routes until customized
 const PlaceholderPage = ({ title }) => (
   <div className="fade-in">
@@ -121,6 +127,12 @@ const AppRoutes = () => {
 
       {/* Ticketing */}
       <Route path="/ticketing" element={<TicketingSystem />} />
+
+      {/* Energy Metering */}
+      <Route path="/energy-metering/overview" element={<EnergyOverview />} />
+      <Route path="/energy-metering/main" element={<EnergyMainMeter />} />
+      <Route path="/energy-metering/sub" element={<EnergySubMeters />} />
+      <Route path="/energy-metering/report" element={<EnergyPDFReport />} />
 
       {/* Catch-all */}
       <Route path="*" element={<PlaceholderPage title="Module Under Calibration" />} />

@@ -20,7 +20,8 @@ const defaultSubmoduleVisibility = {
   showFirePumps: { Overview: true, 'Pump Status': true, 'Header Pressure': true, 'Jockey / Main': true, 'PDF Report': true },
   showMaintenance: { Scheduled: true, 'Pending Tasks': true, 'PDF Report': true },
   showServiceHistory: { 'Equipment-wise': true, 'Service Records': true, 'PDF Report': true },
-  showDailyDPR: { 'Data Aggregation': true, 'Daily Logs': true, 'PDF Report': true }
+  showDailyDPR: { 'Data Aggregation': true, 'Daily Logs': true, 'PDF Report': true },
+  showEnergyMetering: { Overview: true, 'Main Meter': true, 'Sub Meters': true, 'PDF Report': true }
 };
 
 const defaultConfig = {
@@ -37,6 +38,7 @@ const defaultConfig = {
   showMaintenance: true,
   showServiceHistory: true,
   showDailyDPR: true,
+  showEnergyMetering: true,
   submoduleVisibility: defaultSubmoduleVisibility
 };
 
@@ -53,7 +55,8 @@ const moduleDetails = {
   showTicketing: { label: 'Ticketing', icon: <ClipboardList size={18} />, subItems: [] },
   showMaintenance: { label: 'Maintenance', icon: <PenTool size={18} />, subItems: ['Scheduled', 'Pending Tasks', 'PDF Report'] },
   showServiceHistory: { label: 'Service History', icon: <History size={18} />, subItems: ['Equipment-wise', 'Service Records', 'PDF Report'] },
-  showDailyDPR: { label: 'Daily DPR', icon: <Gauge size={18} />, subItems: ['Data Aggregation', 'Daily Logs', 'PDF Report'] }
+  showDailyDPR: { label: 'Daily DPR', icon: <Gauge size={18} />, subItems: ['Data Aggregation', 'Daily Logs', 'PDF Report'] },
+  showEnergyMetering: { label: 'Energy Metering', icon: <Zap size={18} />, subItems: ['Overview', 'Main Meter', 'Sub Meters', 'PDF Report'] }
 };
 
 const mergeConfig = (rawConfig = {}) => ({
@@ -282,7 +285,7 @@ const SuperAdminConfig = () => {
         "Maintenance": tenantConfig.showMaintenance,
         "Service History": tenantConfig.showServiceHistory,
         "Daily DPR": tenantConfig.showDailyDPR,
-
+        "Energy Metering": tenantConfig.showEnergyMetering,
       };
 
       localStorage.setItem('scada_modules_config', JSON.stringify(sidebarMapping));
@@ -327,7 +330,7 @@ const SuperAdminConfig = () => {
         "Maintenance": tenantConfig.showMaintenance,
         "Service History": tenantConfig.showServiceHistory,
         "Daily DPR": tenantConfig.showDailyDPR,
-
+        "Energy Metering": tenantConfig.showEnergyMetering,
       };
 
       localStorage.setItem('scada_modules_config', JSON.stringify(sidebarMapping));

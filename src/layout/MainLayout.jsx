@@ -41,6 +41,7 @@ const MainLayout = ({ children }) => {
             "Maintenance": globalConfig.showMaintenance,
             "Service History": globalConfig.showServiceHistory,
             "Daily DPR": globalConfig.showDailyDPR,
+            "Energy Metering": globalConfig.showEnergyMetering,
           };
           localStorage.setItem('scada_modules_config', JSON.stringify(sidebarModules));
           localStorage.setItem('scada_submodules_config', JSON.stringify(globalConfig.submoduleVisibility || {}));

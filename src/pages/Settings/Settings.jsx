@@ -16,7 +16,8 @@ const Settings = () => {
     "Ticketing": true,
     "Maintenance": true,
     "Service History": true,
-    "Daily DPR": true
+    "Daily DPR": true,
+    "Energy Metering": true
   };
 
   const [saving, setSaving] = useState(false);
@@ -43,7 +44,8 @@ const Settings = () => {
           showTicketing: 'Ticketing',
           showMaintenance: 'Maintenance',
           showServiceHistory: 'Service History',
-          showDailyDPR: 'Daily DPR'
+          showDailyDPR: 'Daily DPR',
+          showEnergyMetering: 'Energy Metering'
         };
 
         const sidebarModules = {};
@@ -89,7 +91,8 @@ const Settings = () => {
         'Ticketing': 'showTicketing',
         'Maintenance': 'showMaintenance',
         'Service History': 'showServiceHistory',
-        'Daily DPR': 'showDailyDPR'
+        'Daily DPR': 'showDailyDPR',
+        'Energy Metering': 'showEnergyMetering'
       };
 
       const backendConfig = {};

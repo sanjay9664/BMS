@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Row, Col, Card, Form, Button, Badge, Modal } from 'react-bootstrap';
 import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle, MapPin, AlertTriangle } from 'lucide-react';
 import { loginToSochiot, getSochiotUserMe, getSochiotLocationData, getSochiotDeviceDetails, getSochiotZoneData } from '../../services/authService';
@@ -182,6 +182,16 @@ const ConfigTemplates = () => {
   const [dgFuelConfig, setDgFuelConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', level: '', enabled: true });
   const [dgFaultConfig, setDgFaultConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', emergencyStop: '', failToStart: '', enabled: true });
 
+  const [emVoltageConfig, setEmVoltageConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+  const [emCurrentConfig, setEmCurrentConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+  const [emPowerConfig, setEmPowerConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+  const [emSystemConfig, setEmSystemConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+  const [emConsumptionConfig, setEmConsumptionConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+  const [emChangeConfig, setEmChangeConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+  const [emWarningConfig, setEmWarningConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+  const [emReadConfig, setEmReadConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+  const [energyMeteringTarget, setEnergyMeteringTarget] = useState('');
+
   const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
   const [pressureTarget, setPressureTarget] = useState('');
   const [electricalTarget, setElectricalTarget] = useState('');
@@ -236,6 +246,15 @@ const ConfigTemplates = () => {
     { name: 'PUMP 02 METER', id: 'EM-P2' }
   ];
 
+  const energyMetersList = [
+    { name: 'MAIN GRID INCOMER METER', id: 'EM-MAIN' },
+    { name: 'COMMERCIAL WING A INCOMER', id: 'SM-WING-A-01' },
+    { name: 'DATA CENTER MAIN UPS INPUT', id: 'SM-SERVER-02' },
+    { name: 'WATER PLANT & UTILITY MOTORS ROOM', id: 'SM-UTILITY-03' },
+    { name: 'HVAC CHILLER MAIN FEEDER', id: 'SM-HVAC-04' },
+    { name: 'OUTDOOR STREET & PARKING LIGHTS', id: 'SM-LIGHT-05' }
+  ];
+
   const isHierarchyUnlocked = useMemo(() => {
     return !!(globalLocation.organization || globalLocation.client || globalLocation.zone || globalLocation.subZone || globalLocation.building);
   }, [globalLocation]);
@@ -265,9 +284,16 @@ const ConfigTemplates = () => {
     if (selectedModule && selectedModule.startsWith('DG Set')) {
       return [dgEngineConfig.module, dgPowerConfig.module, dgFuelConfig.module, dgFaultConfig.module].filter(m => m);
     }
+    if (selectedCategory === 'Energy Metering' || selectedModule === 'Main Meter' || selectedModule === 'Sub Meters') {
+      return [
+        emVoltageConfig.module, emCurrentConfig.module, emPowerConfig.module, emSystemConfig.module, emConsumptionConfig.module,
+        emChangeConfig.module, emWarningConfig.module, emReadConfig.module
+      ].filter(m => m);
+    }
     return [];
   }, [
     selectedModule,
+    selectedCategory,
     agLowerConfig.module, agUpperConfig.module, agAutoConfig.module,
     agManualConfig.module, agBypassConfig.module, agLevelConfig.module,
     agOpenConfig.module, agCloseConfig.module,
@@ -276,7 +302,9 @@ const ConfigTemplates = () => {
     ugStartPressConfig.module, ugStopPressConfig.module,
     ugLocalModeConfig.module, ugRemoteModeConfig.module,
     ugTankLevelConfig.module, pressureConfig.module,
-    dgEngineConfig.module, dgPowerConfig.module, dgFuelConfig.module, dgFaultConfig.module
+    dgEngineConfig.module, dgPowerConfig.module, dgFuelConfig.module, dgFaultConfig.module,
+    emVoltageConfig.module, emCurrentConfig.module, emPowerConfig.module, emSystemConfig.module, emConsumptionConfig.module,
+    emChangeConfig.module, emWarningConfig.module, emReadConfig.module
   ]);
 
   const handleUgPumpNoChange = (no) => {
@@ -654,7 +682,9 @@ const ConfigTemplates = () => {
       ugStartPressConfig, ugStopPressConfig, ugLocalModeConfig, ugRemoteModeConfig,
       ugTankLevelConfig, pressureConfig,
       elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig,
-      dgEngineConfig, dgPowerConfig, dgFuelConfig, dgFaultConfig
+      dgEngineConfig, dgPowerConfig, dgFuelConfig, dgFaultConfig,
+      emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
+      emChangeConfig, emWarningConfig, emReadConfig
     ];
 
     configsToWatch.forEach(config => {
@@ -674,8 +704,564 @@ const ConfigTemplates = () => {
     ugStartPressConfig, ugStopPressConfig, ugLocalModeConfig, ugRemoteModeConfig,
     ugTankLevelConfig, pressureConfig,
     elecVoltageConfig, elecCurrentConfig, elecSystemConfig, elecConsumptionConfig,
-    locationIdMap, locationDetails, deviceDetails
+    locationIdMap, locationDetails, deviceDetails,
+    emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
+    emChangeConfig, emWarningConfig, emReadConfig,
+    dgEngineConfig, dgPowerConfig, dgFuelConfig, dgFaultConfig
   ]);
+
+  const PARAMETER_SYNONYMS = {
+    ebKwh: ['3,151', '3,152', '4,91F', 'EB KWH', 'EB_KWH', 'EB ACTIVE ENERGY', 'CONSUMPTION', 'ACTIVE ENERGY', 'CUMULATIVE KWH', 'CUMULATIVE_KWH'],
+    ebKvah: ['3,152', '3,157', '4,93F', 'EB KVAH', 'EB_KVAH', 'APPARENT ENERGY'],
+    balance: ['3,162', '3,168', 'BALANCE', 'PREPAID BALANCE', 'AMT', 'AMOUNT', 'CREDIT', 'PREPAID_BALANCE'],
+    totalKw: ['3,190', '3,151', 'TOTAL KW', 'TOTAL_KW', 'ACTIVE POWER', 'DEMAND', 'LOAD KW', 'ACTIVE_POWER'],
+    totalKva: ['3,191', 'TOTAL KVA', 'TOTAL_KVA', 'APPARENT POWER', 'LOAD KVA', 'APPARENT_POWER'],
+    vR: ['3,168', '3,163', 'VOLTAGE R', 'VOLTAGE_R', 'VR', 'V_R', 'UA', 'U1', 'LINE VOLTS (R)', 'VOLTAGE R-PHASE'],
+    vY: ['3,169', '3,164', 'VOLTAGE Y', 'VOLTAGE_Y', 'VY', 'V_Y', 'UB', 'U2', 'LINE VOLTS (Y)', 'VOLTAGE Y-PHASE'],
+    vB: ['3,170', '3,165', 'VOLTAGE B', 'VOLTAGE_B', 'VB', 'V_B', 'UC', 'U3', 'LINE VOLTS (B)', 'VOLTAGE B-PHASE'],
+    iR: ['3,171', '3,166', 'CURRENT R', 'CURRENT_R', 'IR', 'I_R', 'IA', 'A1', 'LINE AMPS (R)', 'R-CURRENT'],
+    iY: ['3,172', '3,167', 'CURRENT Y', 'CURRENT_Y', 'IY', 'I_Y', 'IB', 'A2', 'LINE AMPS (Y)', 'Y-CURRENT'],
+    iB: ['3,173', '3,168', 'CURRENT B', 'CURRENT_B', 'IB', 'I_B', 'IC', 'A3', 'LINE AMPS (B)', 'B-CURRENT'],
+    pf: ['3,174', 'POWER FACTOR', 'PF', 'SYSTEM PF', 'POWER_FACTOR'],
+    dgKwh: ['3,180', '3,181', 'DG KWH', 'DG_KWH', 'DG ACTIVE', 'DG ENERGY', 'GENERATOR ENERGY'],
+    fixedCharge: ['3,163', 'FIXED CHARGE', 'FIXED_CHARGE', 'CHARGES'],
+    lowBalanceCut: ['3,164', 'LOW BALANCE', 'BALANCE CUT', 'LOW_BAL', 'LOW_BALANCE_CUT'],
+    overloadTrip: ['3,165', 'OVERLOAD TRIP', 'OL TRIP', 'OVERLOAD_TRIP', 'OVERLOAD TRIP STATUS'],
+    overloadLimitReached: ['3,166', 'OVERLOAD LIMIT', 'OL LIMIT', 'OVERLOAD_WARN', 'OVERLOAD LIMIT REACHED'],
+    connectedStatus: ['3,167', 'CONNECTED STATUS', 'RELAY STATUS', 'BREAKER STATUS', 'CONNECTED', 'CONNECTED_STATUS'],
+    forceOff: ['3,168', 'FORCE OFF', 'REMOTE TRIP', 'FORCE_OFF', 'FORCE_OFF_STATUS'],
+    meterSrno: ['3,150', 'METER SERIAL', 'SERIAL NUMBER', 'SR NO', 'METER SR', 'METER_NO', 'METERSRNO'],
+    noOfOverloadCheck: ['3,169', 'OVERLOAD CHECK', 'OL CHECK', 'OVERLOAD_COUNT', 'NOOFOVERLOADCHECK'],
+    ebDgStatus: ['3,170', 'EB DG STATUS', 'EB/DG STATUS', 'SOURCE STATUS', 'EB_DG', 'EBDGSTATUS'],
+    ebTariff: ['3,171', 'EB TARIFF', 'GRID TARIFF', 'EB_RATE', 'EBTARIFF'],
+    dgTariff: ['3,172', 'DG TARIFF', 'GEN RATE', 'DG_RATE', 'DGTARIFF'],
+    ebRLoadSet: ['3,173', 'EB R LOAD', 'EB_R_LOAD', 'EB_R_LIMIT', 'EBRLOADSET'],
+    ebYLoadSet: ['3,174', 'EB Y LOAD', 'EB_Y_LOAD', 'EB_Y_LIMIT', 'EBYLOADSET'],
+    ebBLoadSet: ['3,175', 'EB B LOAD', 'EB_B_LOAD', 'EB_B_LIMIT', 'EBBLOADSET'],
+    dgRLoadSet: ['3,176', 'DG R LOAD', 'DG_R_LOAD', 'DG_R_LIMIT', 'DGRLOADSET'],
+    dgYLoadSet: ['3,177', 'DG Y LOAD', 'DG_Y_LOAD', 'DG_Y_LIMIT', 'DGYLOADSET'],
+    dgBLoadSet: ['3,178', 'DG B LOAD', 'DG_B_LOAD', 'DG_B_LIMIT', 'DGBLOADSET'],
+    activePower: ['3,190', '3,151', 'TOTAL KW', 'TOTAL_KW', 'ACTIVE POWER', 'DEMAND', 'LOAD KW', 'ACTIVE_POWER'],
+    reactivePower: ['3,192', 'REACTIVE POWER', 'REACTIVE_POWER'],
+    apparentPower: ['3,191', 'TOTAL KVA', 'TOTAL_KVA', 'APPARENT POWER', 'LOAD KVA', 'APPARENT_POWER'],
+    cumulativekWh: ['3,151', '3,152', '4,91F', 'EB KWH', 'EB_KWH', 'EB ACTIVE ENERGY', 'CONSUMPTION', 'ACTIVE ENERGY', 'CUMULATIVE KWH', 'CUMULATIVE_KWH'],
+    freq: ['3,153', 'FREQUENCY', 'FREQ', '50HZ', 'F', 'HZ'],
+    speed: ['SPEED', 'RPM', 'ENGINE SPEED', 'SPEED (RPM)', 'SPEED_RPM'],
+    coolant: ['COOLANT', 'COOLANT TEMP', 'COOLANT TEMPERATURE', 'COOLANT_TEMP', 'WT'],
+    oilPress: ['OIL PRESSURE', 'OIL PRESS', 'OP', 'OIL_PRESS', 'LOP'],
+    battery: ['BATTERY', 'BATTERY V', 'BATTERY VOLTAGE', 'BATTERY_V', 'BATTERY_VOLTAGE', 'BAT_V'],
+    runtime: ['RUN TIME', 'RUNTIME', 'RUN TIME (Hrs)', 'RUN_TIME', 'HRS', 'HOURS'],
+    vL1L2: ['L1-L2 VOLTS', 'L1-L2 VOLTAGE', 'VOLTS L1-L2', 'V_L1_L2', 'VL1L2'],
+    iL1: ['L1 AMPS', 'L1 CURRENT', 'AMPS L1', 'I_L1', 'IL1'],
+    iL2: ['L2 AMPS', 'L2 CURRENT', 'AMPS L2', 'I_L2', 'IL2'],
+    iL3: ['L3 AMPS', 'L3 CURRENT', 'AMPS L3', 'I_L3', 'IL3'],
+    loadKW: ['LOAD (KW)', 'LOAD KW', 'ACTIVE POWER', 'DG KW', 'LOAD_KW'],
+    appKVA: ['APP (KVA)', 'APP KVA', 'APPARENT POWER', 'DG KVA', 'LOAD_KVA'],
+    level: ['FUEL LEVEL (%)', 'FUEL LEVEL', 'DIESEL LEVEL', 'FUEL_LEVEL', 'LEVEL', 'DIESEL_LEVEL'],
+    emergencyStop: ['EMERGENCY STOP', 'ESTOP', 'EMERGENCY_STOP'],
+    failToStart: ['FAIL TO START', 'FAIL_TO_START']
+  };
+
+  const lastAutofilledDevice = useRef('');
+  const lastAutofilledElec = useRef('');
+  const lastAutofilledDg = useRef('');
+
+  // Auto-populate modules and all parameters fields when deviceDetails or selected device changes
+  useEffect(() => {
+    // 1. ENERGY METERING AUTO-FILL
+    const activeDevice = emChangeConfig.device || emWarningConfig.device || emReadConfig.device || emVoltageConfig.device;
+    if (activeDevice) {
+      const devInfo = deviceDetails[activeDevice];
+      if (devInfo && devInfo.modules) {
+        const isNewDevice = lastAutofilledDevice.current !== activeDevice;
+        const modulesList = Object.values(devInfo.modules);
+        let changeModule = modulesList.find(m => m.name && m.name.toUpperCase().includes('CHANGE'));
+        let warningModule = modulesList.find(m => m.name && m.name.toUpperCase().includes('WARNING'));
+        let readModule = modulesList.find(m => m.name && m.name.toUpperCase().includes('READ'));
+
+        // Fallback: If the device doesn't have specifically named modules, use the first available module
+        if (!changeModule && modulesList.length > 0) changeModule = modulesList[0];
+        if (!warningModule && modulesList.length > 0) warningModule = modulesList[0];
+        if (!readModule && modulesList.length > 0) readModule = modulesList[0];
+
+        const findMatchingField = (moduleObj, paramKey) => {
+          if (!moduleObj || !moduleObj.fields || moduleObj.fields.length === 0) return null;
+          
+          const PARAM_LABELS = {
+            ebKvah: 'EB KVAH (KVAH)',
+            ebKwh: 'EB KWH (KWH)',
+            balance: 'BALANCE (Rs)',
+            totalKw: 'TOTAL KW (KW)',
+            vR: 'VOLTAGE R-PHASE (V)',
+            vY: 'VOLTAGE Y-PHASE (V)',
+            vB: 'VOLTAGE B-PHASE (V)',
+            iR: 'R-CURRENT (A)',
+            iY: 'Y-CURRENT (A)',
+            iB: 'B-CURRENT (A)',
+            pf: 'POWER FACTOR (PF)',
+            totalKva: 'TOTAL KVA (KVA)',
+            dgKwh: 'DG KWH (KWH)',
+            fixedCharge: 'FIXED CHARGE (Rs)',
+            lowBalanceCut: 'LOW BALANCE CUT',
+            overloadTrip: 'OVERLOAD TRIP',
+            overloadLimitReached: 'OVERLOAD LIMIT REACHED',
+            connectedStatus: 'CONNECTED STATUS',
+            forceOff: 'FORCE OFF',
+            meterSrno: 'METER SRNO',
+            noOfOverloadCheck: 'NO OF OVERLOAD CHECK',
+            ebDgStatus: 'EB/DG STATUS',
+            ebTariff: 'EB TARIFF (Rs)',
+            dgTariff: 'DG TARIFF (Rs)',
+            ebRLoadSet: 'EB R LOAD SET (KW)',
+            ebYLoadSet: 'EB Y LOAD SET (KW)',
+            ebBLoadSet: 'EB B LOAD SET (KW)',
+            dgRLoadSet: 'DG R LOAD SET (KW)',
+            dgYLoadSet: 'DG Y LOAD SET (KW)',
+            dgBLoadSet: 'DG B LOAD SET (KW)',
+            activePower: 'ACTIVE POWER',
+            reactivePower: 'REACTIVE POWER',
+            apparentPower: 'APPARENT POWER',
+            cumulativekWh: 'CUMULATIVE ENERGY',
+            freq: 'FREQUENCY'
+          };
+
+          const fieldLabel = PARAM_LABELS[paramKey] || paramKey;
+          const scored = getFilteredFieldList(null, paramKey, fieldLabel, moduleObj.fields);
+          if (scored && scored.length > 0 && scored[0].score >= 10) {
+            return scored[0].id;
+          }
+
+          const synonyms = PARAMETER_SYNONYMS[paramKey] || [];
+          const searchTerms = [paramKey, ...synonyms].map(s => s.toUpperCase());
+
+          for (const term of searchTerms) {
+            let found = moduleObj.fields.find(f => f.id.toUpperCase() === term);
+            if (found) return found.id;
+
+            const normTerm = term.replace(/[^A-Z0-9]/g, '');
+            if (normTerm) {
+              found = moduleObj.fields.find(f => f.id.toUpperCase().replace(/[^A-Z0-9]/g, '') === normTerm);
+              if (found) return found.id;
+            }
+
+            found = moduleObj.fields.find(f => f.label.toUpperCase().includes(term));
+            if (found) return found.id;
+          }
+          return null;
+        };
+
+        // 1. Auto-fill CHANGE parameters
+        if (changeModule) {
+          setEmChangeConfig(prev => {
+            const updated = { ...prev, module: changeModule.id };
+            const keys = [
+              'ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB',
+              'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh', 'fixedCharge'
+            ];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(changeModule, k);
+                if (match) updated[k] = `${changeModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        // 2. Auto-fill WARNING parameters
+        if (warningModule) {
+          setEmWarningConfig(prev => {
+            const updated = { ...prev, module: warningModule.id };
+            const keys = [
+              'lowBalanceCut', 'overloadTrip', 'overloadLimitReached', 'connectedStatus', 'forceOff'
+            ];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(warningModule, k);
+                if (match) updated[k] = `${warningModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        // 3. Auto-fill READ parameters
+        if (readModule) {
+          setEmReadConfig(prev => {
+            const updated = { ...prev, module: readModule.id };
+            const keys = [
+              'meterSrno', 'noOfOverloadCheck', 'ebDgStatus', 'ebTariff', 'dgTariff',
+              'ebRLoadSet', 'ebYLoadSet', 'ebBLoadSet', 'dgRLoadSet', 'dgYLoadSet', 'dgBLoadSet'
+            ];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(readModule, k);
+                if (match) updated[k] = `${readModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        // 4. Auto-fill legacy EM Voltage parameters
+        if (changeModule) {
+          setEmVoltageConfig(prev => {
+            const updated = { ...prev, module: changeModule.id };
+            const keys = ['vR', 'vY', 'vB'];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(changeModule, k);
+                if (match) updated[k] = `${changeModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        // 5. Auto-fill legacy EM Current parameters
+        if (changeModule) {
+          setEmCurrentConfig(prev => {
+            const updated = { ...prev, module: changeModule.id };
+            const keys = ['iR', 'iY', 'iB'];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(changeModule, k);
+                if (match) updated[k] = `${changeModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        // 6. Auto-fill legacy EM Power parameters
+        if (changeModule) {
+          setEmPowerConfig(prev => {
+            const updated = { ...prev, module: changeModule.id };
+            const keys = ['activePower', 'reactivePower', 'apparentPower'];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(changeModule, k);
+                if (match) updated[k] = `${changeModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        // 7. Auto-fill legacy EM System parameters
+        if (changeModule) {
+          setEmSystemConfig(prev => {
+            const updated = { ...prev, module: changeModule.id };
+            const keys = ['pf', 'freq'];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(changeModule, k);
+                if (match) updated[k] = `${changeModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        // 8. Auto-fill legacy EM Consumption parameters
+        if (changeModule) {
+          setEmConsumptionConfig(prev => {
+            const updated = { ...prev, module: changeModule.id };
+            const keys = ['cumulativekWh'];
+            keys.forEach(k => {
+              if (isNewDevice || !prev[k]) {
+                const match = findMatchingField(changeModule, k);
+                if (match) updated[k] = `${changeModule.id}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+        }
+
+        if (isNewDevice) {
+          lastAutofilledDevice.current = activeDevice;
+        }
+      }
+    }
+
+    // 2. SUB METERS (ELECTRICITY) AUTO-FILL
+    const activeElecDevice = elecVoltageConfig.device;
+    const activeElecModule = elecVoltageConfig.module;
+    if (activeElecDevice && activeElecModule) {
+      const devInfo = deviceDetails[activeElecDevice];
+      if (devInfo && devInfo.modules) {
+        const isNewElec = lastAutofilledElec.current !== `${activeElecDevice}::${activeElecModule}`;
+        const selectedModule = devInfo.modules[activeElecModule] || Object.values(devInfo.modules)[0];
+
+        if (selectedModule) {
+          const findMatchingFieldSub = (moduleObj, paramKey) => {
+            if (!moduleObj || !moduleObj.fields || moduleObj.fields.length === 0) return null;
+            
+            const PARAM_LABELS = {
+              ry: 'VOLTAGE RY',
+              yb: 'VOLTAGE YB',
+              br: 'VOLTAGE BR',
+              r: 'CURRENT R',
+              y: 'CURRENT Y',
+              b: 'CURRENT B',
+              pf: 'POWER FACTOR (PF)',
+              freq: 'FREQUENCY',
+              load: 'LOAD',
+              kva: 'KVA',
+              kwh: 'KWH',
+              kvah: 'KVAH'
+            };
+
+            const fieldLabel = PARAM_LABELS[paramKey] || paramKey;
+            const scored = getFilteredFieldList(null, paramKey, fieldLabel, moduleObj.fields);
+            if (scored && scored.length > 0 && scored[0].score >= 10) {
+              return scored[0].id;
+            }
+            return null;
+          };
+
+          // Auto-fill Elec Voltage Config
+          setElecVoltageConfig(prev => {
+            const updated = { ...prev, module: activeElecModule };
+            const keys = ['ry', 'yb', 'br'];
+            keys.forEach(k => {
+              if (isNewElec || !prev[k]) {
+                const match = findMatchingFieldSub(selectedModule, k);
+                if (match) updated[k] = `${activeElecModule}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+
+          // Auto-fill Elec Current Config
+          setElecCurrentConfig(prev => {
+            const updated = { ...prev, module: activeElecModule };
+            const keys = ['r', 'y', 'b'];
+            keys.forEach(k => {
+              if (isNewElec || !prev[k]) {
+                const match = findMatchingFieldSub(selectedModule, k);
+                if (match) updated[k] = `${activeElecModule}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+
+          // Auto-fill Elec System Config
+          setElecSystemConfig(prev => {
+            const updated = { ...prev, module: activeElecModule };
+            const keys = ['pf', 'freq', 'load'];
+            keys.forEach(k => {
+              if (isNewElec || !prev[k]) {
+                const match = findMatchingFieldSub(selectedModule, k);
+                if (match) updated[k] = `${activeElecModule}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+
+          // Auto-fill Elec Consumption Config
+          setElecConsumptionConfig(prev => {
+            const updated = { ...prev, module: activeElecModule };
+            const keys = ['kva', 'kwh', 'kvah'];
+            keys.forEach(k => {
+              if (isNewElec || !prev[k]) {
+                const match = findMatchingFieldSub(selectedModule, k);
+                if (match) updated[k] = `${activeElecModule}::${match}`;
+                else updated[k] = '';
+              }
+            });
+            return updated;
+          });
+
+          if (isNewElec) {
+            lastAutofilledElec.current = `${activeElecDevice}::${activeElecModule}`;
+          }
+        }
+      }
+    }
+
+    // 3. DG SET AUTO-FILL
+    const activeDgDevice = dgPowerConfig.device;
+    if (activeDgDevice) {
+      const devInfo = deviceDetails[activeDgDevice];
+      if (devInfo && devInfo.modules) {
+        const isNewDg = lastAutofilledDg.current !== activeDgDevice;
+        
+        // Map across all fields of all modules
+        const dgAllFields = [];
+        Object.values(devInfo.modules).forEach(m => {
+          (m.fields || []).forEach(f => {
+            dgAllFields.push({ ...f, id: `${m.id}::${f.id}` });
+          });
+        });
+
+        const virtualDgModule = { fields: dgAllFields };
+
+        const findMatchingFieldDg = (moduleObj, paramKey) => {
+          if (!moduleObj || !moduleObj.fields || moduleObj.fields.length === 0) return null;
+          
+          const PARAM_LABELS = {
+            speed: 'SPEED (RPM)',
+            coolant: 'COOLANT TEMP',
+            oilPress: 'OIL PRESSURE',
+            battery: 'BATTERY V',
+            freq: 'FREQUENCY',
+            runtime: 'RUN TIME (Hrs)',
+            vL1L2: 'L1-L2 VOLTS',
+            iL1: 'L1 AMPS',
+            iL2: 'L2 AMPS',
+            iL3: 'L3 AMPS',
+            loadKW: 'LOAD (KW)',
+            appKVA: 'APP (KVA)',
+            pf: 'POWER FACTOR',
+            kwh: 'KWH TOTAL',
+            level: 'FUEL LEVEL (%)',
+            emergencyStop: 'EMERGENCY STOP',
+            failToStart: 'FAIL TO START'
+          };
+
+          const fieldLabel = PARAM_LABELS[paramKey] || paramKey;
+          const scored = getFilteredFieldList(null, paramKey, fieldLabel, moduleObj.fields);
+          if (scored && scored.length > 0 && scored[0].score >= 10) {
+            return scored[0].id;
+          }
+          return null;
+        };
+
+        // Auto-fill DG Engine Config
+        setDgEngineConfig(prev => {
+          const updated = { ...prev, module: 'ALL' };
+          const keys = ['speed', 'coolant', 'oilPress', 'battery', 'freq', 'runtime'];
+          keys.forEach(k => {
+            if (isNewDg || !prev[k]) {
+              const match = findMatchingFieldDg(virtualDgModule, k);
+              if (match) updated[k] = match;
+              else updated[k] = '';
+            }
+          });
+          return updated;
+        });
+
+        // Auto-fill DG Power Config
+        setDgPowerConfig(prev => {
+          const updated = { ...prev, module: 'ALL' };
+          const keys = ['vL1L2', 'iL1', 'iL2', 'iL3', 'loadKW', 'appKVA', 'pf', 'kwh'];
+          keys.forEach(k => {
+            if (isNewDg || !prev[k]) {
+              const match = findMatchingFieldDg(virtualDgModule, k);
+              if (match) updated[k] = match;
+              else updated[k] = '';
+            }
+          });
+          return updated;
+        });
+
+        // Auto-fill DG Fuel Config
+        setDgFuelConfig(prev => {
+          const updated = { ...prev, module: 'ALL' };
+          const keys = ['level'];
+          keys.forEach(k => {
+            if (isNewDg || !prev[k]) {
+              const match = findMatchingFieldDg(virtualDgModule, k);
+              if (match) updated[k] = match;
+              else updated[k] = '';
+            }
+          });
+          return updated;
+        });
+
+        // Auto-fill DG Fault Config
+        setDgFaultConfig(prev => {
+          const updated = { ...prev, module: 'ALL' };
+          const keys = ['emergencyStop', 'failToStart'];
+          keys.forEach(k => {
+            if (isNewDg || !prev[k]) {
+              const match = findMatchingFieldDg(virtualDgModule, k);
+              if (match) updated[k] = match;
+              else updated[k] = '';
+            }
+          });
+          return updated;
+        });
+
+        if (isNewDg) {
+          lastAutofilledDg.current = activeDgDevice;
+        }
+      }
+    }
+  }, [
+    deviceDetails, 
+    emChangeConfig.device, emWarningConfig.device, emReadConfig.device, emVoltageConfig.device,
+    elecVoltageConfig.device, elecVoltageConfig.module,
+    dgPowerConfig.device, dgEngineConfig.device, dgFuelConfig.device, dgFaultConfig.device
+  ]);
+
+  const getParameterSuggestion = (fieldName, displayName) => {
+    if (!fieldName && !displayName) return null;
+    const nameLower = (displayName || '').toLowerCase();
+    const keyLower = (fieldName || '').toLowerCase();
+
+    // DG Set parameters suggestions (higher priority to prevent wrong phase overrides)
+    if (nameLower.includes('engine speed') || nameLower.includes('rpm') || keyLower.includes('speed') || keyLower.includes('rpm')) return 'SPEED (RPM)';
+    if (nameLower.includes('coolant') || (nameLower.includes('temp') && (nameLower.includes('cool') || keyLower.includes('cool')))) return 'COOLANT TEMP';
+    if (nameLower.includes('oil pressure') || keyLower.includes('oilp') || nameLower.includes('oil p') || keyLower.includes('oil_press')) return 'OIL PRESSURE';
+    if (nameLower.includes('battery') || keyLower.includes('bat') || keyLower.includes('battery')) return 'BATTERY V';
+    if (nameLower.includes('frequency') || nameLower.includes('freq') || keyLower.includes('freq') || keyLower === 'f') {
+      if (nameLower.includes('generator') || nameLower.includes('dg') || nameLower.includes('engine') || keyLower.includes('dg') || keyLower.includes('gen')) {
+        return 'FREQUENCY';
+      }
+    }
+    if (nameLower.includes('run time') || nameLower.includes('runtime') || keyLower.includes('runtime') || keyLower.includes('run_time')) return 'RUN TIME (Hrs)';
+    if (nameLower.includes('voltage l1') || nameLower.includes('v l1-l2') || keyLower.includes('vl1l2') || keyLower.includes('vl1_l2') || keyLower.includes('v_l1_l2')) return 'L1-L2 VOLTS';
+    if (nameLower.includes('current l1') || nameLower.includes('amp l1') || keyLower === 'il1' || keyLower === 'i_l1' || keyLower === 'al1') return 'L1 AMPS';
+    if (nameLower.includes('current l2') || nameLower.includes('amp l2') || keyLower === 'il2' || keyLower === 'i_l2' || keyLower === 'al2') return 'L2 AMPS';
+    if (nameLower.includes('current l3') || nameLower.includes('amp l3') || keyLower === 'il3' || keyLower === 'i_l3' || keyLower === 'al3') return 'L3 AMPS';
+    if (nameLower.includes('dg load') || (nameLower.includes('load') && (nameLower.includes('dg') || nameLower.includes('generator')))) return 'LOAD (KW)';
+    if (nameLower.includes('dg app') || (nameLower.includes('apparent') && (nameLower.includes('dg') || nameLower.includes('generator')))) return 'APP (KVA)';
+    if (nameLower.includes('fuel level') || nameLower.includes('diesel level') || keyLower.includes('fuel') || keyLower.includes('diesel')) return 'FUEL LEVEL (%)';
+    if (nameLower.includes('emergency stop') || keyLower.includes('emergencystop') || keyLower.includes('estop')) return 'EMERGENCY STOP';
+    if (nameLower.includes('fail to start') || keyLower.includes('failtostart')) return 'FAIL TO START';
+
+    // Check mapping categories
+    if (nameLower.includes('kvah') || keyLower.includes('kvah')) return 'EB KVAH (KVAH)';
+    if (nameLower.includes('kwh') || keyLower.includes('kwh')) {
+      if (nameLower.includes('dg') || keyLower.includes('dg')) return 'DG KWH (KWH)';
+      return 'EB KWH (KWH)';
+    }
+    if (nameLower.includes('balance') || keyLower.includes('balance') || nameLower.includes('prepaid') || keyLower.includes('prepaid')) return 'BALANCE (Rs)';
+    if (nameLower.includes('pf') || nameLower.includes('power factor') || keyLower.includes('pf')) return 'POWER FACTOR (PF)';
+    
+    // Voltages
+    if (nameLower.includes('voltage') || nameLower.includes('volt') || keyLower.startsWith('v')) {
+      if (nameLower.includes('r-phase') || nameLower.includes(' r ') || keyLower.includes('r') || keyLower.includes('u1')) return 'VOLTAGE R-PHASE (V)';
+      if (nameLower.includes('y-phase') || nameLower.includes(' y ') || keyLower.includes('y') || keyLower.includes('u2')) return 'VOLTAGE Y-PHASE (V)';
+      if (nameLower.includes('b-phase') || nameLower.includes(' b ') || keyLower.includes('b') || keyLower.includes('u3')) return 'VOLTAGE B-PHASE (V)';
+    }
+
+    // Currents
+    if (nameLower.includes('current') || nameLower.includes('amp') || keyLower.startsWith('i') || keyLower.startsWith('a')) {
+      if (nameLower.includes('r-phase') || nameLower.includes(' r ') || keyLower.includes('r') || keyLower.includes('i1') || keyLower.includes('a1')) return 'R-CURRENT (A)';
+      if (nameLower.includes('y-phase') || nameLower.includes(' y ') || keyLower.includes('y') || keyLower.includes('i2') || keyLower.includes('a2')) return 'Y-CURRENT (A)';
+      if (nameLower.includes('b-phase') || nameLower.includes(' b ') || keyLower.includes('b') || keyLower.includes('i3') || keyLower.includes('a3')) return 'B-CURRENT (A)';
+    }
+
+    if (nameLower.includes('active power') || nameLower.includes('total kw') || nameLower.includes('load kw') || keyLower.includes('kw')) return 'TOTAL KW (KW)';
+    if (nameLower.includes('apparent power') || nameLower.includes('total kva') || nameLower.includes('load kva') || keyLower.includes('kva')) return 'TOTAL KVA (KVA)';
+    if (nameLower.includes('fixed charge') || keyLower.includes('fixed')) return 'FIXED CHARGE (Rs)';
+    
+    return null;
+  };
 
   const fetchDeviceDetails = async (deviceId) => {
     console.log('Fetching details for device:', deviceId);
@@ -690,10 +1276,14 @@ const ConfigTemplates = () => {
         moduleSource.forEach(m => {
           // Event fields can be in root or inside moduleTypeVO
           const fieldsSource = m.eventFieldVOS || m.moduleTypeVO?.eventFieldVOS || [];
-          const fields = fieldsSource.map(f => ({
-            label: `${f.displayName} (${f.fieldName})`,
-            id: f.fieldName
-          }));
+          const fields = fieldsSource.map(f => {
+            const suggestion = getParameterSuggestion(f.fieldName, f.displayName);
+            const rawLabel = `${f.displayName} (${f.fieldName})`;
+            return {
+              label: suggestion ? `${suggestion} | ${rawLabel}` : rawLabel,
+              id: f.fieldName
+            };
+          });
 
           moduleMap[m.id] = {
             id: m.id,
@@ -715,6 +1305,154 @@ const ConfigTemplates = () => {
   const handleConfigChange = async (config, setter, key, value) => {
     console.log(`Config Change: ${key} = ${value}`);
     const updated = { ...config, [key]: value };
+
+    const emSetters = [
+      setEmVoltageConfig,
+      setEmCurrentConfig,
+      setEmPowerConfig,
+      setEmSystemConfig,
+      setEmConsumptionConfig,
+      setEmChangeConfig,
+      setEmWarningConfig,
+      setEmReadConfig
+    ];
+
+    const isEMConfig = emSetters.includes(setter);
+
+    if (isEMConfig && ['organization', 'client', 'zone', 'subZone', 'building', 'device', 'location_hierarchical'].includes(key)) {
+      const updateObject = (prevConfig) => {
+        const nextConfig = { ...prevConfig, [key]: value };
+        if (key === 'location_hierarchical') {
+          if (value === '__BACK__') {
+            if (nextConfig.building) nextConfig.building = '';
+            else if (nextConfig.subZone) nextConfig.subZone = '';
+            else if (nextConfig.zone) nextConfig.zone = '';
+            else if (nextConfig.client) nextConfig.client = '';
+            else if (nextConfig.organization) nextConfig.organization = '';
+          } else if (value === '__RESET__') {
+            nextConfig.organization = ''; nextConfig.client = ''; nextConfig.zone = ''; nextConfig.subZone = ''; nextConfig.building = '';
+            nextConfig.device = ''; nextConfig.module = ''; nextConfig.field = '';
+          } else {
+            if (!nextConfig.organization) nextConfig.organization = value;
+            else if (!nextConfig.client) nextConfig.client = value;
+            else if (!nextConfig.zone) nextConfig.zone = value;
+            else if (!nextConfig.subZone) {
+              nextConfig.subZone = value;
+            }
+            else if (!nextConfig.building) {
+              nextConfig.building = value;
+            }
+          }
+          nextConfig.location_hierarchical = '';
+        } else if (key === 'building') {
+          nextConfig.device = ''; nextConfig.module = ''; nextConfig.field = '';
+        } else if (key === 'device') {
+          nextConfig.module = ''; nextConfig.field = '';
+        }
+        return nextConfig;
+      };
+
+      setEmVoltageConfig(prev => updateObject(prev));
+      setEmCurrentConfig(prev => updateObject(prev));
+      setEmPowerConfig(prev => updateObject(prev));
+      setEmSystemConfig(prev => updateObject(prev));
+      setEmConsumptionConfig(prev => updateObject(prev));
+      setEmChangeConfig(prev => updateObject(prev));
+      setEmWarningConfig(prev => updateObject(prev));
+      setEmReadConfig(prev => updateObject(prev));
+
+      // Trigger side-effects
+      if (key === 'location_hierarchical') {
+        const temp = { ...config, [key]: value };
+        if (value !== '__BACK__' && value !== '__RESET__') {
+          if (temp.organization && temp.client && temp.zone) {
+            if (!temp.subZone) {
+              const szOptions = getFieldList('subZone', { ...temp, subZone: value });
+              const b = szOptions.find(o => o.id === value);
+              if (b && b.type === 'location' && b.rawId) {
+                fetchLocationDetails(value, b.rawId);
+              }
+            } else if (!temp.building) {
+              const buildingOptions = getFieldList('building', { ...temp, building: value });
+              const selectedBuilding = buildingOptions.find(o => o.id === value);
+              if (selectedBuilding && selectedBuilding.rawId) {
+                fetchLocationDetails(value, selectedBuilding.rawId);
+              }
+            }
+          }
+        }
+      } else if (key === 'building') {
+        if (value) {
+          const temp = { ...config, building: value };
+          const buildingOptions = getFieldList('building', temp);
+          const selectedBuilding = buildingOptions.find(o => o.id === value);
+          if (selectedBuilding && selectedBuilding.rawId) {
+            fetchLocationDetails(value, selectedBuilding.rawId);
+          }
+        }
+      } else if (key === 'device') {
+        if (value) fetchDeviceDetails(value);
+      }
+      return;
+    }
+
+    const dgSetters = [
+      setDgEngineConfig,
+      setDgPowerConfig,
+      setDgFuelConfig,
+      setDgFaultConfig
+    ];
+
+    const isDGConfig = dgSetters.includes(setter);
+
+    if (isDGConfig && ['building', 'device'].includes(key)) {
+      if (key === 'building') {
+        setDgEngineConfig(prev => ({
+          ...prev,
+          building: value,
+          device: '',
+          speed: '', coolant: '', oilPress: '', battery: '', freq: '', runtime: ''
+        }));
+        setDgPowerConfig(prev => ({
+          ...prev,
+          building: value,
+          device: '',
+          vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: ''
+        }));
+        setDgFuelConfig(prev => ({
+          ...prev,
+          building: value,
+          device: '',
+          level: ''
+        }));
+        setDgFaultConfig(prev => ({
+          ...prev,
+          building: value,
+          device: '',
+          emergencyStop: '', failToStart: ''
+        }));
+      } else if (key === 'device') {
+        setDgEngineConfig(prev => ({ ...prev, device: value }));
+        setDgPowerConfig(prev => ({ ...prev, device: value }));
+        setDgFuelConfig(prev => ({ ...prev, device: value }));
+        setDgFaultConfig(prev => ({ ...prev, device: value }));
+      }
+
+      // Trigger side-effects
+      if (key === 'building') {
+        if (value) {
+          const temp = { ...config, building: value };
+          const buildingOptions = getFieldList('building', temp);
+          const selectedBuilding = buildingOptions.find(o => o.id === value);
+          if (selectedBuilding && selectedBuilding.rawId) {
+            fetchLocationDetails(value, selectedBuilding.rawId);
+          }
+        }
+      } else if (key === 'device') {
+        if (value) fetchDeviceDetails(value);
+      }
+      return;
+    }
 
     // Hierarchical Location Logic (Single Dropdown)
     if (key === 'location_hierarchical') {
@@ -1001,14 +1739,22 @@ const ConfigTemplates = () => {
     if (!devInfo) return [];
 
     if (key === 'module') {
-      return Object.values(devInfo.modules).map(m => ({ label: m.name, id: m.id }));
+      return Object.values(devInfo.modules).map(m => ({ label: `${m.id} - ${m.name}`, id: m.id }));
     }
 
     const selectedModuleId = rowState?.module;
     const isDGConfig = rowState?.speed !== undefined || rowState?.vL1L2 !== undefined || rowState?.level !== undefined || rowState?.emergencyStop !== undefined;
+    const isEnergyMeteringConfig = 
+      rowState?.vR !== undefined || 
+      rowState?.iR !== undefined || 
+      rowState?.activePower !== undefined || 
+      rowState?.cumulativekWh !== undefined ||
+      rowState?.ebKwh !== undefined ||
+      rowState?.lowBalanceCut !== undefined ||
+      rowState?.meterSrno !== undefined;
 
     if (key === 'field') {
-      if (selectedModuleId === 'ALL' || isDGConfig) {
+      if (selectedModuleId === 'ALL' || isDGConfig || isEnergyMeteringConfig) {
          const allFields = [];
          Object.values(devInfo.modules).forEach(m => {
             (m.fields || []).forEach(f => {
@@ -1023,6 +1769,85 @@ const ConfigTemplates = () => {
 
     return [];
   };
+
+  function getFilteredFieldList(sectionKey, fieldKey, fieldLabel, allFields) {
+    if (!allFields || allFields.length === 0) return [];
+    const searchStr = (fieldLabel || '').toLowerCase();
+    const fk = (fieldKey || '').toLowerCase();
+    
+    const isPhaseParam = searchStr.includes('phase') || 
+                         searchStr.includes('l1') || 
+                         searchStr.includes('l2') || 
+                         searchStr.includes('l3') ||
+                         ['vr', 'vy', 'vb', 'ir', 'iy', 'ib', 'ry', 'yb', 'br', 'r', 'y', 'b', 'vl1l2', 'il1', 'il2', 'il3'].includes(fk) ||
+                         fk.includes('loadset') || 
+                         fk.includes('load_set') ||
+                         searchStr.includes('current r') || searchStr.includes('current y') || searchStr.includes('current b') ||
+                         searchStr.includes('voltage r') || searchStr.includes('voltage y') || searchStr.includes('voltage b') ||
+                         searchStr.includes('amps') || searchStr.includes('volts');
+
+    const isR = isPhaseParam && (searchStr.includes('r-phase') || searchStr.includes('r_phase') || fk.endsWith('r') || fk === 'r' || fk === 'l1' || fk.includes('l1') || searchStr.includes(' r ') || searchStr.includes(' l1'));
+    const isY = isPhaseParam && (searchStr.includes('y-phase') || searchStr.includes('y_phase') || fk.endsWith('y') || fk === 'y' || fk === 'l2' || fk.includes('l2') || searchStr.includes(' y ') || searchStr.includes(' l2'));
+    const isB = isPhaseParam && (searchStr.includes('b-phase') || searchStr.includes('b_phase') || fk.endsWith('b') || fk === 'b' || fk === 'l3' || fk.includes('l3') || searchStr.includes(' b ') || searchStr.includes(' l3'));
+    
+    const isCurrent = searchStr.includes('current') || searchStr.includes('amp') || fk.includes('current') || fk.startsWith('i');
+    const isVoltage = searchStr.includes('voltage') || searchStr.includes('volt') || fk.includes('voltage') || fk.startsWith('v');
+    const isKwh = searchStr.includes('kwh');
+    const isKvah = searchStr.includes('kvah');
+    const isKw = searchStr.includes('kw') && !isKwh;
+    const isKva = searchStr.includes('kva') && !isKvah;
+    const isPf = searchStr.includes('pf') || searchStr.includes('power factor');
+    const isFreq = searchStr.includes('freq') || searchStr.includes('frequency') || searchStr.includes('hz');
+    const isBalance = searchStr.includes('balance');
+    const isTariff = searchStr.includes('tariff');
+    const isLoad = searchStr.includes('load set') || searchStr.includes('limit') || fk.toLowerCase().includes('load');
+    const isStatus = searchStr.includes('status');
+    const isDg = searchStr.includes('dg') || fk.includes('dg');
+    const isEb = searchStr.includes('eb') || fk.includes('eb');
+
+    const scoredFields = allFields.map(f => {
+      const lbl = f.label.toLowerCase();
+      let score = 0;
+      
+      // Keyword matching
+      if (isCurrent && (lbl.includes('current') || lbl.includes(' amp') || lbl.includes(' a '))) score += 15;
+      if (isVoltage && (lbl.includes('voltage') || lbl.includes('volt') || lbl.includes(' v '))) score += 15;
+      if (isKwh && lbl.includes('kwh')) score += 15;
+      if (isKvah && lbl.includes('kvah')) score += 15;
+      if (isKw && lbl.includes('kw') && !lbl.includes('kwh')) score += 15;
+      if (isKva && lbl.includes('kva') && !lbl.includes('kvah')) score += 15;
+      if (isPf && (lbl.includes('pf') || lbl.includes('power factor') || lbl.includes('factor'))) score += 15;
+      if (isFreq && (lbl.includes('freq') || lbl.includes('hz'))) score += 15;
+      if (isBalance && lbl.includes('balance')) score += 15;
+      if (isTariff && lbl.includes('tariff')) score += 15;
+      if (isLoad && (lbl.includes('load') || lbl.includes('limit') || lbl.includes('set'))) score += 15;
+      if (isStatus && lbl.includes('status')) score += 15;
+      
+      // Source matching (EB vs DG)
+      if (isDg && lbl.includes('dg')) score += 15;
+      if (!isDg && lbl.includes('dg')) score -= 20;
+      if (isDg && !lbl.includes('dg') && lbl.includes('eb')) score -= 20;
+      if (isEb && lbl.includes('eb')) score += 10;
+      if (isEb && !lbl.includes('eb') && lbl.includes('dg')) score -= 20;
+      
+      // Phase matching
+      if (isR && (lbl.includes('r-phase') || lbl.includes('r_phase') || lbl.includes('l1') || lbl.includes(' r ') || lbl.includes(' r_') || lbl.includes(':r') || lbl.includes('vr') || lbl.includes('ir') || lbl.includes('current r') || lbl.includes('voltage r'))) score += 10;
+      if (isY && (lbl.includes('y-phase') || lbl.includes('y_phase') || lbl.includes('l2') || lbl.includes(' y ') || lbl.includes(' y_') || lbl.includes(':y') || lbl.includes('vy') || lbl.includes('iy') || lbl.includes('current y') || lbl.includes('voltage y'))) score += 10;
+      if (isB && (lbl.includes('b-phase') || lbl.includes('b_phase') || lbl.includes('l3') || lbl.includes(' b ') || lbl.includes(' b_') || lbl.includes(':b') || lbl.includes('vb') || lbl.includes('ib') || lbl.includes('current b') || lbl.includes('voltage b'))) score += 10;
+      
+      // Token matches
+      const words = searchStr.replace(/[()]/g, '').split(/\s+/);
+      words.forEach(w => {
+        if (w.length > 1 && lbl.includes(w)) {
+          score += 5;
+        }
+      });
+
+      return { ...f, score };
+    });
+
+    return scoredFields.sort((a, b) => b.score - a.score);
+  }
 
   // Sync to LocalStorage
   useEffect(() => {
@@ -1072,14 +1897,19 @@ const ConfigTemplates = () => {
         if (response.ok) {
           const data = await response.json();
           // Map backend data to frontend format if necessary
-          const mappedData = data.map(t => ({
-            id: t.id,
-            name: t.name,
-            category: t.category || 'Water Management', // Fallback
-            module: t.settings[0]?.eventKey || 'AG Tank',
-            mapping: cleanCorruptedMapping(t.defaultValues || t.settings[0]?.meta || {}),
-            timestamp: new Date(t.createdAt).toLocaleString()
-          }));
+          const mappedData = data.map(t => {
+            const hasDefaultValues = t.defaultValues && typeof t.defaultValues === 'object' && Object.keys(t.defaultValues).length > 0;
+            const defValues = hasDefaultValues ? t.defaultValues : null;
+            const mappingSource = defValues || t.settings[0]?.meta || {};
+            return {
+              id: t.id,
+              name: t.name,
+              category: (defValues && defValues.category) || t.category || 'Water Management',
+              module: (defValues && defValues.module) || t.settings[0]?.eventKey || 'AG Tank',
+              mapping: cleanCorruptedMapping(mappingSource),
+              timestamp: new Date(t.createdAt).toLocaleString()
+            };
+          });
           if (mappedData.length > 0) {
             setSavedTemplates(mappedData);
           }
@@ -1113,7 +1943,8 @@ const ConfigTemplates = () => {
     'Ticketing': ['Index'],
     'Maintenance': ['Scheduled', 'Pending Tasks'],
     'Service History': ['Records'],
-    'Daily DPR': ['Data Aggregation', 'Daily Logs']
+    'Daily DPR': ['Data Aggregation', 'Daily Logs'],
+    'Energy Metering': ['Overview', 'Main Meter', 'Sub Meters']
   };
 
   const locations = dynamicOptions.locations;
@@ -1316,6 +2147,11 @@ const ConfigTemplates = () => {
       mapping = {
         dgEngineConfig, dgPowerConfig, dgFuelConfig, dgFaultConfig
       };
+    } else if (selectedCategory === 'Energy Metering' || selectedModule === 'Main Meter' || selectedModule === 'Sub Meters') {
+      mapping = {
+        emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
+        emChangeConfig, emWarningConfig, emReadConfig, energyMeteringTarget
+      };
     } else {
       // Fallback
       mapping = {
@@ -1355,7 +2191,7 @@ const ConfigTemplates = () => {
     });
 
     const hasValidConfig = Object.values(cleanedMapping).some(val =>
-      val && typeof val === 'object' && (val.field || val.ry || val.r || val.pf || val.kva || val.domStart || val.name || val.pumpNo)
+      val && typeof val === 'object' && (val.field || val.ry || val.r || val.pf || val.kva || val.domStart || val.name || val.pumpNo || val.vR || val.iR || val.activePower || val.cumulativekWh || val.energyMeteringTarget)
     );
 
     if (!hasValidConfig) {
@@ -1385,7 +2221,7 @@ const ConfigTemplates = () => {
     } else if (selectedModule === 'AG Tank') {
       autoName = agTankRange.domStart || agTankRange.flushStart || 'AG TANK';
     } else {
-      autoName = pressureTarget || electricalTarget || selectedModule;
+      autoName = energyMeteringTarget || pressureTarget || electricalTarget || selectedModule;
     }
     const uniqueName = templateName || `${autoName} (#${String(savedTemplates.length + 1).padStart(2, '0')})`;
 
@@ -1474,6 +2310,15 @@ const ConfigTemplates = () => {
     setDgPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
     setDgFuelConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', level: '', enabled: true });
     setDgFaultConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', failToStart: '', enabled: true });
+    setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+    setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+    setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+    setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+    setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+    setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+    setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+    setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+    setEnergyMeteringTarget('');
     setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
     setTemplateName('');
@@ -1561,6 +2406,15 @@ const ConfigTemplates = () => {
       setDgPowerConfig({ ...template.mapping.dgPowerConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
       setDgFuelConfig({ ...template.mapping.dgFuelConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', level: '', enabled: true });
       setDgFaultConfig({ ...template.mapping.dgFaultConfig, module: 'ALL' } || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', failToStart: '', enabled: true });
+      setEmVoltageConfig(template.mapping.emVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+      setEmCurrentConfig(template.mapping.emCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+      setEmPowerConfig(template.mapping.emPowerConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+      setEmSystemConfig(template.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+      setEmConsumptionConfig(template.mapping.emConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+      setEmChangeConfig(template.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+      setEmWarningConfig(template.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+      setEmReadConfig(template.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+      setEnergyMeteringTarget(template.mapping.energyMeteringTarget || '');
       setUgConfig(template.mapping.ugConfig || {
         integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
@@ -1641,6 +2495,18 @@ const ConfigTemplates = () => {
           if (config.device) fetchDeviceDetails(config.device);
         }
       });
+
+      // 4. Update autofill reference trackers to avoid overwriting loaded settings
+      if (template.mapping.dgPowerConfig?.device) {
+        lastAutofilledDg.current = template.mapping.dgPowerConfig.device;
+      }
+      if (template.mapping.emChangeConfig?.device || template.mapping.emVoltageConfig?.device) {
+        const activeDev = template.mapping.emChangeConfig?.device || template.mapping.emVoltageConfig?.device;
+        lastAutofilledDevice.current = activeDev;
+      }
+      if (template.mapping.elecVoltageConfig?.device && template.mapping.elecVoltageConfig?.module) {
+        lastAutofilledElec.current = `${template.mapping.elecVoltageConfig.device}::${template.mapping.elecVoltageConfig.module}`;
+      }
     }
     setEditingTemplateId(template.id);
     setViewMode('FORM');
@@ -1721,24 +2587,78 @@ const ConfigTemplates = () => {
                 setElecSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
                 setElecConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
 
+                // Reset DG & Energy Metering
+                setDgEngineConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
+                setDgPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
+                setDgFuelConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', level: '', enabled: true });
+                setDgFaultConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', failToStart: '', enabled: true });
+                setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+                setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+                setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+                setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+                setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+                setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                setEnergyMeteringTarget('');
+                setTemplateName('');
+
                 setViewMode('FORM');
               }}>
                 <Settings size={18} className="me-2" /> MAPPING CONFIGURATION
               </Button>
               <Button variant="info" className="fw-bold px-4 rounded-3 shadow-glow" onClick={() => {
                 setEditingTemplateId(null);
-                // Same reset logic as above but focused on "Add New"
+                
+                // Reset AG Configs
                 setAgLowerConfig(createDefaultConfig(true));
                 setAgUpperConfig(createDefaultConfig(true));
-                setAgAutoConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgManualConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgBypassConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgLevelConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgOpenConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgCloseConfig({ location: '', device: '', module: '', field: '', enabled: true });
-                setAgAmpsConfig({ location: '', device: '', module: '', field: '', enabled: true });
+                setAgAutoConfig(createDefaultConfig());
+                setAgManualConfig(createDefaultConfig());
+                setAgBypassConfig(createDefaultConfig());
+                setAgLevelConfig(createDefaultConfig());
+                setAgOpenConfig(createDefaultConfig());
+                setAgCloseConfig(createDefaultConfig());
+                setAgAmpsConfig(createDefaultConfig());
                 setAgTankRange({ domStart: '', domEnd: '', flushStart: '', flushEnd: '' });
+
+                // Reset UG Configs
+                setUgLowerConfig(createDefaultConfig(true));
+                setUgUpperConfig(createDefaultConfig(true));
+                setUgAutoConfig(createDefaultConfig());
+                setUgManualConfig(createDefaultConfig());
+                setUgStartCmdConfig(createDefaultConfig());
+                setUgStopCmdConfig(createDefaultConfig());
+                setUgStartPressConfig(createDefaultConfig());
+                setUgStopPressConfig(createDefaultConfig());
+                setUgLocalModeConfig(createDefaultConfig());
+                setUgRemoteModeConfig(createDefaultConfig());
+                setUgAmpsConfig(createDefaultConfig());
                 setUgPumpRange({ name: '', id: '' });
+
+                // Reset Others
+                setPressureConfig(createDefaultConfig());
+                setElecVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ry: '', yb: '', br: '', enabled: true });
+                setElecCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
+                setElecSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
+                setElecConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
+
+                // Reset DG & Energy Metering
+                setDgEngineConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
+                setDgPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
+                setDgFuelConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', level: '', enabled: true });
+                setDgFaultConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: 'ALL', emergencyStop: '', failToStart: '', enabled: true });
+                setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+                setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+                setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+                setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+                setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+                setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                setEnergyMeteringTarget('');
+                setTemplateName('');
+                
                 setViewMode('FORM');
               }}>
                 <Zap size={18} className="me-2" /> ADD NEW MAPPING
@@ -2909,25 +3829,29 @@ const ConfigTemplates = () => {
                                       </Col>
                                       <Col md={3}>
                                         <div className="d-flex flex-column gap-2">
-                                          {section.fields.map((f, fIdx) => (
-                                            <div key={fIdx}>
-                                              <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
-                                              <Form.Control
-                                                as="input"
-                                                list={`datalist-elec-${section.title.replace(/\s+/g, '-')}-${f.key}`}
-                                                className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
-                                                style={{ height: '35px' }}
-                                                value={section.state[f.key]}
-                                                placeholder={`TYPE ${f.label}`}
-                                                onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
-                                              />
-                                              <datalist id={`datalist-elec-${section.title.replace(/\s+/g, '-')}-${f.key}`}>
-                                                {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
-                                                  <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                                ))}
-                                              </datalist>
-                                            </div>
-                                          ))}
+                                          {section.fields.map((f, fIdx) => {
+                                            const rawFields = getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building });
+                                            const sortedOptions = getFilteredFieldList(section.title, f.key, f.label, rawFields);
+                                            return (
+                                              <div key={fIdx} className="mb-2">
+                                                <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
+                                                <Form.Select
+                                                  className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                  style={{ height: '35px', lineHeight: '1.2' }}
+                                                  value={section.state[f.key] || ''}
+                                                  onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
+                                                >
+                                                  <option value="">SELECT PARAMETER</option>
+                                                  {section.state[f.key] && !sortedOptions.some(opt => String(opt.id) === String(section.state[f.key])) && (
+                                                    <option value={section.state[f.key]}>{section.state[f.key]}</option>
+                                                  )}
+                                                  {sortedOptions.map(opt => (
+                                                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                                  ))}
+                                                </Form.Select>
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                       </Col>
                                     </>
@@ -2939,6 +3863,220 @@ const ConfigTemplates = () => {
                         ))}
                       </Row>
                     </div>
+                  </div>
+                </div>
+              ) : selectedModule === 'Main Meter' || selectedModule === 'Sub Meters' ? (
+                <div className="config-form-container scale-in">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex justify-content-between align-items-center">
+                      <div className="d-flex align-items-center gap-2">
+                        <Zap className="text-info shadow-glow-blue" size={18} />
+                        <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">
+                          Energy Meter Parameters Mapping <span className="opacity-40">({selectedModule.toUpperCase()})</span>
+                        </h6>
+                      </div>
+                      
+                      {/* Energy Meter Target Selector */}
+                      <div className="d-flex align-items-center gap-2" style={{ minWidth: '300px' }}>
+                        <span className="text-secondary fs-12 uppercase fw-black opacity-60 text-nowrap">Target Unit:</span>
+                        <Form.Select 
+                          className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner" 
+                          style={{ height: '35px' }} 
+                          value={energyMeteringTarget} 
+                          onChange={(e) => {
+                            setEnergyMeteringTarget(e.target.value);
+                            setTemplateName('');                             const existing = savedTemplates.find(t => 
+                              t.module === selectedModule && 
+                              t.mapping.energyMeteringTarget === e.target.value
+                            );
+                            if (existing) {
+                              setEmVoltageConfig(existing.mapping.emVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+                              setEmCurrentConfig(existing.mapping.emCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+                              setEmPowerConfig(existing.mapping.emPowerConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+                              setEmSystemConfig(existing.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                              setEmConsumptionConfig(existing.mapping.emConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+                              setEmChangeConfig(existing.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                              setEmWarningConfig(existing.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+                              setEmReadConfig(existing.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                              if (existing.mapping.globalHierarchy) setGlobalLocation(existing.mapping.globalHierarchy);
+                            } else {
+                              setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+                              setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+                              setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+                              setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                              setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+                              setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                              setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+                              setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                            }
+                          }}
+                        >
+                          <option value="">SELECT TARGET METER</option>
+                          {energyMetersList
+                            .filter(m => selectedModule === 'Main Meter' ? m.id === 'EM-MAIN' : m.id !== 'EM-MAIN')
+                            .map(m => (
+                              <option key={m.id} value={m.name}>{m.name}</option>
+                            ))
+                          }
+                        </Form.Select>
+                      </div>
+                    </div>
+                    
+                    {energyMeteringTarget ? (
+                      <div className="p-4 bg-dark bg-opacity-20">
+                        <Row className="g-4">
+                          {[
+                            { 
+                              title: 'CHANGE Parameters', 
+                              state: emChangeConfig, 
+                              setter: setEmChangeConfig, 
+                              icon: <Activity size={18} />, 
+                              color: 'info', 
+                              fields: [
+                                { label: 'EB KVAH (KVAH)', key: 'ebKvah' },
+                                { label: 'EB KWH (KWH)', key: 'ebKwh' },
+                                { label: 'BALANCE (Rs)', key: 'balance' },
+                                { label: 'TOTAL KW (KW)', key: 'totalKw' },
+                                { label: 'VOLTAGE R-PHASE (V)', key: 'vR' },
+                                { label: 'VOLTAGE Y-PHASE (V)', key: 'vY' },
+                                { label: 'VOLTAGE B-PHASE (V)', key: 'vB' },
+                                { label: 'R-CURRENT (A)', key: 'iR' },
+                                { label: 'Y-CURRENT (A)', key: 'iY' },
+                                { label: 'B-CURRENT (A)', key: 'iB' },
+                                { label: 'POWER FACTOR (PF)', key: 'pf' },
+                                { label: 'TOTAL KVA (KVA)', key: 'totalKva' },
+                                { label: 'DG KWH (KWH)', key: 'dgKwh' },
+                                { label: 'FIXED CHARGE (Rs)', key: 'fixedCharge' }
+                              ] 
+                            },
+                            { 
+                              title: 'WARNING Parameters', 
+                              state: emWarningConfig, 
+                              setter: setEmWarningConfig, 
+                              icon: <AlertTriangle size={18} />, 
+                              color: 'warning', 
+                              fields: [
+                                { label: 'LOW BALANCE CUT', key: 'lowBalanceCut' },
+                                { label: 'OVERLOAD TRIP', key: 'overloadTrip' },
+                                { label: 'OVERLOAD LIMIT REACHED', key: 'overloadLimitReached' },
+                                { label: 'CONNECTED STATUS', key: 'connectedStatus' },
+                                { label: 'FORCE OFF', key: 'forceOff' }
+                              ] 
+                            },
+                            { 
+                              title: 'READ Parameters', 
+                              state: emReadConfig, 
+                              setter: setEmReadConfig, 
+                              icon: <Layers size={18} />, 
+                              color: 'success', 
+                              fields: [
+                                { label: 'METER SRNO', key: 'meterSrno' },
+                                { label: 'NO OF OVERLOAD CHECK', key: 'noOfOverloadCheck' },
+                                { label: 'EB/DG STATUS', key: 'ebDgStatus' },
+                                { label: 'EB TARIFF (Rs)', key: 'ebTariff' },
+                                { label: 'DG TARIFF (Rs)', key: 'dgTariff' },
+                                { label: 'EB R LOAD SET (KW)', key: 'ebRLoadSet' },
+                                { label: 'EB Y LOAD SET (KW)', key: 'ebYLoadSet' },
+                                { label: 'EB B LOAD SET (KW)', key: 'ebBLoadSet' },
+                                { label: 'DG R LOAD SET (KW)', key: 'dgRLoadSet' },
+                                { label: 'DG Y LOAD SET (KW)', key: 'dgYLoadSet' },
+                                { label: 'DG B LOAD SET (KW)', key: 'dgBLoadSet' }
+                              ] 
+                            }
+                          ].map((section, idx) => (
+                            <Col md={12} key={idx} className="mb-4">
+                              <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-${section.color}`}>
+                                <div className={`card-inner-glow bg-${section.color} opacity-5`}></div>
+                                <div className="mb-4 d-flex align-items-center justify-content-between">
+                                  <div className="d-flex align-items-center gap-3">
+                                    <div className={`icon-box-premium ${section.color} p-2 shadow-glow-${section.color}`}>
+                                      {section.icon}
+                                    </div>
+                                    <div>
+                                      <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                      <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>Metering Mapping</small>
+                                    </div>
+                                  </div>
+                                  <Form.Check type="switch" className={`scada-switch ${section.color}`} checked={section.state.enabled} onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })} />
+                                </div>
+                                <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
+                                  <Row className="g-3 position-relative z-1">
+                                    {!isHierarchyUnlocked ? (
+                                      <Col md={12}>
+                                        <div className={`p-3 rounded bg-dark bg-opacity-40 border border-${section.color} border-opacity-20 text-center shadow-glow-${section.color}-box`}>
+                                          <small className={`text-${section.color} fw-black uppercase tracking-widest fs-12`}>
+                                            <Info size={14} className="me-2" /> Select hierarchy level to unlock
+                                          </small>
+                                        </div>
+                                      </Col>
+                                    ) : (
+                                      <>
+                                        <Col md={6}>
+                                          <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                          <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.building || globalLocation.building} onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}>
+                                            <option value="">SELECT OPTION</option>
+                                            {getFieldList('building', { ...globalLocation, ...section.state }).map(opt => (
+                                              <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                            ))}
+                                          </Form.Select>
+                                        </Col>
+                                        <Col md={6}>
+                                          <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                          <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.device} onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}>
+                                            <option value="">SELECT DEVICE</option>
+                                            {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                              <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                            ))}
+                                          </Form.Select>
+                                        </Col>
+                                        
+                                        <Col md={12}>
+                                          <hr className={`border-${section.color} opacity-20 my-3`} />
+                                          <Form.Label className={`fs-10 text-${section.color} fw-black uppercase tracking-widest opacity-70 mb-3 d-block`}>Parameters Register Mapping</Form.Label>
+                                          <Row className="g-3">
+                                            {section.fields.map((f, fIdx) => {
+                                              const rawFields = getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building });
+                                              const sortedOptions = getFilteredFieldList(section.title, f.key, f.label, rawFields);
+                                              return (
+                                                <Col md={4} key={fIdx}>
+                                                  <div className="premium-field-wrapper p-2 rounded bg-dark bg-opacity-20 border border-white border-opacity-5">
+                                                    <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
+                                                    <Form.Select
+                                                      className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                      style={{ height: '35px', lineHeight: '1.2' }}
+                                                      value={section.state[f.key] || ''}
+                                                      onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
+                                                    >
+                                                      <option value="">SELECT PARAMETER</option>
+                                                      {section.state[f.key] && !sortedOptions.some(opt => String(opt.id) === String(section.state[f.key])) && (
+                                                        <option value={section.state[f.key]}>{section.state[f.key]}</option>
+                                                      )}
+                                                      {sortedOptions.map(opt => (
+                                                        <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                                      ))}
+                                                    </Form.Select>
+                                                  </div>
+                                                </Col>
+                                              );
+                                            })}
+                                          </Row>
+                                        </Col>
+                                      </>
+                                    )}
+                                  </Row>
+                                </div>
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    ) : (
+                      <Card className="bg-dark bg-opacity-20 border border-white border-opacity-5 rounded-4 p-5 text-center">
+                        <LayoutGrid size={48} className="text-secondary mb-3 mx-auto opacity-50" />
+                        <h5 className="text-white fw-bold mb-2">Target Meter Unselected</h5>
+                        <p className="text-secondary fs-9">Please select an Energy Meter from the Target Unit dropdown to begin mapping configuration registers.</p>
+                      </Card>
+                    )}
                   </div>
                 </div>
               ) : selectedModule && selectedModule.startsWith('DG Set') ? (
@@ -3006,17 +4144,29 @@ const ConfigTemplates = () => {
                                       </Col>
                                       <Col md={12}>
                                         <div className="d-flex flex-column gap-2 mt-2">
-                                          {section.fields.map((f, fIdx) => (
-                                            <div key={fIdx}>
-                                              <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
-                                              <Form.Control as="input" list={`datalist-dg-${section.title.replace(/\s+/g, '-')}-${f.key}`} className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '35px' }} value={section.state[f.key]} placeholder={`TYPE ${f.label}`} onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)} />
-                                              <datalist id={`datalist-dg-${section.title.replace(/\s+/g, '-')}-${f.key}`}>
-                                                {getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
-                                                  <option key={opt.id} value={opt.id}>{opt.label}</option>
-                                                ))}
-                                              </datalist>
-                                            </div>
-                                          ))}
+                                          {section.fields.map((f, fIdx) => {
+                                            const rawFields = getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building });
+                                            const sortedOptions = getFilteredFieldList(section.title, f.key, f.label, rawFields);
+                                            return (
+                                              <div key={fIdx} className="mb-2">
+                                                <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
+                                                <Form.Select
+                                                  className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                  style={{ height: '35px', lineHeight: '1.2' }}
+                                                  value={section.state[f.key] || ''}
+                                                  onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
+                                                >
+                                                  <option value="">SELECT PARAMETER</option>
+                                                  {section.state[f.key] && !sortedOptions.some(opt => String(opt.id) === String(section.state[f.key])) && (
+                                                    <option value={section.state[f.key]}>{section.state[f.key]}</option>
+                                                  )}
+                                                  {sortedOptions.map(opt => (
+                                                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                                  ))}
+                                                </Form.Select>
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                       </Col>
                                     </>
@@ -3046,7 +4196,7 @@ const ConfigTemplates = () => {
             <div className="d-flex align-items-center gap-3">
               <span className="fs-11 text-secondary fw-black uppercase letter-spacing-1 ms-2">Filter By:</span>
               <div className="d-flex gap-2">
-                {['ALL', 'AG Tank', 'UG Pump', 'UG Tank', 'Pressure', 'Electrical Parameter'].map(mod => (
+                {['ALL', 'AG Tank', 'UG Pump', 'UG Tank', 'Pressure', 'Electrical Parameter', 'Main Meter', 'Sub Meters'].map(mod => (
                   <Button
                     key={mod}
                     variant={filterModule === mod ? "info" : "outline-secondary"}
@@ -3169,6 +4319,15 @@ const ConfigTemplates = () => {
                             <div className="d-flex justify-content-between align-items-center px-1">
                               <span className="fs-12 text-secondary uppercase fw-black opacity-60">Level Tank</span>
                               <span className="fs-11 text-info fw-black tracking-widest">{template.mapping.ugTankRange.name || 'UG TANK'}</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {(template.module === 'Main Meter' || template.module === 'Sub Meters') && template.mapping && template.mapping.energyMeteringTarget && (
+                          <div className="mt-3 mb-3 p-2 rounded-3 bg-dark bg-opacity-40 border border-white border-opacity-5 scada-data-box">
+                            <div className="d-flex justify-content-between align-items-center px-1">
+                              <span className="fs-12 text-secondary uppercase fw-black opacity-60">Target Meter</span>
+                              <span className="fs-11 text-info fw-black tracking-widest">{template.mapping.energyMeteringTarget}</span>
                             </div>
                           </div>
                         )}
@@ -3481,6 +4640,78 @@ const ConfigTemplates = () => {
                                     </div>
                                   ))}
                                 </div>
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    </Col>
+                  )}
+
+                  {/* DG SET PREVIEW */}
+                  {previewTemplate.module && previewTemplate.module.startsWith('DG Set') && previewTemplate.mapping && (
+                    <Col md={12}>
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                        <h6 className="text-info fw-black uppercase letter-spacing-1 mb-3 d-flex align-items-center gap-2 fs-11">
+                          <Zap size={16} /> Generator Telemetry Analysis
+                        </h6>
+                        <Row className="g-3">
+                          {[
+                            { title: 'Engine Health', key: 'dgEngineConfig', fields: ['speed', 'coolant', 'oilPress', 'battery', 'freq', 'runtime'] },
+                            { title: 'Power Matrix', key: 'dgPowerConfig', fields: ['vL1L2', 'iL1', 'iL2', 'iL3', 'loadKW', 'appKVA', 'pf', 'kwh'] },
+                            { title: 'Fuel Management', key: 'dgFuelConfig', fields: ['level'] },
+                            { title: 'Fault & Status', key: 'dgFaultConfig', fields: ['emergencyStop', 'failToStart'] }
+                          ].filter(section => previewTemplate.mapping[section.key]?.enabled).map((section, idx) => (
+                            <Col md={6} key={idx}>
+                              <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
+                                <span className="fs-13 text-info fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
+                                  {section.title} <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                </span>
+                                {['location', 'device', 'module', ...section.fields].map(f => (
+                                  <div key={f} className="d-flex justify-content-between">
+                                    <span className="fs-13 text-secondary uppercase fw-bold opacity-40">{f}</span>
+                                    <span className="fs-13 text-white fw-bold">{previewTemplate.mapping[section.key]?.[f] || '---'}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </Col>
+                          ))}
+                        </Row>
+                      </div>
+                    </Col>
+                  )}
+
+                  {/* ENERGY METERING PREVIEW */}
+                  {(previewTemplate.module === 'Main Meter' || previewTemplate.module === 'Sub Meters') && previewTemplate.mapping && (
+                    <Col md={12}>
+                      <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 scada-data-box">
+                        <div className="d-flex justify-content-between align-items-center mb-3">
+                          <h6 className="text-info fw-black uppercase letter-spacing-1 mb-0 d-flex align-items-center gap-2 fs-11">
+                            <Zap size={16} /> Energy Meter Analysis Matrix
+                          </h6>
+                          <div className="badge bg-info bg-opacity-10 text-info border border-info border-opacity-20 px-3 py-1 rounded-pill fs-11 fw-black tracking-widest">
+                            {previewTemplate.mapping.energyMeteringTarget}
+                          </div>
+                        </div>
+                        <Row className="g-3">
+                          {[
+                            { title: 'Voltage Metrics', key: 'emVoltageConfig', fields: ['vR', 'vY', 'vB'] },
+                            { title: 'Current Metrics', key: 'emCurrentConfig', fields: ['iR', 'iY', 'iB'] },
+                            { title: 'Power Matrix', key: 'emPowerConfig', fields: ['activePower', 'reactivePower', 'apparentPower'] },
+                            { title: 'System Metrics', key: 'emSystemConfig', fields: ['pf', 'freq'] },
+                            { title: 'Energy Consumption', key: 'emConsumptionConfig', fields: ['cumulativekWh'] }
+                          ].filter(section => previewTemplate.mapping[section.key]?.enabled).map((section, idx) => (
+                            <Col md={6} key={idx}>
+                              <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
+                                <span className="fs-13 text-info fw-black uppercase d-block mb-1 border-bottom border-white border-opacity-5">
+                                  {section.title} <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
+                                </span>
+                                {['location', 'device', 'module', ...section.fields].map(f => (
+                                  <div key={f} className="d-flex justify-content-between">
+                                    <span className="fs-13 text-secondary uppercase fw-bold opacity-40">{f}</span>
+                                    <span className="fs-13 text-white fw-bold">{previewTemplate.mapping[section.key]?.[f] || '---'}</span>
+                                  </div>
+                                ))}
                               </div>
                             </Col>
                           ))}
