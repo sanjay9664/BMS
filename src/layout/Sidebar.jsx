@@ -44,7 +44,8 @@ const Sidebar = ({ collapsed }) => {
             showTicketing: 'Ticketing',
             showMaintenance: 'Maintenance',
             showServiceHistory: 'Service History',
-            showDailyDPR: 'Daily DPR'
+            showDailyDPR: 'Daily DPR',
+            showEnergyMetering: 'Energy Metering'
           };
 
           const sidebarModules = {};
@@ -230,6 +231,17 @@ const Sidebar = ({ collapsed }) => {
         { title: "Daily Logs", path: "/dpr/logs" },
         { title: "PDF Report", path: "/dpr/report" }
       ].filter((subItem) => submodulesConfig.showDailyDPR?.[subItem.title] ?? true)
+    },
+    {
+      title: "Energy Metering",
+      icon: <Zap size={20} />,
+      disabled: modulesConfig ? !modulesConfig["Energy Metering"] : false,
+      subItems: [
+        { title: "Overview", path: "/energy-metering/overview" },
+        { title: "Main Meter", path: "/energy-metering/main" },
+        { title: "Sub Meters", path: "/energy-metering/sub" },
+        { title: "PDF Report", path: "/energy-metering/report" }
+      ].filter((subItem) => submodulesConfig.showEnergyMetering?.[subItem.title] ?? true)
     }
   ];
 
@@ -320,15 +332,29 @@ const Sidebar = ({ collapsed }) => {
                 </Accordion.Header>
                 {!collapsed && !effectiveDisabled && (
                   <Accordion.Body className="p-0 ps-4">
-                    {item.subItems.map((sub, subIdx) => (
-                      <NavLink 
-                        key={subIdx} 
-                        to={sub.path} 
-                        className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}
-                      >
-                        {sub.title}
-                      </NavLink>
-                    ))}
+                    {item.subItems.map((sub, subIdx) => {
+                      if (sub.disabled) {
+                        return (
+                          <span 
+                            key={subIdx} 
+                            className="sidebar-sub-link sidebar-disabled-item pe-none d-flex align-items-center justify-content-between"
+                            style={{ opacity: 0.5, cursor: 'not-allowed', paddingRight: '24px' }}
+                          >
+                            {sub.title}
+                            {!collapsed && <Lock size={10} className="text-secondary opacity-50" />}
+                          </span>
+                        );
+                      }
+                      return (
+                        <NavLink 
+                          key={subIdx} 
+                          to={sub.path} 
+                          className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}
+                        >
+                          {sub.title}
+                        </NavLink>
+                      );
+                    })}
                   </Accordion.Body>
                 )}
               </Accordion.Item>

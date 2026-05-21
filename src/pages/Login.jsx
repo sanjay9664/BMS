@@ -36,21 +36,21 @@ const Login = () => {
         localStorage.setItem('userData', JSON.stringify(data.user));
         localStorage.setItem('isAuthenticated', 'true');
         
-        // Save the visibility configuration
         const sidebarMapping = {
-          "Dashboard": data.config.showDashboard,
-          "Water Management": data.config.showWaterManagement,
-          "Motors": data.config.showMotors,
-          "DG Set": data.config.showDGSet,
-          "Setting Templates": data.config.showSettingTemplates,
-          "Alarm System": data.config.showAlarms,
-          "LT Panel": data.config.showLTPanel,
-          "Transformer": data.config.showTransformers,
-          "Fire Pumps": data.config.showFirePumps,
-          "Ticketing": data.config.showTicketing,
-          "Maintenance": data.config.showMaintenance,
-          "Service History": data.config.showServiceHistory,
-          "Daily DPR": data.config.showDailyDPR
+          "Dashboard": data.config.showDashboard ?? true,
+          "Water Management": data.config.showWaterManagement ?? true,
+          "Motors": data.config.showMotors ?? true,
+          "DG Set": data.config.showDGSet ?? true,
+          "Setting Templates": data.config.showSettingTemplates ?? true,
+          "Alarm System": data.config.showAlarms ?? true,
+          "LT Panel": data.config.showLTPanel ?? true,
+          "Transformer": data.config.showTransformers ?? true,
+          "Fire Pumps": data.config.showFirePumps ?? true,
+          "Ticketing": data.config.showTicketing ?? true,
+          "Maintenance": data.config.showMaintenance ?? true,
+          "Service History": data.config.showServiceHistory ?? true,
+          "Daily DPR": data.config.showDailyDPR ?? true,
+          "Energy Metering": data.config.showEnergyMetering ?? true
         };
         localStorage.setItem('scada_modules_config', JSON.stringify(sidebarMapping));
         localStorage.setItem('scada_submodules_config', JSON.stringify(data.config.submoduleVisibility || {}));

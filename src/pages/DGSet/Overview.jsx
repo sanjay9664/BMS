@@ -6,7 +6,7 @@ import {
   Database, AlertCircle, AlertTriangle, TrendingDown,
   ChevronRight, ArrowRightCircle
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { io } from 'socket.io-client';
@@ -28,29 +28,49 @@ const SCADA_COLORS = {
 
 const SiemensStyleDG = () => {
   const navigate = useNavigate();
-  const [activeDG, setActiveDG] = useState('DG1');
+  const { pathname } = useLocation();
+  
+  // Determine activeDG based on route path: /dg-set/dg3 -> DG3, /dg-set/dg2 -> DG2, else DG1
+  const activeDG = pathname.includes('dg3') ? 'DG3' : pathname.includes('dg2') ? 'DG2' : 'DG1';
+  
   const [showToast, setShowToast] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const userRole = (localStorage.getItem('userRole') || 'user').toUpperCase();
   const isAdmin = userRole === 'ADMIN' || userRole === 'SUPER_ADMIN';
 
-  const [data, setData] = useState({
-    voltage: { ry: 415.7, yb: 416.1, br: 414.9, rn: 239.8, yn: 239.5, bn: 241.2 },
-    current: { r: 145, y: 142, b: 148, avg: 145 },
-    power: { kw: 125.5, kvar: 12.4, kva: 130.2, pf: 0.98 },
-    engine: { coolant: 82.2, oilPressure: 4.5, speed: 1500, runtime: 1245, freq: 50.1, battery: 24.5 },
-    diesel: { 
-        level: 82.5, 
-        remaining: 1650, 
-        capacity: 2000, 
-        spentToday: 45.5, 
-        spentYesterday: 120.2,
-        efficiency: 0.3, 
-        lastFill: '18 APR 2026',
-        temp: 32.5 
-    },
-    generation: { today: 450.2, yesterday: 1250, month: 14200, morning: 0.000 }
-  });
+  // Initialize state with last known stats from localStorage if available, otherwise fallback to 0/empty
+  const getInitialData = (dgName) => {
+    const cached = localStorage.getItem(`dg_last_data_${dgName}`);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch (e) {}
+    }
+    return {
+      voltage: { ry: 0, yb: 0, br: 0, rn: 0, yn: 0, bn: 0 },
+      current: { r: 0, y: 0, b: 0, avg: 0 },
+      power: { kw: 0, kvar: 0, kva: 0, pf: 0 },
+      engine: { coolant: 0, oilPressure: 0, speed: 0, runtime: 0, freq: 0, battery: 0 },
+      diesel: { 
+          level: 0, 
+          remaining: 0, 
+          capacity: 2000, 
+          spentToday: 0, 
+          spentYesterday: 0,
+          efficiency: 0, 
+          lastFill: '-',
+          temp: 0 
+      },
+      generation: { today: 0, yesterday: 0, month: 0, morning: 0 }
+    };
+  };
+
+  const [data, setData] = useState(() => getInitialData(activeDG));
+
+  // Sync state when activeDG changes
+  useEffect(() => {
+    setData(getInitialData(activeDG));
+  }, [activeDG]);
 
   // Helper to clean corrupted template keys
   const cleanCorruptedMapping = (obj) => {
@@ -170,26 +190,58 @@ const SiemensStyleDG = () => {
               updated = true;
           }
 
-          return updated ? newData : prev;
+          if (updated) {
+            localStorage.setItem(`dg_last_data_${activeDG}`, JSON.stringify(newData));
+            return newData;
+          }
+          return prev;
         });
     };
 
     socket.on('telemetry_update', processTelemetry);
 
-    // Fallback polling for production (where serverless doesn't support WebSockets)
-    const pollInterval = setInterval(async () => {
-      if (!socket.connected) {
-        try {
-          const res = await fetch('/api/templates/stats');
-          if (res.ok) {
-            const stats = await res.json();
-            processTelemetry(stats);
+    // Fetch initial stats immediately on mount / change and poll every 2 seconds with targeted query
+    const fetchStats = async () => {
+      try {
+        const modulesToPoll = new Set();
+
+        const configFieldsMap = [
+          { config: mapping.dgEngineConfig, fields: ['speed', 'coolant', 'oilPress', 'battery', 'freq', 'runtime'] },
+          { config: mapping.dgPowerConfig, fields: ['vL1L2', 'iL1', 'iL2', 'iL3', 'loadKW', 'appKVA', 'pf', 'kwh'] },
+          { config: mapping.dgFuelConfig, fields: ['level'] }
+        ];
+
+        configFieldsMap.forEach(({ config, fields }) => {
+          if (config && config.enabled !== false) {
+            if (config.module && config.module !== 'ALL') {
+              modulesToPoll.add(String(config.module));
+            }
+            fields.forEach(k => {
+              if (config[k] && typeof config[k] === 'string' && config[k].includes('::')) {
+                const parts = config[k].split('::');
+                if (parts[0]) {
+                  modulesToPoll.add(String(parts[0]));
+                }
+              }
+            });
           }
-        } catch (err) {
-          console.error('Error polling telemetry stats:', err);
+        });
+
+        const pollList = Array.from(modulesToPoll);
+        if (pollList.length === 0) return;
+
+        const res = await fetch(`/api/templates/stats?modules=${pollList.join(',')}`);
+        if (res.ok) {
+          const stats = await res.json();
+          processTelemetry(stats);
         }
+      } catch (err) {
+        console.error('Error fetching DG telemetry stats:', err);
       }
-    }, 4000);
+    };
+
+    fetchStats();
+    const pollInterval = setInterval(fetchStats, 2000);
 
     return () => {
         socket.disconnect();
@@ -223,12 +275,12 @@ const SiemensStyleDG = () => {
             startY: startY,
             head: [['Engine Health', 'Value']],
             body: [
-                ['Engine Speed (RPM)', data.engine.speed],
-                ['Coolant Temp (°C)', data.engine.coolant.toFixed(1)],
-                ['Oil Pressure (BAR)', data.engine.oilPressure.toFixed(1)],
-                ['Frequency (Hz)', (data.engine.freq || 50.1).toFixed(1)],
-                ['Battery Voltage (V)', (data.engine.battery || 24.5).toFixed(1)],
-                ['Run Time (Hrs)', data.engine.runtime]
+                ['Engine Speed (RPM)', data.engine.speed !== null ? data.engine.speed : '-'],
+                ['Coolant Temp (°C)', data.engine.coolant !== null ? data.engine.coolant.toFixed(1) : '-'],
+                ['Oil Pressure (BAR)', data.engine.oilPressure !== null ? data.engine.oilPressure.toFixed(1) : '-'],
+                ['Frequency (Hz)', data.engine.freq !== null ? data.engine.freq.toFixed(1) : '-'],
+                ['Battery Voltage (V)', data.engine.battery !== null ? data.engine.battery.toFixed(1) : '-'],
+                ['Run Time (Hrs)', data.engine.runtime !== null ? data.engine.runtime : '-']
             ],
             theme: 'grid',
             headStyles: { fillColor: [15, 23, 42], textColor: 255 },
@@ -241,10 +293,10 @@ const SiemensStyleDG = () => {
             startY: startY,
             head: [['Power Matrix', 'Value']],
             body: [
-                ['Total Watts (KW)', data.power.kw],
-                ['Total Apparent (KVA)', data.power.kva],
-                ['Power Factor', data.power.pf],
-                ['KWH Total Generation', data.generation.today]
+                ['Total Watts (KW)', data.power.kw !== null ? data.power.kw : '-'],
+                ['Total Apparent (KVA)', data.power.kva !== null ? data.power.kva : '-'],
+                ['Power Factor', data.power.pf !== null ? data.power.pf : '-'],
+                ['KWH Total Generation', data.generation.today !== null ? data.generation.today : '-']
             ],
             theme: 'grid',
             headStyles: { fillColor: [15, 23, 42], textColor: 255 },
@@ -257,9 +309,9 @@ const SiemensStyleDG = () => {
             startY: startY,
             head: [['Electrical Phase', 'Voltage (V)', 'Current (A)']],
             body: [
-                ['Phase 1 (R/L1)', data.voltage.ry, data.current.r],
-                ['Phase 2 (Y/L2)', data.voltage.yb, data.current.y],
-                ['Phase 3 (B/L3)', data.voltage.br, data.current.b]
+                ['Phase 1 (R/L1)', data.voltage.ry !== null ? data.voltage.ry : '-', data.current.r !== null ? data.current.r : '-'],
+                ['Phase 2 (Y/L2)', data.voltage.yb !== null ? data.voltage.yb : '-', data.current.y !== null ? data.current.y : '-'],
+                ['Phase 3 (B/L3)', data.voltage.br !== null ? data.voltage.br : '-', data.current.b !== null ? data.current.b : '-']
             ],
             theme: 'grid',
             headStyles: { fillColor: [15, 23, 42], textColor: 255 },
@@ -272,9 +324,9 @@ const SiemensStyleDG = () => {
             startY: startY,
             head: [['Fuel Management', 'Status']],
             body: [
-                ['Fuel Level (%)', data.diesel.level.toFixed(1)],
-                ['Remaining Volume (L)', data.diesel.remaining.toFixed(1)],
-                ['Today Used (L)', data.diesel.spentToday.toFixed(1)],
+                ['Fuel Level (%)', data.diesel.level !== null ? data.diesel.level.toFixed(1) : '-'],
+                ['Remaining Volume (L)', data.diesel.remaining !== null ? data.diesel.remaining.toFixed(1) : '-'],
+                ['Today Used (L)', data.diesel.spentToday !== null ? data.diesel.spentToday.toFixed(1) : '-'],
                 ['Refill Date', data.diesel.lastFill]
             ],
             theme: 'grid',
@@ -301,14 +353,14 @@ const SiemensStyleDG = () => {
   };
 
   const DataBox = ({ label, value, unit, labelBg = SCADA_COLORS.info, valueColor = '#38bdf8' }) => (
-    <div className="d-flex align-items-center mb-1 gap-1">
-        <div className="text-white px-2 py-1 fw-black fs-12 text-center rounded-1 border border-white border-opacity-5" style={{ width: '90px', minHeight: '30px', fontSize: '0.68rem', backgroundColor: labelBg }}>
+    <div className="d-flex align-items-center mb-1 gap-1 flex-wrap flex-sm-nowrap w-100">
+        <div className="text-white px-1 py-1 fw-black fs-12 text-center rounded-1 border border-white border-opacity-5 flex-grow-1 flex-sm-grow-0" style={{ width: '75px', minHeight: '26px', fontSize: '0.58rem', backgroundColor: labelBg, display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: '1.1' }}>
             {label}
         </div>
-        <div className="bg-black border border-white border-opacity-10 px-2 py-1 fw-black fs-10 text-center rounded-1 flex-grow-1 font-monospace shadow-value" style={{ minWidth: '75px', minHeight: '30px', color: valueColor }}>
-            {typeof value === 'number' ? value.toFixed(1) : value}
+        <div className="bg-black border border-white border-opacity-10 px-2 py-1 fw-black fs-10 text-center rounded-1 flex-grow-1 font-monospace shadow-value" style={{ minWidth: '55px', minHeight: '26px', color: valueColor, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {typeof value === 'number' ? value.toFixed(1) : (value !== null && value !== undefined ? value : '-')}
         </div>
-        <div className="text-secondary fw-black fs-13 ms-1" style={{ width: '22px', fontSize: '0.7rem' }}>{unit}</div>
+        <div className="text-secondary fw-black fs-13 ms-1" style={{ width: '20px', fontSize: '0.65rem' }}>{unit}</div>
     </div>
   );
 
@@ -322,9 +374,9 @@ const SiemensStyleDG = () => {
   return (
     <div id="pdf-content" className="fade-in p-2 min-vh-100" style={{ backgroundColor: SCADA_COLORS.bg, color: SCADA_COLORS.textMain }}>
       {/* PREMIUM HIGH-GLOW NAV BAR */}
-      <div className="d-flex align-items-center bg-black border border-white border-opacity-10 p-2 mb-3 shadow-2xl justify-content-between rounded-3">
-        <div className="d-flex align-items-center gap-3 ps-3">
-            <div className="text-info px-4 py-1 fw-black fs-9 rounded-2 border border-info border-opacity-20 shadow-info">HMI CONTROL CENTER</div>
+      <div className="d-flex flex-column flex-lg-row align-items-center bg-black border border-white border-opacity-10 p-3 mb-3 shadow-2xl justify-content-between rounded-4 gap-3">
+        <div className="d-flex flex-wrap align-items-center justify-content-center justify-content-lg-start gap-3 w-100 w-lg-auto">
+            <div className="text-info px-4 py-1.5 fw-black fs-9 rounded-2 border border-info border-opacity-20 shadow-info">HMI CONTROL CENTER</div>
             <div className="d-flex align-items-center gap-2">
                 <div className="rounded-circle status-pulse" style={{width: 10, height: 10, backgroundColor: isAdmin ? '#22c55e' : '#f59e0b'}}></div>
                 <small className={`${isAdmin ? 'text-success' : 'text-warning'} fw-black fs-12 uppercase tracking-tight`}>
@@ -332,27 +384,24 @@ const SiemensStyleDG = () => {
                 </small>
             </div>
         </div>
-        <div className="d-flex gap-2">
-            <button onClick={() => navigate('/dashboard')} className="btn btn-sm fw-black border border-white border-opacity-10 rounded-2 px-4 py-1 bg-dark text-secondary hover-info fs-12">
+        <div className="d-flex flex-wrap gap-2 justify-content-center w-100 w-lg-auto">
+            <button onClick={() => navigate('/dashboard')} className="btn btn-sm fw-black border border-white border-opacity-10 rounded-2 px-4 py-1.5 bg-dark text-secondary hover-info fs-12">
                 <Home size={14} className="me-2" /> DASHBOARD
             </button>
-            <div className="d-flex gap-1 bg-white bg-opacity-5 p-1 rounded-2">
-                {['DG1', 'DG2', 'DG3'].map(dg => (
-                    <button key={dg} onClick={() => setActiveDG(dg)} 
-                            className={`btn btn-sm fw-black rounded-1 border-0 px-4 py-1 transition-all fs-12 ${activeDG === dg ? 'bg-info text-dark shadow-info' : 'text-secondary hover-white'}`}>
-                        {dg}
-                    </button>
-                ))}
+            <div className="d-flex align-items-center bg-white bg-opacity-5 px-3 py-1 rounded-2 border border-white border-opacity-5" style={{ minHeight: '32px' }}>
+                <span className="text-info fw-black fs-12 uppercase tracking-wider" style={{ letterSpacing: '1px' }}>
+                    {activeDG === 'DG3' ? 'DG Set-3' : activeDG === 'DG2' ? 'DG Set-2' : 'DG Set-1'}
+                </span>
             </div>
             <button 
               onClick={handlePdfDownload} 
               disabled={!isAdmin}
-              className={`btn btn-sm fw-black border border-white border-opacity-10 rounded-2 px-4 py-1 fs-12 ${isAdmin ? 'bg-primary text-white' : 'bg-secondary bg-opacity-20 text-muted opacity-50 cursor-not-allowed'}`}
+              className={`btn btn-sm fw-black border border-white border-opacity-10 rounded-2 px-4 py-1.5 fs-12 ${isAdmin ? 'bg-primary text-white' : 'bg-secondary bg-opacity-20 text-muted opacity-50 cursor-not-allowed'}`}
             >
                 <FileDown size={14} className="me-2" /> {isAdmin ? 'REPORTS' : 'REPORTS LOCKED'}
             </button>
         </div>
-        <div className="text-secondary fs-13 font-monospace px-4 fw-black">
+        <div className="text-secondary fs-13 font-monospace px-4 fw-black text-center w-100 w-lg-auto">
             {new Date().toLocaleTimeString()}
         </div>
       </div>
@@ -380,9 +429,9 @@ const SiemensStyleDG = () => {
                         <img src="/dg_set.png" alt="DG" className="img-fluid" style={{ width: '100%', height: '240px', objectFit: 'cover' }} />
                         <div className="position-absolute bottom-0 start-0 w-100 p-2 bg-gradient-scada border-top border-white border-opacity-10">
                              <div className="d-flex justify-content-around text-center py-1">
-                                <div><small className="text-muted d-block fs-13 uppercase fw-black">SPEED</small><span className="text-white fw-black fs-10 digital-font">{data.engine.speed.toFixed(0)}</span></div>
-                                <div className="border-start border-white border-opacity-10 px-4"><small className="text-muted d-block fs-13 uppercase fw-black">TOTAL WATTS</small><span className="text-info fw-black fs-10 digital-font">{data.power.kw.toFixed(1)} <small className="fs-13">KW</small></span></div>
-                                <div className="border-start border-white border-opacity-10 ps-4"><small className="text-muted d-block fs-13 uppercase fw-black">L1-L2 VOLTS</small><span className="text-warning fw-black fs-10 digital-font">{data.voltage.ry.toFixed(0)} <small className="fs-13">V</small></span></div>
+                                <div><small className="text-muted d-block fs-13 uppercase fw-black">SPEED</small><span className="text-white fw-black fs-10 digital-font">{data.engine.speed !== null ? data.engine.speed.toFixed(0) : '-'}</span></div>
+                                <div className="border-start border-white border-opacity-10 px-4"><small className="text-muted d-block fs-13 uppercase fw-black">TOTAL WATTS</small><span className="text-info fw-black fs-10 digital-font">{data.power.kw !== null ? data.power.kw.toFixed(1) : '-'} <small className="fs-13">KW</small></span></div>
+                                <div className="border-start border-white border-opacity-10 ps-4"><small className="text-muted d-block fs-13 uppercase fw-black">L1-L2 VOLTS</small><span className="text-warning fw-black fs-10 digital-font">{data.voltage.ry !== null ? data.voltage.ry.toFixed(0) : '-'} <small className="fs-13">V</small></span></div>
                              </div>
                         </div>
                     </div>
@@ -393,7 +442,7 @@ const SiemensStyleDG = () => {
                     <div className="p-4 bg-black bg-opacity-40 border border-white border-opacity-10 rounded-4 shadow-inner">
                          <div className="d-flex justify-content-between align-items-center mb-1">
                             <small className="text-secondary fw-black fs-12 uppercase">Accumulated Run Time</small>
-                            <span className="text-info fw-black fs-8">{data.engine.runtime} <small className="fs-13 text-secondary">HRS</small></span>
+                            <span className="text-info fw-black fs-8">{data.engine.runtime !== null ? data.engine.runtime : '-'} <small className="fs-13 text-secondary">HRS</small></span>
                          </div>
                          <ProgressBar now={75} variant="info" style={{ height: 5 }} className="bg-white bg-opacity-5 rounded-pill" />
                          <div className="d-flex justify-content-between mt-2">
@@ -448,25 +497,25 @@ const SiemensStyleDG = () => {
                                 <Col xs={6}>
                                     <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
                                         <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Coolant Temp</small>
-                                        <span className="text-warning fw-black fs-9">{data.engine.coolant.toFixed(1)}°C</span>
+                                        <span className="text-warning fw-black fs-9">{data.engine.coolant !== null ? `${data.engine.coolant.toFixed(1)}°C` : '-'}</span>
                                     </div>
                                 </Col>
                                 <Col xs={6}>
                                     <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
                                         <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Oil Pressure</small>
-                                        <span className="text-white fw-black fs-9">{data.engine.oilPressure.toFixed(1)} <small className="fs-13 text-muted">BAR</small></span>
+                                        <span className="text-white fw-black fs-9">{data.engine.oilPressure !== null ? data.engine.oilPressure.toFixed(1) : '-'} <small className="fs-13 text-muted">BAR</small></span>
                                     </div>
                                 </Col>
                                 <Col xs={6}>
                                     <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
                                         <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Frequency</small>
-                                        <span className="text-success fw-black fs-9">{data.engine.freq?.toFixed(1) || 50.1} <small className="fs-13 text-muted">HZ</small></span>
+                                        <span className="text-success fw-black fs-9">{data.engine.freq !== null ? data.engine.freq.toFixed(1) : '-'} <small className="fs-13 text-muted">HZ</small></span>
                                     </div>
                                 </Col>
                                 <Col xs={6}>
                                     <div className="health-card text-center p-2 rounded-3 border border-white border-opacity-5">
                                         <small className="text-muted d-block fs-13 mb-1 fw-black uppercase">Battery V</small>
-                                        <span className="text-info fw-black fs-9">{data.engine.battery?.toFixed(1) || 24.5} <small className="fs-13 text-muted">V</small></span>
+                                        <span className="text-info fw-black fs-9">{data.engine.battery !== null ? data.engine.battery.toFixed(1) : '-'} <small className="fs-13 text-muted">V</small></span>
                                     </div>
                                 </Col>
                             </Row>
@@ -500,12 +549,12 @@ const SiemensStyleDG = () => {
                     <div className="text-center mb-4 mt-2">
                         <div className="position-relative d-inline-block p-1 bg-black rounded-4 border border-white border-opacity-5 shadow-2xl">
                              <div className="tank-visual-modern-scada">
-                                <div className="liquid-fill" style={{ height: `${data.diesel.level}%`, background: 'linear-gradient(to top, #d97706, #f59e0b)' }}>
+                                <div className="liquid-fill" style={{ height: `${data.diesel.level !== null ? data.diesel.level : 0}%`, background: 'linear-gradient(to top, #d97706, #f59e0b)' }}>
                                      <div className="wave-scada"></div>
                                 </div>
                              </div>
                              <div className="position-absolute top-50 start-50 translate-middle text-center w-100">
-                                <h2 className="text-white fw-black mb-1 fs-7 digital-font" style={{textShadow: '0 0 15px rgba(245, 158, 11, 0.5)'}}>{data.diesel.level.toFixed(1)}%</h2>
+                                <h2 className="text-white fw-black mb-1 fs-7 digital-font" style={{textShadow: '0 0 15px rgba(245, 158, 11, 0.5)'}}>{data.diesel.level !== null ? `${data.diesel.level.toFixed(1)}%` : '-'}</h2>
                                 <small className="text-warning fw-black uppercase fs-12 tracking-widest">Level</small>
                              </div>
                         </div>
@@ -515,7 +564,7 @@ const SiemensStyleDG = () => {
                         <Col xs={6}>
                             <div className="p-3 rounded-4 bg-black border border-white border-opacity-10 text-center shadow-inner">
                                 <small className="text-muted d-block fw-black fs-12 mb-1 uppercase">Today Used</small>
-                                <span className="text-danger fw-black fs-9">{data.diesel.spentToday.toFixed(1)} <small className="fs-12 text-muted">L</small></span>
+                                <span className="text-danger fw-black fs-9">{data.diesel.spentToday !== null ? data.diesel.spentToday.toFixed(1) : '-'} <small className="fs-12 text-muted">L</small></span>
                             </div>
                         </Col>
                         <Col xs={6}>
@@ -646,6 +695,25 @@ const SiemensStyleDG = () => {
         .status-dot { width: 8px; height: 8px; border-radius: 50%; opacity: 0.8; }
         .health-card:hover { border-color: rgba(255,255,255,0.2) !important; background-color: rgba(255,255,255,0.05) !important; }
         .transition-all { transition: all 0.3s ease; }
+
+        @media (max-width: 576px) {
+          .fs-9 { font-size: 1.1rem !important; }
+          .fs-8 { font-size: 1.4rem !important; }
+          .fs-7 { font-size: 1.8rem !important; }
+          .tank-visual-modern-scada {
+             width: 100px !important;
+             height: 140px !important;
+          }
+          .asset-box img {
+             height: 180px !important;
+          }
+          .health-card span {
+             font-size: 1.1rem !important;
+          }
+          .health-card small {
+             font-size: 0.6rem !important;
+          }
+        }
       `}} />
     </div>
   );
