@@ -635,47 +635,63 @@ const AgTank = () => {
       if (cached) processTelemetry(JSON.parse(cached));
     } catch (e) { /* ignore cache errors */ }
 
-    // Step 2: HTTP fetch immediately on mount for fresh data (don't wait for WebSocket)
-    const fetchStats = async () => {
-      try {
-        const saved = localStorage.getItem('scada_templates');
-        const templates = saved ? JSON.parse(saved).map(t => ({
-          ...t,
-          mapping: cleanCorruptedMapping(t.mapping)
-        })) : [];
-        const modulesToPoll = new Set();
-        templates.forEach(t => {
-          if (t.mapping) {
-            Object.values(t.mapping).forEach(cfg => {
-              if (cfg && typeof cfg === 'object') {
-                if (cfg.module && cfg.module !== 'ALL') {
-                  modulesToPoll.add(String(cfg.module));
-                }
-                Object.values(cfg).forEach(val => {
-                  if (typeof val === 'string' && val.includes('::')) {
-                    const parts = val.split('::');
-                    if (parts[0]) modulesToPoll.add(String(parts[0]));
-                  }
-                });
+  const fetchStats = async () => {
+  try {
+    // Clear old telemetry cache to avoid stale data
+    localStorage.removeItem('scada_agtank_telemetry_cache');
+    localStorage.removeItem('scada_ugtank_telemetry_cache');
+    const saved = localStorage.getItem('scada_templates');
+    const templates = saved ? JSON.parse(saved).map(t => ({
+      ...t,
+      mapping: cleanCorruptedMapping(t.mapping)
+    })) : [];
+    const modulesToPoll = new Set();
+    templates.forEach(t => {
+      if (t.mapping) {
+        Object.values(t.mapping).forEach(cfg => {
+          if (cfg && typeof cfg === 'object') {
+            if (cfg.module && cfg.module !== 'ALL') {
+              modulesToPoll.add(String(cfg.module));
+            }
+            Object.values(cfg).forEach(val => {
+              if (typeof val === 'string' && val.includes('::')) {
+                const parts = val.split('::');
+                if (parts[0]) modulesToPoll.add(String(parts[0]));
               }
             });
           }
         });
-        const pollList = Array.from(modulesToPoll);
-        const apiBase = process.env.REACT_APP_BACKEND_URL || '';
-      const url = pollList.length > 0 ? `${apiBase}/api/templates/stats?modules=${pollList.join(',')}` : `${apiBase}/api/templates/stats`;
-
-        const res = await fetch(url);
-        if (res.ok) {
-          const stats = await res.json();
-          // Save to cache for next page visit — instant load next time
-          try { localStorage.setItem('scada_agtank_telemetry_cache', JSON.stringify(stats)); } catch (e) {}
-          processTelemetry(stats);
-        }
-      } catch (err) {
-        console.error('Error fetching AgTank stats:', err);
       }
-    };
+    });
+    const pollList = Array.from(modulesToPoll);
+    const apiBase = (() => {
+      // Vite dev environment via process.env
+      if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) {
+        return process.env.REACT_APP_BACKEND_URL.replace(/\/api$/, '');
+      }
+      // Production runtime via injected window.process
+      if (typeof window !== 'undefined' && window.process && window.process.env && window.process.env.REACT_APP_BACKEND_URL) {
+        return window.process.env.REACT_APP_BACKEND_URL.replace(/\/api$/, '');
+      }
+      return '';
+    })();
+    const url = pollList.length > 0 ? `${apiBase}/api/templates/stats?modules=${pollList.join(',')}` : `${apiBase}/api/templates/stats`;
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      console.error('Failed to fetch stats', res.status, url);
+    }
+    if (res.ok) {
+      const stats = await res.json();
+      // Save to cache for next page visit — instant load next time
+      try { localStorage.setItem('scada_agtank_telemetry_cache', JSON.stringify(stats)); } catch (e) {}
+      processTelemetry(stats);
+    }
+  } catch (err) {
+    console.error('Error fetching AgTank stats:', err);
+  }
+};
+
 
     fetchStats(); // Immediate on mount
 

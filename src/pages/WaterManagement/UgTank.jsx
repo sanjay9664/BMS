@@ -457,8 +457,19 @@ const UgTank = () => {
             });
           }
         });
+        const apiBase = (() => {
+  // Vite dev environment via process.env
+  if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) {
+    return process.env.REACT_APP_BACKEND_URL.replace(/\/api$/, '');
+  }
+  // Production runtime via injected window.process
+  if (typeof window !== 'undefined' && window.process && window.process.env && window.process.env.REACT_APP_BACKEND_URL) {
+    return window.process.env.REACT_APP_BACKEND_URL.replace(/\/api$/, '');
+  }
+  // Fallback to empty string (relative to current host)
+  return '';
+})();
         const pollList = Array.from(modulesToPoll);
-        const apiBase = process.env.REACT_APP_BACKEND_URL || '';
         const url = pollList.length > 0 ? `${apiBase}/api/templates/stats?modules=${pollList.join(',')}` : `${apiBase}/api/templates/stats`;
         const res = await fetch(url);
         if (res.ok) {
