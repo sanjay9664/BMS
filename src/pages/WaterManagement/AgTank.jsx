@@ -886,9 +886,10 @@ const AgTank = () => {
                     </div>
                   )}
                 </div>
-                <div className={`fw-bold mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'} ${!tank.isOnline ? 'text-secondary opacity-50' : 'text-white'}`}>
-                  {!tank.isOnline ? 'OFFLINE' : `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`}
+                <div className={`fw-bold mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'} ${!tank.isOnline ? 'text-danger' : 'text-success'}`}>
+                  {tank.isOnline ? 'ONLINE' : 'OFFLINE'}
                 </div>
+                <div className={`fw-bold mb-0 ${isFullscreen ? 'fs-7' : 'fs-10'} text-muted`}>{tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{tank.localId}</div>
                 <div className={`d-flex justify-content-center gap-2 opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
                   <span style={{ color: !tank.isOnline ? '#475569' : getTankColor(tank.type, tank.level, tank.status) }}>{!tank.isOnline ? '--' : tank.level}%</span>
                   {tank.isOnline && tank.amps !== undefined && (
