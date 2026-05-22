@@ -434,6 +434,11 @@ const UgTank = () => {
     // Step 2: HTTP fetch immediately on mount for fresh data (don't wait for WebSocket)
     const fetchStats = async () => {
       try {
+                const saved = localStorage.getItem('scada_templates');
+        const templates = saved ? JSON.parse(saved).map(t => ({
+          ...t,
+          mapping: cleanCorruptedMapping(t.mapping)
+        })) : [];
         const modulesToPoll = new Set();
         templates.forEach(t => {
           if (t.mapping) {
@@ -452,10 +457,7 @@ const UgTank = () => {
             });
           }
         });
-        const pollList = Array.from(modulesToPoll);
-        const url = pollList.length > 0 ? `/api/templates/stats?modules=${pollList.join(',')}` : '/api/templates/stats';
-
-        const res = await fetch(url);
+        const res = await fetch('/api/templates/stats');
         if (res.ok) {
           const stats = await res.json();
           // Save to cache for next page visit — instant load next time

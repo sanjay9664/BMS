@@ -657,7 +657,8 @@ const AgTank = () => {
           }
         });
         const pollList = Array.from(modulesToPoll);
-        const url = pollList.length > 0 ? `/api/templates/stats?modules=${pollList.join(',')}` : '/api/templates/stats';
+        const apiBase = process.env.REACT_APP_BACKEND_URL || '';
+      const url = pollList.length > 0 ? `${apiBase}/api/templates/stats?modules=${pollList.join(',')}` : `${apiBase}/api/templates/stats`;
 
         const res = await fetch(url);
         if (res.ok) {
