@@ -457,7 +457,7 @@ const UgTank = () => {
             });
           }
         });
-        const res = await fetch('/api/templates/stats');
+        const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates/stats`);
         if (res.ok) {
           const stats = await res.json();
           // Save to cache for next page visit — instant load next time
@@ -587,7 +587,7 @@ const UgTank = () => {
           cmdField: config.field
         };
 
-        const response = await fetch('/api/command/push', {
+        const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/command/push`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -703,7 +703,7 @@ const UgTank = () => {
           ]
         };
 
-        const response = await fetch(apiURL, {
+        const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/rule-engine/apply`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
