@@ -445,7 +445,7 @@ const MainMeter = () => {
       }
     }
 
-    fetch('/api/templates')
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates`)
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         const mapped = data.map(t => {
