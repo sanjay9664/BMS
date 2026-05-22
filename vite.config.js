@@ -7,11 +7,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: 'https://backend-7vd2.vercel.app',
         changeOrigin: true,
       },
       '/socket.io': {
-        target: 'ws://localhost:5000',
+        target: 'wss://backend-7vd2.vercel.app',
         ws: true,
         changeOrigin: true
       },
