@@ -638,7 +638,28 @@ const AgTank = () => {
     // Step 2: HTTP fetch immediately on mount for fresh data (don't wait for WebSocket)
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/templates/stats');
+        const modulesToPoll = new Set();
+        templates.forEach(t => {
+          if (t.mapping) {
+            Object.values(t.mapping).forEach(cfg => {
+              if (cfg && typeof cfg === 'object') {
+                if (cfg.module && cfg.module !== 'ALL') {
+                  modulesToPoll.add(String(cfg.module));
+                }
+                Object.values(cfg).forEach(val => {
+                  if (typeof val === 'string' && val.includes('::')) {
+                    const parts = val.split('::');
+                    if (parts[0]) modulesToPoll.add(String(parts[0]));
+                  }
+                });
+              }
+            });
+          }
+        });
+        const pollList = Array.from(modulesToPoll);
+        const url = pollList.length > 0 ? `/api/templates/stats?modules=${pollList.join(',')}` : '/api/templates/stats';
+
+        const res = await fetch(url);
         if (res.ok) {
           const stats = await res.json();
           // Save to cache for next page visit — instant load next time
