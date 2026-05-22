@@ -638,6 +638,11 @@ const AgTank = () => {
     // Step 2: HTTP fetch immediately on mount for fresh data (don't wait for WebSocket)
     const fetchStats = async () => {
       try {
+        const saved = localStorage.getItem('scada_templates');
+        const templates = saved ? JSON.parse(saved).map(t => ({
+          ...t,
+          mapping: cleanCorruptedMapping(t.mapping)
+        })) : [];
         const modulesToPoll = new Set();
         templates.forEach(t => {
           if (t.mapping) {
