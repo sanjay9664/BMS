@@ -3,6 +3,7 @@ import { Row, Col, Card, Badge, Table, Button, Form } from 'react-bootstrap';
 import { Zap, Activity, ShieldCheck, HelpCircle, ChevronLeft, ChevronRight, Play, Pause, Settings, RefreshCw, Info, AlertTriangle, Cpu, Sliders, ShieldAlert, Coins, Clock, Gauge, Flame, Lock } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
 import PdfButton from '../../components/PdfButton';
+import { useDeviceStatus } from '../../services/DeviceStatusContext';
 import { io } from 'socket.io-client';
 
 class ErrorBoundary extends React.Component {
@@ -53,11 +54,10 @@ const PARAMETER_SYNONYMS = {
   vY: ['3,169', '3,164', 'VOLTAGE Y', 'VOLTAGE_Y', 'VY', 'V_Y', 'UB', 'U2', 'LINE VOLTS (Y)', 'VOLTAGE Y-PHASE'],
   vB: ['3,170', '3,165', 'VOLTAGE B', 'VOLTAGE_B', 'VB', 'V_B', 'UC', 'U3', 'LINE VOLTS (B)', 'VOLTAGE B-PHASE'],
   iR: ['3,171', '3,166', 'CURRENT R', 'CURRENT_R', 'IR', 'I_R', 'IA', 'A1', 'LINE AMPS (R)', 'R-CURRENT'],
-  iY: ['3,172', '3,167', 'CURRENT Y', 'CURRENT_Y', 'IY', 'I_Y', 'IB', 'A2', 'LINE AMPS (Y)', 'Y-CURRENT'],
+  iY: ['3,172', '3,167', 'CURRENT Y', 'CURRENT_Y', 'IY', 'I_Y', 'A2', 'LINE AMPS (Y)', 'Y-CURRENT'],
   iB: ['3,173', '3,168', 'CURRENT B', 'CURRENT_B', 'IB', 'I_B', 'IC', 'A3', 'LINE AMPS (B)', 'B-CURRENT'],
   pf: ['3,174', 'POWER FACTOR', 'PF', 'SYSTEM PF', 'POWER_FACTOR'],
   dgKwh: ['3,180', '3,181', 'DG KWH', 'DG_KWH', 'DG ACTIVE', 'DG ENERGY', 'GENERATOR ENERGY'],
-  fixedCharge: ['3,163', 'FIXED CHARGE', 'FIXED_CHARGE', 'CHARGES'],
   lowBalanceCut: ['3,164', 'LOW BALANCE', 'BALANCE CUT', 'LOW_BAL', 'LOW_BALANCE_CUT'],
   overloadTrip: ['3,165', 'OVERLOAD TRIP', 'OL TRIP', 'OVERLOAD_TRIP', 'OVERLOAD TRIP STATUS'],
   overloadLimitReached: ['3,166', 'OVERLOAD LIMIT', 'OL LIMIT', 'OVERLOAD_WARN', 'OVERLOAD LIMIT REACHED'],
@@ -382,13 +382,14 @@ const CircularGauge = ({ value, min = 0, max = 100, label, unit, limits, default
 };
 
 const MainMeter = () => {
+  const { getOverallStatus } = useDeviceStatus();
   // 1. Live Telemetry Data States
   const [data, setData] = useState({
     // CHANGE
     ebKvah: 0, ebKwh: 0, balance: 0, totalKw: 0,
     vR: 0, vY: 0, vB: 0,
     iR: 0, iY: 0, iB: 0,
-    pf: 0, totalKva: 0, dgKwh: 0, fixedCharge: 0,
+    pf: 0, totalKva: 0, dgKwh: 0,
     // WARNING
     lowBalanceCut: 0, overloadTrip: 0, overloadLimitReached: 0, connectedStatus: 0, forceOff: 0,
     // READ
@@ -399,6 +400,9 @@ const MainMeter = () => {
     // Legacy metrics
     activePower: 0, reactivePower: 0, apparentPower: 0, freq: 0, cumulativekWh: 0
   });
+  // Tracks the timestamp (ms) of the latest MongoDB event received for the current meter.
+  // Used for freshness check in isMeterOnline to avoid stale data causing false-ONLINE.
+  const [lastTelemetryAt, setLastTelemetryAt] = useState(null);
 
   const [templates, setTemplates] = useState([]);
   const [activeRightTab, setActiveRightTab] = useState('telemetry');
@@ -496,19 +500,50 @@ const MainMeter = () => {
     return mainMeterTemplate?.mapping?.emLimitsConfig || {};
   }, [mainMeterTemplate]);
 
+  const isMeterOnline = useMemo(() => {
+    let devId = mainMeterTemplate?.mapping?.deviceId;
+    if (!devId && mainMeterTemplate?.mapping) {
+      const anyConfig = Object.values(mainMeterTemplate.mapping).find(cfg => cfg && typeof cfg === 'object' && cfg.device);
+      if (anyConfig) devId = anyConfig.device;
+    }
+    const gatewayUuid = mainMeterTemplate?.mapping?.gatewayUuid;
+    if (devId) {
+      const isOnline = getOverallStatus(devId, gatewayUuid);
+      if (isOnline) return true;
+
+      // Telemetry-based fallback: ONLY if data is FRESH (within 10 minutes).
+      // This prevents stale MongoDB events from making an offline device look ONLINE.
+      const FRESHNESS_MS = 10 * 60 * 1000;
+      const isFresh = lastTelemetryAt && (Date.now() - lastTelemetryAt) < FRESHNESS_MS;
+      if (isFresh) {
+        const hasV = data.vR !== undefined && data.vR !== null && data.vR > 0;
+        const hasI = data.iR !== undefined && data.iR !== null && data.iR > 0;
+        const hasLoad = (data.totalKw !== undefined && data.totalKw !== null && data.totalKw > 0) || (data.activePower !== undefined && data.activePower !== null && data.activePower > 0);
+        const hasSr = data.meterSrno !== undefined && data.meterSrno !== null && data.meterSrno !== '';
+        if (hasV || hasI || hasLoad || hasSr) {
+          return true;
+        }
+      }
+    }
+    // Fallback to legacy commStatus
+    return !(data.commStatus === 0 || data.commStatus === '0' || data.commStatus === null || data.commStatus === '');
+  }, [mainMeterTemplate, getOverallStatus, lastTelemetryAt, data.commStatus, data.vR, data.iR, data.totalKw, data.activePower, data.meterSrno]);
+
   // --- Reset live data, history & page index when the selected meter changes ---
   useEffect(() => {
     setData({
       ebKvah: 0, ebKwh: 0, balance: 0, totalKw: 0,
       vR: 0, vY: 0, vB: 0,
       iR: 0, iY: 0, iB: 0,
-      pf: 0, totalKva: 0, dgKwh: 0, fixedCharge: 0,
+      pf: 0, totalKva: 0, dgKwh: 0,
       lowBalanceCut: 0, overloadTrip: 0, overloadLimitReached: 0, connectedStatus: 0, forceOff: 0,
       meterSrno: 0, noOfOverloadCheck: 0, ebDgStatus: 0, ebTariff: 0, dgTariff: 0,
       ebRLoadSet: 0, ebYLoadSet: 0, ebBLoadSet: 0,
       dgRLoadSet: 0, dgYLoadSet: 0, dgBLoadSet: 0,
+      commStatus: null,
       activePower: 0, reactivePower: 0, apparentPower: 0, freq: 0, cumulativekWh: 0
     });
+    setLastTelemetryAt(null); // Reset freshness timer so stale data from old meter doesn't bleed over
     setHistoryLog([]);
     setMfmPageIndex(0);
     // Immediately poll the new template's modules after a tick (so the ref updates first)
@@ -543,10 +578,11 @@ const MainMeter = () => {
     checkField(mapping.emPowerConfig, 'apparentPower');
     checkField(mapping.emSystemConfig, 'pf');
     checkField(mapping.emSystemConfig, 'freq');
+    checkField(mapping.emSystemConfig, 'commStatus');
     checkField(mapping.emConsumptionConfig, 'cumulativekWh');
 
     // New parameters mapping
-    const changeFields = ['ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB', 'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh', 'fixedCharge'];
+    const changeFields = ['ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB', 'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh'];
     const warningFields = ['lowBalanceCut', 'overloadTrip', 'overloadLimitReached', 'connectedStatus', 'forceOff'];
     const readFields = ['meterSrno', 'noOfOverloadCheck', 'ebDgStatus', 'ebTariff', 'dgTariff', 'ebRLoadSet', 'ebYLoadSet', 'ebBLoadSet', 'dgRLoadSet', 'dgYLoadSet', 'dgBLoadSet'];
 
@@ -644,10 +680,11 @@ const MainMeter = () => {
         updateField(mapping.emPowerConfig, 'apparentPower');
         updateField(mapping.emSystemConfig, 'pf');
         updateField(mapping.emSystemConfig, 'freq');
+        updateField(mapping.emSystemConfig, 'commStatus');
         updateField(mapping.emConsumptionConfig, 'cumulativekWh');
 
         // New emChangeConfig keys
-        const changeFields = ['ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB', 'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh', 'fixedCharge'];
+        const changeFields = ['ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB', 'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh'];
         changeFields.forEach(k => updateField(mapping.emChangeConfig, k));
 
         // New emWarningConfig keys
@@ -676,20 +713,45 @@ const MainMeter = () => {
         return updated ? newData : prev;
       });
 
+      // Extract the latest MongoDB event timestamp for freshness tracking.
+      // This is the key guard against stale data causing a false-ONLINE status.
+      const allCfgsMM = [
+        mapping.emVoltageConfig, mapping.emCurrentConfig, mapping.emPowerConfig,
+        mapping.emSystemConfig, mapping.emConsumptionConfig, mapping.emChangeConfig,
+        mapping.emWarningConfig, mapping.emReadConfig
+      ];
+      let maxTs = null;
+      allCfgsMM.forEach(cfg => {
+        if (cfg && cfg.enabled !== false && cfg.module) {
+          const matchStat = stats.find(s =>
+            String(s.moduleId) === String(cfg.module) ||
+            String(s.meta?.module_id) === String(cfg.module)
+          );
+          if (matchStat?.meta?.created_at_timestamp) {
+            const raw = matchStat.meta.created_at_timestamp;
+            // Handle both seconds-based and milliseconds-based Unix timestamps
+            const tsMs = raw > 1e12 ? raw : raw * 1000;
+            if (!maxTs || tsMs > maxTs) maxTs = tsMs;
+          }
+        }
+      });
+      if (maxTs) setLastTelemetryAt(maxTs);
+
       // Append real snapshot to live history ring buffer (cap at 10 entries)
       setHistoryLog(prev => {
         const snap = {
           time: new Date().toLocaleTimeString(),
           // Extract values directly from the already-resolved stats array
-          vR: (() => { const val = getValueForField(mapping.emChangeConfig || mapping.emVoltageConfig, 'vR'); return val; })(),
-          vY: (() => { const val = getValueForField(mapping.emChangeConfig || mapping.emVoltageConfig, 'vY'); return val; })(),
-          vB: (() => { const val = getValueForField(mapping.emChangeConfig || mapping.emVoltageConfig, 'vB'); return val; })(),
-          iR: (() => { const val = getValueForField(mapping.emChangeConfig || mapping.emCurrentConfig, 'iR'); return val; })(),
-          iY: (() => { const val = getValueForField(mapping.emChangeConfig || mapping.emCurrentConfig, 'iY'); return val; })(),
-          iB: (() => { const val = getValueForField(mapping.emChangeConfig || mapping.emCurrentConfig, 'iB'); return val; })(),
-          totalKw: (() => { const val = getValueForField(mapping.emChangeConfig, 'totalKw'); return val; })(),
-          freq: (() => { const val = getValueForField(mapping.emSystemConfig, 'freq'); return val; })(),
-          pf: (() => { const val = getValueForField(mapping.emChangeConfig || mapping.emSystemConfig, 'pf'); return val; })(),
+          vR: getValueForField(mapping.emChangeConfig, 'vR') ?? getValueForField(mapping.emVoltageConfig, 'vR'),
+          vY: getValueForField(mapping.emChangeConfig, 'vY') ?? getValueForField(mapping.emVoltageConfig, 'vY'),
+          vB: getValueForField(mapping.emChangeConfig, 'vB') ?? getValueForField(mapping.emVoltageConfig, 'vB'),
+          iR: getValueForField(mapping.emChangeConfig, 'iR') ?? getValueForField(mapping.emCurrentConfig, 'iR'),
+          iY: getValueForField(mapping.emChangeConfig, 'iY') ?? getValueForField(mapping.emCurrentConfig, 'iY'),
+          iB: getValueForField(mapping.emChangeConfig, 'iB') ?? getValueForField(mapping.emCurrentConfig, 'iB'),
+          totalKw: getValueForField(mapping.emChangeConfig, 'totalKw') ?? getValueForField(mapping.emPowerConfig, 'activePower'),
+          freq: getValueForField(mapping.emChangeConfig, 'freq') ?? getValueForField(mapping.emSystemConfig, 'freq'),
+          pf: getValueForField(mapping.emChangeConfig, 'pf') ?? getValueForField(mapping.emSystemConfig, 'pf'),
+          commStatus: (() => { const val = getValueForField(mapping.emSystemConfig, 'commStatus'); return val; })(),
           connectedStatus: (() => { const val = getValueForField(mapping.emWarningConfig, 'connectedStatus'); return val; })(),
         };
         // Only record if at least one field has live data
@@ -728,7 +790,7 @@ const MainMeter = () => {
             { config: mapping.emConsumptionConfig, fields: ['cumulativekWh'] },
             {
               config: mapping.emChangeConfig,
-              fields: ['ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB', 'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh', 'fixedCharge']
+              fields: ['ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB', 'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh']
             },
             {
               config: mapping.emWarningConfig,
@@ -902,9 +964,15 @@ const MainMeter = () => {
               ))}
             </Form.Select>
           )}
-          <Badge bg="success" className="px-3 py-2 bg-opacity-10 text-success border border-success border-opacity-20 d-flex align-items-center gap-2">
-            <span className="pulse-dot-green"></span> GRID STABLE - ON
-          </Badge>
+          {(() => {
+            const isOnline = isMeterOnline;
+            return (
+              <Badge bg={!isOnline ? "secondary" : "success"} className={`px-3 py-2 bg-opacity-10 text-${!isOnline ? 'secondary' : 'success'} border border-${!isOnline ? 'secondary' : 'success'} border-opacity-20 d-flex align-items-center gap-2 rounded-pill`}>
+                {isOnline && <span className="pulse-dot-green"></span>}
+                {!isOnline ? 'Offline' : 'Online'}
+              </Badge>
+            );
+          })()}
           <PdfButton />
         </div>
       </div>
@@ -1147,7 +1215,6 @@ const MainMeter = () => {
                       else if (cleanUpper === 'TOTALKW') label = 'TOTAL KW';
                       else if (cleanUpper === 'TOTALKVA') label = 'TOTAL KVA';
                       else if (cleanUpper === 'DGKWH') label = 'DG KWH';
-                      else if (cleanUpper === 'FIXEDCHARGE') label = 'FIXED CHARGE';
                     }
 
                     let unit = defaultUnit;
@@ -1172,7 +1239,7 @@ const MainMeter = () => {
                     // Format value with unit or prefix (round numerics)
                     const fmtVal = typeof rawValue === 'number' ? rawValue.toFixed(2) : rawValue;
                     let val = fmtVal;
-                    if (label === 'BALANCE' || label === 'FIXED CHARGE') {
+                    if (label === 'BALANCE') {
                       val = `₹${fmtVal}`;
                     } else if (unit) {
                       val = `${fmtVal} ${unit}`;
@@ -1185,7 +1252,7 @@ const MainMeter = () => {
                 // Default formatting (round numerics)
                 const fmtVal2 = typeof rawValue === 'number' ? rawValue.toFixed(2) : rawValue;
                 let val = fmtVal2;
-                if (defaultLabel === 'BALANCE' || defaultLabel === 'FIXED CHARGE') {
+                if (defaultLabel === 'BALANCE') {
                   val = `₹${fmtVal2}`;
                 } else if (defaultUnit) {
                   val = `${fmtVal2} ${defaultUnit}`;
@@ -1200,7 +1267,7 @@ const MainMeter = () => {
                 isFieldVisible('vB') || isFieldVisible('iR') ||
                 isFieldVisible('iY') || isFieldVisible('iB') ||
                 isFieldVisible('pf') || isFieldVisible('totalKva') ||
-                isFieldVisible('dgKwh') || isFieldVisible('fixedCharge') ||
+                isFieldVisible('dgKwh') ||
                 isFieldVisible('activePower') || isFieldVisible('reactivePower') ||
                 isFieldVisible('apparentPower') || isFieldVisible('cumulativekWh') ||
                 isFieldVisible('freq');
@@ -1352,7 +1419,6 @@ const MainMeter = () => {
                           { defaultLabel: 'POWER FACTOR', defaultUnit: '', key: 'pf', config: mapping?.emChangeConfig, rawValue: data.pf, icon: <Cpu size={14} className="text-success" /> },
                           { defaultLabel: 'TOTAL KVA', defaultUnit: 'kVA', key: 'totalKva', config: mapping?.emChangeConfig, rawValue: data.totalKva, icon: <Gauge size={14} className="text-primary" />, limits: emLimitsConfig.totalKva },
                           { defaultLabel: 'DG KWH', defaultUnit: 'kWh', key: 'dgKwh', config: mapping?.emChangeConfig, rawValue: data.dgKwh, icon: <Flame size={14} className="text-orange" /> },
-                          { defaultLabel: 'FIXED CHARGE', defaultUnit: '', key: 'fixedCharge', config: mapping?.emChangeConfig, rawValue: data.fixedCharge, icon: <Coins size={14} className="text-secondary" /> },
                           { defaultLabel: 'ACTIVE POWER', defaultUnit: 'kW', key: 'activePower', config: mapping?.emPowerConfig, rawValue: data.activePower, icon: <Zap size={14} className="text-info" /> },
                           { defaultLabel: 'REACTIVE POWER', defaultUnit: 'kVAR', key: 'reactivePower', config: mapping?.emPowerConfig, rawValue: data.reactivePower, icon: <Activity size={14} className="text-warning" /> },
                           { defaultLabel: 'APPARENT POWER', defaultUnit: 'kVA', key: 'apparentPower', config: mapping?.emPowerConfig, rawValue: data.apparentPower, icon: <Gauge size={14} className="text-primary" /> },
@@ -1377,7 +1443,7 @@ const MainMeter = () => {
                           if (item.key.includes('R') || item.key === 'vR' || item.key === 'iR') accentColor = '#ef4444';
                           else if (item.key.includes('Y') || item.key === 'vY' || item.key === 'iY') accentColor = '#f59e0b';
                           else if (item.key.includes('B') || item.key === 'vB' || item.key === 'iB') accentColor = '#06b6d4';
-                          else if (item.key === 'balance' || item.key === 'fixedCharge') accentColor = '#eab308';
+                          else if (item.key === 'balance') accentColor = '#eab308';
                           else if (item.key === 'totalKw' || item.key === 'activePower' || item.key === 'cumulativekWh' || item.key === 'ebKwh') accentColor = '#10b981';
                           else if (item.key === 'totalKva' || item.key === 'apparentPower' || item.key === 'ebKvah') accentColor = '#3b82f6';
                           else if (item.key === 'dgKwh') accentColor = '#f97316';

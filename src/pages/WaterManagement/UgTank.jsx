@@ -3,9 +3,11 @@ import { Row, Col, Card, Button, Form, Badge, Modal, Spinner } from 'react-boots
 import { Activity, Zap, ShieldCheck, Info, Droplets, ToggleRight, ToggleLeft, Layers, Maximize, Minimize, XCircle, X } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
 import { getSochiotDeviceDetails } from '../../services/authService';
+import { useDeviceStatus } from '../../services/DeviceStatusContext';
 import { io } from 'socket.io-client';
 
 const UgTank = () => {
+  const { getOverallStatus } = useDeviceStatus();
   const [activeStation, setActiveStation] = useState(1);
   const [controlMode, setControlMode] = useState('REMOTE');
   const [pulseTrigger, setPulseTrigger] = useState(0);
@@ -34,23 +36,23 @@ const UgTank = () => {
   }, []);
 
   const [pumps1, setPumps1] = useState([
-    { id: 1, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
-    { id: 2, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
-    { id: 3, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
-    { id: 4, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 1, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
+    { id: 2, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
+    { id: 3, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
+    { id: 4, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
   ]);
 
   const [pumps2, setPumps2] = useState([
-    { id: 1, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
-    { id: 2, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
-    { id: 3, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
-    { id: 4, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true },
+    { id: 1, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
+    { id: 2, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
+    { id: 3, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
+    { id: 4, status: 'Stopped', mode: 'AUTO', hz: '0.0', amp: '0.0', pressure: 0.0, startLimit: 1.5, stopLimit: 4.5, isOnline: true, isMapped: false },
   ]);
 
   const [tanks, setTanks] = useState([
-    { id: 1, name: 'FIRE RESERVOIR', level: 0, desc: 'PRIMARY FIRE' },
-    { id: 2, name: 'DOMESTIC SUMP', level: 0, desc: 'POTABLE SUPPLY' },
-    { id: 3, name: 'PROCESS TANK', level: 0, desc: 'INDUSTRIAL RECLAIM' },
+    { id: 1, name: 'FIRE RESERVOIR', level: 0, desc: 'PRIMARY FIRE', isOnline: true, isMapped: false },
+    { id: 2, name: 'DOMESTIC SUMP', level: 0, desc: 'POTABLE SUPPLY', isOnline: true, isMapped: false },
+    { id: 3, name: 'PROCESS TANK', level: 0, desc: 'INDUSTRIAL RECLAIM', isOnline: true, isMapped: false },
   ]);
 
   const [selectedPump, setSelectedPump] = useState(null);
@@ -76,59 +78,74 @@ const UgTank = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const [deviceStatuses, setDeviceStatuses] = useState({});
-
-  // Poll real-time device connection status from Sochiot API
+  // Sync global online/offline status into pump and tank arrays dynamically
   useEffect(() => {
-    const fetchDeviceStatus = async () => {
-      try {
-        const saved = localStorage.getItem('scada_templates');
-        if (!saved) return;
-        const templates = JSON.parse(saved).map(t => ({
-          ...t,
-          mapping: cleanCorruptedMapping(t.mapping)
-        }));
-
-        // Collect all unique device IDs used in UG Tank/Pump templates
-        const deviceIds = new Set();
-        templates.forEach(t => {
-          if ((t.module === 'UG Pump' || t.module === 'UG Tank') && t.mapping) {
-            Object.values(t.mapping).forEach(config => {
-              if (config && config.device) {
-                deviceIds.add(config.device);
-              }
-            });
-          }
-        });
-
-        if (deviceIds.size === 0) return;
-
-        const statuses = {};
-        const promises = Array.from(deviceIds).map(async (dId) => {
-          try {
-            const data = await getSochiotDeviceDetails(dId);
-            if (data && data.mode) {
-              statuses[dId] = data.mode.name === 'ONLINE';
-            } else {
-              statuses[dId] = false; // explicit offline if mode missing
+    const saved = localStorage.getItem('scada_templates');
+    if (!saved) return;
+    try {
+      const templates = JSON.parse(saved);
+      const updatePumpOnlineStatus = (prev) => {
+        let changed = false;
+        const next = prev.map(pump => {
+          const template = templates.find(t =>
+            t.module === 'UG Pump' && Number(t.mapping?.ugPumpRange?.pumpNo) === Number(pump.id)
+          );
+          if (template && template.mapping) {
+            const deviceId = template.mapping.deviceId || template.mapping.ugStatusStartConfig?.device || template.mapping.ugStatusConfig?.device;
+            const isOnline = getOverallStatus(deviceId, template.mapping.gatewayUuid);
+            const isMapped = !!deviceId;
+            if (pump.isOnline !== isOnline || pump.isMapped !== isMapped) {
+              changed = true;
+              return { ...pump, isOnline, isMapped };
             }
-          } catch (e) {
-            console.error(`Failed to fetch status for device ${dId}`, e);
-            statuses[dId] = false; // explicit offline on failure
+          } else {
+            if (pump.isMapped !== false) {
+              changed = true;
+              return { ...pump, isMapped: false };
+            }
           }
+          return pump;
         });
+        return changed ? next : prev;
+      };
+      setPumps1(prev => updatePumpOnlineStatus(prev));
+      setPumps2(prev => updatePumpOnlineStatus(prev));
 
-        await Promise.all(promises);
-        setDeviceStatuses(statuses);
-      } catch (e) {
-        console.error("Device status polling error:", e);
-      }
-    };
-
-    fetchDeviceStatus();
-    const interval = setInterval(fetchDeviceStatus, 15000); // Fetch every 15s
-    return () => clearInterval(interval);
-  }, []);
+      setTanks(prev => {
+        let changed = false;
+        const next = prev.map((tank, index) => {
+          const ugTemplates = templates.filter(t => t.module === 'UG Tank');
+          const genericUgTemplates = ugTemplates.filter(t =>
+            !t.mapping?.ugTankRange?.name || t.mapping?.ugTankRange?.name === "" || t.mapping?.ugTankRange?.name === "UG TANK"
+          );
+          let template = ugTemplates.find(t => t.mapping?.ugTankRange?.name === tank.name);
+          if (!template && genericUgTemplates.length > index) {
+            template = genericUgTemplates[index];
+          }
+          if (template && template.mapping) {
+            let deviceId = template.mapping.deviceId || template.mapping.ugTankLevelConfig?.device || template.mapping.ugLevelConfig?.device;
+            if (!deviceId) {
+              const anyConfig = Object.values(template.mapping).find(cfg => cfg && typeof cfg === 'object' && cfg.device);
+              if (anyConfig) deviceId = anyConfig.device;
+            }
+            const isOnline = getOverallStatus(deviceId, template.mapping.gatewayUuid);
+            const isMapped = !!deviceId;
+            if (tank.isOnline !== isOnline || tank.isMapped !== isMapped) {
+              changed = true;
+              return { ...tank, isOnline, isMapped };
+            }
+          } else {
+            if (tank.isMapped !== false) {
+              changed = true;
+              return { ...tank, isMapped: false };
+            }
+          }
+          return tank;
+        });
+        return changed ? next : prev;
+      });
+    } catch (e) { console.error(e); }
+  }, [getOverallStatus]);
 
   useEffect(() => {
     const socket = io('/', { path: '/socket.io' });
@@ -171,14 +188,53 @@ const UgTank = () => {
               config = template.mapping.ugTankLevelConfig;
             }
 
+            let isOnline = tank.isOnline;
+            let isMapped = tank.isMapped;
+            if (template && template.mapping) {
+              let deviceId = template.mapping.deviceId || config?.device || template.mapping.ugLevelConfig?.device;
+              if (!deviceId) {
+                const anyConfig = Object.values(template.mapping).find(cfg => cfg && typeof cfg === 'object' && cfg.device);
+                if (anyConfig) deviceId = anyConfig.device;
+              }
+              isOnline = getOverallStatus(deviceId, template.mapping.gatewayUuid);
+              
+              if (!isOnline && template.mapping) {
+                const activeModules = new Set();
+                ['ugTankLevelConfig', 'ugLevelConfig', 'ugAmpsConfig', 'ugStatusStartConfig', 'ugStatusStopConfig'].forEach(cfgKey => {
+                  const cfg = template.mapping[cfgKey];
+                  if (cfg && cfg.enabled !== false && cfg.module) {
+                    activeModules.add(String(cfg.module));
+                  }
+                });
+                const hasRecentStats = stats.some(s => activeModules.has(String(s.moduleId)) || activeModules.has(String(s.meta?.module_id)));
+                if (hasRecentStats) {
+                  isOnline = true;
+                }
+              }
+              
+              isMapped = !!deviceId;
+            } else {
+              isMapped = false;
+            }
+
+            let nextTank = { ...tank };
+            if (nextTank.isOnline !== isOnline || nextTank.isMapped !== isMapped) {
+              nextTank.isOnline = isOnline;
+              nextTank.isMapped = isMapped;
+              updated = true;
+            }
+
             if (config && config.field && config.module) {
               const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
               if (stat && stat.meta && stat.meta[config.field] !== undefined) {
-                updated = true;
-                return { ...tank, level: Math.round(Number(stat.meta[config.field])) };
+                const newLevel = Math.round(Number(stat.meta[config.field]));
+                if (nextTank.level !== newLevel) {
+                  nextTank.level = newLevel;
+                  updated = true;
+                }
               }
             }
-            return tank;
+            return nextTank;
           });
           return updated ? next : prev;
         });
@@ -220,9 +276,19 @@ const UgTank = () => {
             );
 
             if (!template || !template.mapping) {
+              let nextPump = { ...pump };
+              let changed = false;
               if (pump.status !== 'Stopped') {
+                nextPump = { ...nextPump, status: 'Stopped', hz: '0.0', amp: '0.0', pressure: 0.0 };
+                changed = true;
+              }
+              if (pump.isMapped !== false) {
+                nextPump.isMapped = false;
+                changed = true;
+              }
+              if (changed) {
                 pumpUpdated = true;
-                return { ...pump, status: 'Stopped', hz: '0.0', amp: '0.0', pressure: 0.0 };
+                return nextPump;
               }
               return pump;
             }
@@ -268,21 +334,18 @@ const UgTank = () => {
 
             // Online status
             let isOnline = pump.isOnline;
-            let deviceToCheck = startCfg?.device;
+            let deviceToCheck = startCfg?.device || template.mapping?.deviceId;
             if (!deviceToCheck && template.mapping) {
               const anyConfigWithDevice = Object.values(template.mapping).find(cfg => cfg && cfg.device);
               if (anyConfigWithDevice) deviceToCheck = anyConfigWithDevice.device;
             }
 
-            if (deviceToCheck && deviceStatuses[deviceToCheck] !== undefined) {
-              isOnline = deviceStatuses[deviceToCheck];
-            }
-
-            const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
-            if (stat) {
-              const modeObj = stat.meta?.mode || stat.mode;
-
-              if (startCfg?.device === undefined || deviceStatuses[startCfg.device] === undefined) {
+            if (deviceToCheck) {
+              isOnline = getOverallStatus(deviceToCheck, template.mapping?.gatewayUuid);
+            } else {
+              const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
+              if (stat) {
+                const modeObj = stat.meta?.mode || stat.mode;
                 if (modeObj && modeObj.name) {
                   isOnline = modeObj.name === 'ONLINE';
                 }
@@ -295,6 +358,8 @@ const UgTank = () => {
                 }
               }
             }
+
+            const isMapped = !!deviceToCheck;
 
             const startLimit = template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : pump.startLimit;
             const stopLimit = template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : pump.stopLimit;
@@ -330,9 +395,9 @@ const UgTank = () => {
               }
             }
 
-            if (newStatus !== pump.status || isOnline !== pump.isOnline || startLimit !== pump.startLimit || stopLimit !== pump.stopLimit || newAmp !== pump.amp || newPressure !== pump.pressure) {
+            if (newStatus !== pump.status || isOnline !== pump.isOnline || isMapped !== pump.isMapped || startLimit !== pump.startLimit || stopLimit !== pump.stopLimit || newAmp !== pump.amp || newPressure !== pump.pressure) {
               pumpUpdated = true;
-              return { ...pump, status: newStatus, isOnline, startLimit, stopLimit, amp: newAmp, pressure: newPressure };
+              return { ...pump, status: newStatus, isOnline, isMapped, startLimit, stopLimit, amp: newAmp, pressure: newPressure };
             }
             return pump;
           });
@@ -359,26 +424,39 @@ const UgTank = () => {
 
     socket.on('telemetry_update', processTelemetry);
 
-    // Fallback polling for production (where serverless doesn't support WebSockets)
-    const pollInterval = setInterval(async () => {
-      if (!socket.connected) {
-        try {
-          const res = await fetch('/api/templates/stats');
-          if (res.ok) {
-            const stats = await res.json();
-            processTelemetry(stats);
-          }
-        } catch (err) {
-          console.error('Error polling telemetry stats:', err);
+    // ── INSTANT DATA LOAD STRATEGY ────────────────────────────────────────────
+    // Step 1: Show cached data from last session IMMEDIATELY (0ms wait)
+    try {
+      const cached = localStorage.getItem('scada_ugtank_telemetry_cache');
+      if (cached) processTelemetry(JSON.parse(cached));
+    } catch (e) { /* ignore cache errors */ }
+
+    // Step 2: HTTP fetch immediately on mount for fresh data (don't wait for WebSocket)
+    const fetchStats = async () => {
+      try {
+        const res = await fetch('/api/templates/stats');
+        if (res.ok) {
+          const stats = await res.json();
+          // Save to cache for next page visit — instant load next time
+          try { localStorage.setItem('scada_ugtank_telemetry_cache', JSON.stringify(stats)); } catch (e) {}
+          processTelemetry(stats);
         }
+      } catch (err) {
+        console.error('Error fetching UgTank stats:', err);
       }
-    }, 4000);
+    };
+
+    fetchStats(); // Immediate on mount
+
+    // Step 3: Keep polling every 2s as backup (regardless of WebSocket state)
+    const pollInterval = setInterval(fetchStats, 2000);
+    // ─────────────────────────────────────────────────────────────────────────
 
     return () => {
       socket.disconnect();
       clearInterval(pollInterval);
     };
-  }, [deviceStatuses]);
+  }, [getOverallStatus]);
 
   const activePumps = activeStation === 1 ? pumps1 : pumps2;
   const isAnyPumpRunning = useMemo(() => activePumps.some(p => p.status === 'Running'), [activePumps]);
@@ -748,11 +826,23 @@ const UgTank = () => {
                     const yPos = 40 + (idx * 160);
                     return (
                       <g key={tank.id} transform={`translate(60, ${yPos})`}>
-                        <rect width="180" height="130" rx="10" fill="#0c121e" stroke="#1e293b" strokeWidth={isFullscreen ? 4 : 3} />
+                        <rect width="180" height="130" rx="10" fill="#0c121e" stroke={!tank.isOnline ? "#334155" : "#1e293b"} strokeWidth={isFullscreen ? 4 : 3} />
+                        
+                        {/* Floating Status Badge for Tank — show OFFLINE badge only, ONLINE badge removed */}
+                        {tank.isMapped && !tank.isOnline && (
+                        <g transform="translate(12, -8)">
+                          <rect width="52" height="15" rx="4" fill="#0f172a" stroke="#ef4444" strokeWidth="1" />
+                          <circle cx="8" cy="7.5" r="2.5" fill="#ef4444" />
+                          <text x="16" y="10.5" fill="#ef4444" fontSize="7" fontWeight="black" letterSpacing="0.3">
+                            OFFLINE
+                          </text>
+                        </g>
+                        )}
+
                         <g clipPath="url(#tankInnerClip)">
-                          <rect x="0" y={130 - (tank.level * 1.3)} width="180" height={tank.level * 1.3} fill="url(#waterGrad)" fillOpacity="0.7" />
-                          <rect x="0" y={125 - (tank.level * 1.3)} width="180" height="20" fill="url(#wavePattern)" fillOpacity="0.8" />
-                          <text x="90" y="75" textAnchor="middle" fill="#fff" fontSize="42" fontWeight="900" filter="url(#liquidGlow)">{tank.level}%</text>
+                          <rect x="0" y={130 - (tank.level * 1.3)} width="180" height={tank.level * 1.3} fill={tank.isOnline ? "url(#waterGrad)" : "#475569"} fillOpacity={tank.isOnline ? "0.7" : "0.3"} />
+                          {tank.isOnline && <rect x="0" y={125 - (tank.level * 1.3)} width="180" height="20" fill="url(#wavePattern)" fillOpacity="0.8" />}
+                          <text x="90" y="75" textAnchor="middle" fill={tank.isOnline ? "#fff" : "#64748b"} fontSize="42" fontWeight="900" filter={tank.isOnline ? "url(#liquidGlow)" : "none"}>{tank.isOnline ? `${tank.level}%` : "--%"}</text>
                         </g>
                         <text x="90" y="152" textAnchor="middle" fill="#fff" fontSize="12" fontWeight="900">{tank.name}</text>
                         <path d="M180 65 L220 65" fill="none" stroke="#1e293b" strokeWidth="18" />
@@ -827,13 +917,31 @@ const UgTank = () => {
 
                         <g transform={`translate(540, ${y + 5})`}>
                           <rect width="200" height="60" rx="8" fill="#0f172a" fillOpacity="0.9" stroke={!p.isOnline ? "#334155" : "#1e293b"} strokeWidth="2" />
+                          
+                          {/* Floating Status Badge for Pump */}
+                          {p.isMapped && (
+                          <g transform="translate(12, -8)">
+                            <rect width="52" height="15" rx="4" fill="#0f172a" stroke={p.isOnline ? "#22c55e" : "#ef4444"} strokeWidth="1" />
+                            <circle cx="8" cy="7.5" r="2.5" fill={p.isOnline ? "#22c55e" : "#ef4444"} />
+                            {p.isOnline && (
+                              <circle cx="8" cy="7.5" r="4.5" fill="none" stroke="#22c55e" strokeWidth="1" opacity="0.6">
+                                <animate attributeName="r" values="2.5;6" dur="1.8s" repeatCount="indefinite" />
+                                <animate attributeName="opacity" values="0.8;0" dur="1.8s" repeatCount="indefinite" />
+                              </circle>
+                            )}
+                            <text x="16" y="10.5" fill={p.isOnline ? "#22c55e" : "#ef4444"} fontSize="7" fontWeight="black" letterSpacing="0.3">
+                              {p.isOnline ? "ONLINE" : "OFFLINE"}
+                            </text>
+                          </g>
+                          )}
+
                           <text x="14" y="20" fill="#94a3b8" fontSize="10" fontWeight="bold">PUMP P{p.id}</text>
                           <text x="70" y="20" fill="#f59e0b" fontSize="13" fontWeight="900">
-                            {p.isOnline && p.amp !== undefined ? `| ${Number(p.amp).toFixed(1)} A` : ''}
+                            {p.isMapped && p.isOnline && p.amp !== undefined ? `| ${Number(p.amp).toFixed(1)} A` : ''}
                           </text>
-                          <text x="14" y="44" fill={!p.isOnline ? "#64748b" : (active ? "#22c55e" : "#475569")} fontSize={!p.isOnline ? "12" : "16"} fontWeight="900">
-                            {!p.isOnline ? "OFFLINE" : p.status.toUpperCase()}
-                            <tspan fill={!p.isOnline ? '#64748b' : (p.mode === 'AUTO' ? '#38bdf8' : '#f59e0b')} fontSize="10" dy="-1">| {p.mode}</tspan>
+                          <text x="14" y="44" fill={!p.isMapped ? "#64748b" : (!p.isOnline ? "#64748b" : (active ? "#22c55e" : "#475569"))} fontSize={!p.isMapped || !p.isOnline ? "12" : "16"} fontWeight="900">
+                            {!p.isMapped ? "STOPPED" : (!p.isOnline ? "OFFLINE" : p.status.toUpperCase())}
+                            {p.isMapped && <tspan fill={!p.isOnline ? '#64748b' : (p.mode === 'AUTO' ? '#38bdf8' : '#f59e0b')} fontSize="10" dy="-1">| {p.mode}</tspan>}
                           </text>
                           <g transform="translate(165, 30)" style={{ cursor: 'pointer' }} onClick={(e) => openLimitSettings(e, p)}>
                             <circle r="22" fill="#111827" stroke="#334155" strokeWidth="1.5" />

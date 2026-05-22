@@ -48,6 +48,8 @@ const ConfigTemplates = () => {
   const [currentRuleTarget, setCurrentRuleTarget] = useState('RULE1'); // 'RULE1' or 'RULE2'
   const [ruleEngineConfig, setRuleEngineConfig] = useState(initialRuleState);
   const [templateName, setTemplateName] = useState('');
+  const [deviceIdInput, setDeviceIdInput] = useState('');
+  const [gatewayUuidInput, setGatewayUuidInput] = useState('');
   const [filterModule, setFilterModule] = useState('ALL');
   const [selectedTemplates, setSelectedTemplates] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -185,9 +187,9 @@ const ConfigTemplates = () => {
   const [emVoltageConfig, setEmVoltageConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
   const [emCurrentConfig, setEmCurrentConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
   const [emPowerConfig, setEmPowerConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-  const [emSystemConfig, setEmSystemConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+  const [emSystemConfig, setEmSystemConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
   const [emConsumptionConfig, setEmConsumptionConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-  const [emChangeConfig, setEmChangeConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+  const [emChangeConfig, setEmChangeConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
   const [emWarningConfig, setEmWarningConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
   const [emReadConfig, setEmReadConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
   const [emLimitsConfig, setEmLimitsConfig] = useState({
@@ -734,7 +736,6 @@ const ConfigTemplates = () => {
     iB: ['3,173', '3,168', 'CURRENT B', 'CURRENT_B', 'IB', 'I_B', 'IC', 'A3', 'LINE AMPS (B)', 'B-CURRENT'],
     pf: ['3,174', 'POWER FACTOR', 'PF', 'SYSTEM PF', 'POWER_FACTOR'],
     dgKwh: ['3,180', '3,181', 'DG KWH', 'DG_KWH', 'DG ACTIVE', 'DG ENERGY', 'GENERATOR ENERGY'],
-    fixedCharge: ['3,163', 'FIXED CHARGE', 'FIXED_CHARGE', 'CHARGES'],
     lowBalanceCut: ['3,164', 'LOW BALANCE', 'BALANCE CUT', 'LOW_BAL', 'LOW_BALANCE_CUT'],
     overloadTrip: ['3,165', 'OVERLOAD TRIP', 'OL TRIP', 'OVERLOAD_TRIP', 'OVERLOAD TRIP STATUS'],
     overloadLimitReached: ['3,166', 'OVERLOAD LIMIT', 'OL LIMIT', 'OVERLOAD_WARN', 'OVERLOAD LIMIT REACHED'],
@@ -811,7 +812,6 @@ const ConfigTemplates = () => {
             pf: 'POWER FACTOR (PF)',
             totalKva: 'TOTAL KVA (KVA)',
             dgKwh: 'DG KWH (KWH)',
-            fixedCharge: 'FIXED CHARGE (Rs)',
             lowBalanceCut: 'LOW BALANCE CUT',
             overloadTrip: 'OVERLOAD TRIP',
             overloadLimitReached: 'OVERLOAD LIMIT REACHED',
@@ -866,7 +866,7 @@ const ConfigTemplates = () => {
             const updated = { ...prev, module: changeModule.id };
             const keys = [
               'ebKvah', 'ebKwh', 'balance', 'totalKw', 'vR', 'vY', 'vB',
-              'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh', 'fixedCharge'
+              'iR', 'iY', 'iB', 'pf', 'totalKva', 'dgKwh'
             ];
             keys.forEach(k => {
               if (isNewDevice || !prev[k]) {
@@ -968,7 +968,7 @@ const ConfigTemplates = () => {
         if (changeModule) {
           setEmSystemConfig(prev => {
             const updated = { ...prev, module: changeModule.id };
-            const keys = ['pf', 'freq'];
+            const keys = ['pf', 'freq', 'commStatus'];
             keys.forEach(k => {
               if (isNewDevice || !prev[k]) {
                 const match = findMatchingField(changeModule, k);
@@ -1261,16 +1261,16 @@ const ConfigTemplates = () => {
     
     // Voltages
     if (nameLower.includes('voltage') || nameLower.includes('volt') || keyLower.startsWith('v')) {
-      if (nameLower.includes('r-phase') || nameLower.includes(' r ') || keyLower.includes('r') || keyLower.includes('u1')) return 'VOLTAGE R-PHASE (V)';
-      if (nameLower.includes('y-phase') || nameLower.includes(' y ') || keyLower.includes('y') || keyLower.includes('u2')) return 'VOLTAGE Y-PHASE (V)';
-      if (nameLower.includes('b-phase') || nameLower.includes(' b ') || keyLower.includes('b') || keyLower.includes('u3')) return 'VOLTAGE B-PHASE (V)';
+      if (nameLower.match(/\br(-phase)?\b/) || keyLower.match(/\b(v_?r|u1|r)\b/)) return 'VOLTAGE R-PHASE (V)';
+      if (nameLower.match(/\by(-phase)?\b/) || keyLower.match(/\b(v_?y|u2|y)\b/)) return 'VOLTAGE Y-PHASE (V)';
+      if (nameLower.match(/\bb(-phase)?\b/) || keyLower.match(/\b(v_?b|u3|b)\b/)) return 'VOLTAGE B-PHASE (V)';
     }
 
     // Currents
     if (nameLower.includes('current') || nameLower.includes('amp') || keyLower.startsWith('i') || keyLower.startsWith('a')) {
-      if (nameLower.includes('r-phase') || nameLower.includes(' r ') || keyLower.includes('r') || keyLower.includes('i1') || keyLower.includes('a1')) return 'R-CURRENT (A)';
-      if (nameLower.includes('y-phase') || nameLower.includes(' y ') || keyLower.includes('y') || keyLower.includes('i2') || keyLower.includes('a2')) return 'Y-CURRENT (A)';
-      if (nameLower.includes('b-phase') || nameLower.includes(' b ') || keyLower.includes('b') || keyLower.includes('i3') || keyLower.includes('a3')) return 'B-CURRENT (A)';
+      if (nameLower.match(/\br(-phase)?\b/) || keyLower.match(/\b(i_?r|a_?r|i1|a1|r)\b/)) return 'R-CURRENT (A)';
+      if (nameLower.match(/\by(-phase)?\b/) || keyLower.match(/\b(i_?y|a_?y|i2|a2|y)\b/)) return 'Y-CURRENT (A)';
+      if (nameLower.match(/\bb(-phase)?\b/) || keyLower.match(/\b(i_?b|a_?b|i3|a3|b)\b/)) return 'B-CURRENT (A)';
     }
 
     if (nameLower.includes('active power') || nameLower.includes('total kw') || nameLower.includes('load kw') || keyLower.includes('kw')) return 'TOTAL KW (KW)';
@@ -1324,6 +1324,21 @@ const ConfigTemplates = () => {
 
   const handleConfigChange = async (config, setter, key, value) => {
     console.log(`Config Change: ${key} = ${value}`);
+    
+    if (key === 'device' && value) {
+      let foundDevice = null;
+      Object.values(locationDetails).forEach(loc => {
+        if (loc.deviceList) {
+          const dev = loc.deviceList.find(d => String(d.id) === String(value));
+          if (dev) foundDevice = dev;
+        }
+      });
+      if (foundDevice) {
+        if (foundDevice.uuid) setDeviceIdInput(foundDevice.uuid);
+        if (foundDevice.gatewayId) setGatewayUuidInput(String(foundDevice.gatewayId));
+      }
+    }
+
     const updated = { ...config, [key]: value };
 
     const emSetters = [
@@ -1849,9 +1864,9 @@ const ConfigTemplates = () => {
                          searchStr.includes('voltage r') || searchStr.includes('voltage y') || searchStr.includes('voltage b') ||
                          searchStr.includes('amps') || searchStr.includes('volts');
 
-    const isR = isPhaseParam && (searchStr.includes('r-phase') || searchStr.includes('r_phase') || fk.endsWith('r') || fk === 'r' || fk === 'l1' || fk.includes('l1') || searchStr.includes(' r ') || searchStr.includes(' l1'));
-    const isY = isPhaseParam && (searchStr.includes('y-phase') || searchStr.includes('y_phase') || fk.endsWith('y') || fk === 'y' || fk === 'l2' || fk.includes('l2') || searchStr.includes(' y ') || searchStr.includes(' l2'));
-    const isB = isPhaseParam && (searchStr.includes('b-phase') || searchStr.includes('b_phase') || fk.endsWith('b') || fk === 'b' || fk === 'l3' || fk.includes('l3') || searchStr.includes(' b ') || searchStr.includes(' l3'));
+    const isR = isPhaseParam && (searchStr.match(/\br\b/i) || searchStr.includes('r-phase') || searchStr.includes('r_phase') || fk.match(/\br\b/i) || fk === 'l1' || fk.includes('l1') || fk.includes('vr') || fk.includes('ir'));
+    const isY = isPhaseParam && (searchStr.match(/\by\b/i) || searchStr.includes('y-phase') || searchStr.includes('y_phase') || fk.match(/\by\b/i) || fk === 'l2' || fk.includes('l2') || fk.includes('vy') || fk.includes('iy'));
+    const isB = isPhaseParam && (searchStr.match(/\bb\b/i) || searchStr.includes('b-phase') || searchStr.includes('b_phase') || fk.match(/\bb\b/i) || fk === 'l3' || fk.includes('l3') || fk.includes('vb') || fk.includes('ib'));
     
     const isCurrent = searchStr.includes('current') || searchStr.includes('amp') || fk.includes('current') || fk.startsWith('i');
     const isVoltage = searchStr.includes('voltage') || searchStr.includes('volt') || fk.includes('voltage') || fk.startsWith('v');
@@ -1894,9 +1909,9 @@ const ConfigTemplates = () => {
       if (isEb && !lbl.includes('eb') && lbl.includes('dg')) score -= 20;
       
       // Phase matching
-      if (isR && (lbl.includes('r-phase') || lbl.includes('r_phase') || lbl.includes('l1') || lbl.includes(' r ') || lbl.includes(' r_') || lbl.includes(':r') || lbl.includes('vr') || lbl.includes('ir') || lbl.includes('current r') || lbl.includes('voltage r'))) score += 10;
-      if (isY && (lbl.includes('y-phase') || lbl.includes('y_phase') || lbl.includes('l2') || lbl.includes(' y ') || lbl.includes(' y_') || lbl.includes(':y') || lbl.includes('vy') || lbl.includes('iy') || lbl.includes('current y') || lbl.includes('voltage y'))) score += 10;
-      if (isB && (lbl.includes('b-phase') || lbl.includes('b_phase') || lbl.includes('l3') || lbl.includes(' b ') || lbl.includes(' b_') || lbl.includes(':b') || lbl.includes('vb') || lbl.includes('ib') || lbl.includes('current b') || lbl.includes('voltage b'))) score += 10;
+      if (isR && (lbl.match(/\b(r|l1)\b/i) || lbl.match(/-r\b/i) || lbl.includes('r-phase') || lbl.includes('r_phase') || lbl.includes('vr') || lbl.includes('ir'))) score += 15;
+      if (isY && (lbl.match(/\b(y|l2)\b/i) || lbl.match(/-y\b/i) || lbl.includes('y-phase') || lbl.includes('y_phase') || lbl.includes('vy') || lbl.includes('iy'))) score += 15;
+      if (isB && (lbl.match(/\b(b|l3)\b/i) || lbl.match(/-b\b/i) || lbl.includes('b-phase') || lbl.includes('b_phase') || lbl.includes('vb') || lbl.includes('ib'))) score += 15;
       
       // Token matches
       const words = searchStr.replace(/[()]/g, '').split(/\s+/);
@@ -2272,7 +2287,9 @@ const ConfigTemplates = () => {
       timestamp: new Date().toLocaleString(),
       mapping: {
         ...cleanedMapping,
-        globalHierarchy: globalLocation
+        globalHierarchy: globalLocation,
+        deviceId: deviceIdInput,
+        gatewayUuid: gatewayUuidInput
       }
     };
 
@@ -2339,6 +2356,9 @@ const ConfigTemplates = () => {
       setIsSaving(false);
     }
 
+    setDeviceIdInput('');
+    setGatewayUuidInput('');
+
     // Reset only if NOT AG Tank (to let user see their save)
     if (selectedModule !== 'AG Tank') {
       setAgLowerConfig(createDefaultConfig(true));
@@ -2376,9 +2396,9 @@ const ConfigTemplates = () => {
     setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
     setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
     setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-    setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+    setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
     setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-    setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+    setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
     setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
     setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
     setEmLimitsConfig({
@@ -2445,6 +2465,8 @@ const ConfigTemplates = () => {
     setSelectedCategory(template.category);
     setSelectedModule(template.module);
     if (template.mapping) {
+      setDeviceIdInput(template.mapping.deviceId || '');
+      setGatewayUuidInput(template.mapping.gatewayUuid || '');
       setAgLowerConfig(template.mapping.agLowerConfig || createDefaultConfig(true));
       setAgUpperConfig(template.mapping.agUpperConfig || createDefaultConfig(true));
       setAgAutoConfig(template.mapping.agAutoConfig || createDefaultConfig());
@@ -2482,9 +2504,9 @@ const ConfigTemplates = () => {
       setEmVoltageConfig(template.mapping.emVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
       setEmCurrentConfig(template.mapping.emCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
       setEmPowerConfig(template.mapping.emPowerConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-      setEmSystemConfig(template.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+      setEmSystemConfig(template.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
       setEmConsumptionConfig(template.mapping.emConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-      setEmChangeConfig(template.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+      setEmChangeConfig(template.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
       setEmWarningConfig(template.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
       setEmReadConfig(template.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
       setEmLimitsConfig(template.mapping.emLimitsConfig || {
@@ -2678,9 +2700,9 @@ const ConfigTemplates = () => {
                 setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
                 setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
                 setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-                setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
                 setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-                setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
                 setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                 setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
                 setEmLimitsConfig({
@@ -2744,9 +2766,9 @@ const ConfigTemplates = () => {
                 setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
                 setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
                 setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-                setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
                 setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-                setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
                 setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                 setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
                 setEmLimitsConfig({
@@ -2910,6 +2932,47 @@ const ConfigTemplates = () => {
                   </div>
                 </Col>
               </Row>
+
+              {/* Step 3: Sochiot Status Checks Configuration */}
+              <div className="p-3 rounded-4 bg-dark bg-opacity-30 border border-white border-opacity-5 mb-4 scada-data-box scale-in" style={{ background: 'rgba(15, 23, 42, 0.45)', backdropFilter: 'blur(8px)' }}>
+                <div className="d-flex align-items-center gap-2 mb-3">
+                  <div className="icon-box-premium info" style={{ width: '24px', height: '24px', background: 'rgba(14, 165, 233, 0.1)', color: '#0ea5e9', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
+                    <Activity size={14} className="text-info animate-pulse" />
+                  </div>
+                  <div>
+                    <small className="text-info d-block fw-black uppercase tracking-widest opacity-80 mb-0" style={{ fontSize: '0.65rem', letterSpacing: '0.05em' }}>Step 3: Sochiot Status Checks (Auto-filled / Fully Editable)</small>
+                    <span className="text-secondary opacity-60" style={{ fontSize: '0.72rem' }}>Specify the Sochiot Device UUID and Gateway Cluster ID to track real-time online/offline status.</span>
+                  </div>
+                </div>
+                <Row className="g-3">
+                  <Col md={6}>
+                    <Form.Group>
+                      <Form.Label className="fs-10 fw-black uppercase tracking-widest opacity-80 text-info" style={{ letterSpacing: '0.05em' }}>Device UUID (Sochiot Device ID)</Form.Label>
+                      <Form.Control
+                        type="text"
+                        placeholder="Enter or select device to auto-fill"
+                        className="premium-input p-3 fs-11"
+                        value={deviceIdInput}
+                        onChange={(e) => setDeviceIdInput(e.target.value)}
+                        style={{ height: '42px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.05)', color: '#fff' }}
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={6}>
+                    <Form.Group>
+                      <Form.Label className="fs-10 fw-black uppercase tracking-widest opacity-80 text-warning" style={{ letterSpacing: '0.05em' }}>Gateway UUID / Cluster ID</Form.Label>
+                      <Form.Control
+                        type="text"
+                        placeholder="Enter or select device to auto-fill"
+                        className="premium-input p-3 fs-11"
+                        value={gatewayUuidInput}
+                        onChange={(e) => setGatewayUuidInput(e.target.value)}
+                        style={{ height: '42px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.05)', color: '#fff' }}
+                      />
+                    </Form.Group>
+                  </Col>
+                </Row>
+              </div>
 
               {selectedModule === 'AG Tank' ? (
                 <div className="config-form-container scale-in">
@@ -3996,9 +4059,9 @@ const ConfigTemplates = () => {
                               setEmVoltageConfig(existing.mapping.emVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
                               setEmCurrentConfig(existing.mapping.emCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
                               setEmPowerConfig(existing.mapping.emPowerConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-                              setEmSystemConfig(existing.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                              setEmSystemConfig(existing.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
                               setEmConsumptionConfig(existing.mapping.emConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-                              setEmChangeConfig(existing.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                              setEmChangeConfig(existing.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
                               setEmWarningConfig(existing.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                               setEmReadConfig(existing.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
                               setEmLimitsConfig(existing.mapping.emLimitsConfig || {
@@ -4016,9 +4079,9 @@ const ConfigTemplates = () => {
                               setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
                               setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
                               setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-                              setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', enabled: true });
+                              setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
                               setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-                              setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', fixedCharge: '', enabled: true });
+                              setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
                               setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
                               setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
                               setEmLimitsConfig({
@@ -4068,8 +4131,7 @@ const ConfigTemplates = () => {
                                 { label: 'B-CURRENT (A)', key: 'iB' },
                                 { label: 'POWER FACTOR (PF)', key: 'pf' },
                                 { label: 'TOTAL KVA (KVA)', key: 'totalKva' },
-                                { label: 'DG KWH (KWH)', key: 'dgKwh' },
-                                { label: 'FIXED CHARGE (Rs)', key: 'fixedCharge' }
+                                { label: 'DG KWH (KWH)', key: 'dgKwh' }
                               ] 
                             },
                             { 
@@ -4945,7 +5007,7 @@ const ConfigTemplates = () => {
                             { title: 'Voltage Metrics', key: 'emVoltageConfig', fields: ['vR', 'vY', 'vB'] },
                             { title: 'Current Metrics', key: 'emCurrentConfig', fields: ['iR', 'iY', 'iB'] },
                             { title: 'Power Matrix', key: 'emPowerConfig', fields: ['activePower', 'reactivePower', 'apparentPower'] },
-                            { title: 'System Metrics', key: 'emSystemConfig', fields: ['pf', 'freq'] },
+                            { title: 'System Metrics', key: 'emSystemConfig', fields: ['pf', 'freq', 'commStatus'] },
                             { title: 'Energy Consumption', key: 'emConsumptionConfig', fields: ['cumulativekWh'] }
                           ].filter(section => previewTemplate.mapping[section.key]?.enabled).map((section, idx) => (
                             <Col md={6} key={idx}>

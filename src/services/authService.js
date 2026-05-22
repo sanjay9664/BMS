@@ -108,6 +108,40 @@ export const getSochiotDeviceDetails = async (deviceId) => {
     throw error;
   }
 };
-          
+export const getSochiotGatewayStatus = async (clusterId) => {
+  const token = localStorage.getItem('sochiot_token');
+  if (!token) return null;
 
+  try {
+    const response = await fetch(`${CONFIG_API_URL}/gateway/status/uuid/${clusterId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
 
+    if (!response.ok) throw new Error('Failed to fetch gateway status');
+    return await response.json();
+  } catch (error) {
+    console.error('Fetch Gateway Status Error:', error);
+    throw error;
+  }
+};
+
+export const getSochiotDeviceStatus = async (deviceId) => {
+  const token = localStorage.getItem('sochiot_token');
+  if (!token) return null;
+
+  try {
+    const response = await fetch(`${CONFIG_API_URL}/device/status/uuid/${deviceId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) throw new Error('Failed to fetch device status');
+    return await response.json();
+  } catch (error) {
+    console.error('Fetch Device Status Error:', error);
+    throw error;
+  }
+};

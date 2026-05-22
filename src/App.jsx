@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import MainLayout from './layout/MainLayout';
 import AppRoutes from './routes/AppRoutes';
 import Login from './pages/Login';
+import { DeviceStatusProvider } from './services/DeviceStatusContext';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(
@@ -24,29 +25,31 @@ function App() {
   }, []);
 
   return (
-    <Router>
-      <Routes>
-        {/* LOGIN ROUTE */}
-        <Route 
-          path="/login" 
-          element={!isAuthenticated ? <Login /> : <Navigate to={localStorage.getItem('userRole') === 'SUPER_ADMIN' ? "/super-admin" : "/dashboard"} replace />} 
-        />
+    <DeviceStatusProvider>
+      <Router>
+        <Routes>
+          {/* LOGIN ROUTE */}
+          <Route 
+            path="/login" 
+            element={!isAuthenticated ? <Login /> : <Navigate to={localStorage.getItem('userRole') === 'SUPER_ADMIN' ? "/super-admin" : "/dashboard"} replace />} 
+          />
 
-        {/* PROTECTED ROUTES */}
-        <Route
-          path="/*"
-          element={
-            isAuthenticated ? (
-              <MainLayout>
-                <AppRoutes />
-              </MainLayout>
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-      </Routes>
-    </Router>
+          {/* PROTECTED ROUTES */}
+          <Route
+            path="/*"
+            element={
+              isAuthenticated ? (
+                <MainLayout>
+                  <AppRoutes />
+                </MainLayout>
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+        </Routes>
+      </Router>
+    </DeviceStatusProvider>
   );
 }
 
