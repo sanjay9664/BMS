@@ -3,6 +3,7 @@ import { Row, Col, Card, Tooltip, OverlayTrigger, Form, Button, Modal, Badge, Sp
 import { Home, Waves, LayoutGrid, Settings, Save, AlertCircle, CheckCircle2, XCircle, Activity, X, Droplets, ToggleRight, ToggleLeft, Maximize, Minimize, ShieldCheck, ArrowUp, ArrowDown, Zap } from 'lucide-react';
 import PdfButton from '../../components/PdfButton';
 import { getSochiotDeviceDetails } from '../../services/authService';
+import { useDeviceStatus } from '../../services/DeviceStatusContext';
 import { io } from 'socket.io-client';
 
 const AgTank = () => {
@@ -37,61 +38,41 @@ const AgTank = () => {
 
   const totalTanks = 48;
 
-  const [deviceStatuses, setDeviceStatuses] = useState({});
+  const { getOverallStatus } = useDeviceStatus();
 
-  // Poll real-time device connection status from Sochiot API
+  // Sync global online/offline status into allTanks state dynamically
   useEffect(() => {
-    const fetchDeviceStatus = async () => {
-      try {
-        const saved = localStorage.getItem('scada_templates');
-        if (!saved) return;
-        const templates = JSON.parse(saved);
-
-        // Collect all unique device IDs used in AG Tank templates
-        const deviceIds = new Set();
-        templates.forEach(t => {
-          if (t.module === 'AG Tank' && t.mapping) {
-            Object.values(t.mapping).forEach(config => {
-              if (config && config.device) {
-                deviceIds.add(config.device);
-              }
-            });
-          }
-        });
-
-        if (deviceIds.size === 0) return;
-
-        const statuses = {};
-        const promises = Array.from(deviceIds).map(async (dId) => {
-          try {
-            console.log(`[AgTank] Fetching device details for: ${dId}`);
-            const data = await getSochiotDeviceDetails(dId);
-            console.log(`[AgTank] Device ${dId} data:`, data);
-            if (data && data.mode) {
-              statuses[dId] = data.mode.name === 'ONLINE';
-              console.log(`[AgTank] Device ${dId} status set to: ${statuses[dId]}`);
-            } else {
-              console.log(`[AgTank] Device ${dId} missing mode object. Setting to OFFLINE explicitly.`);
-              statuses[dId] = false; // explicitly set if missing to prevent fallback
+    const saved = localStorage.getItem('scada_templates');
+    if (!saved) return;
+    try {
+      const templates = JSON.parse(saved);
+      setAllTanks(prev => {
+        let changed = false;
+        const next = prev.map(tank => {
+          const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
+          const template = templates.find(t =>
+            t.module === 'AG Tank' &&
+            (t.mapping?.agTankRange?.domStart === tankName || t.mapping?.agTankRange?.flushStart === tankName)
+          );
+          if (template && template.mapping) {
+            let deviceId = template.mapping.deviceId || template.mapping.agStatusStartConfig?.device || template.mapping.agStatusConfig?.device;
+            if (!deviceId) {
+              const anyConfig = Object.values(template.mapping).find(cfg => cfg && typeof cfg === 'object' && cfg.device);
+              if (anyConfig) deviceId = anyConfig.device;
             }
-          } catch (e) {
-            console.error(`Failed to fetch status for device ${dId}`, e);
-            statuses[dId] = false; // explicit offline on failure
+            const gatewayUuid = template.mapping.gatewayUuid;
+            const isOnline = getOverallStatus(deviceId, gatewayUuid);
+            if (tank.isOnline !== isOnline) {
+              changed = true;
+              return { ...tank, isOnline };
+            }
           }
+          return tank;
         });
-
-        await Promise.all(promises);
-        console.log("[AgTank] Final device statuses:", statuses);
-        setDeviceStatuses(statuses);
-      } catch (e) {
-        console.error("Device status polling error:", e);
-      }
-    };
-
-    fetchDeviceStatus();
-    const interval = setInterval(fetchDeviceStatus, 15000); // Fetch every 15s
-    return () => clearInterval(interval);
-  }, []);
+        return changed ? next : prev;
+      });
+    } catch (e) { console.error(e); }
+  }, [getOverallStatus]);
 
   // Initialize tanks with valve states
   const [allTanks, setAllTanks] = useState(() => {
@@ -551,33 +532,39 @@ const AgTank = () => {
               const startCfg = template.mapping.agStatusStartConfig || template.mapping.agStatusConfig;
               const stopCfg = template.mapping.agStatusStopConfig;
 
+              let devId = template.mapping.deviceId || startCfg?.device;
+              if (!devId && template.mapping) {
+                const anyConfig = Object.values(template.mapping).find(cfg => cfg && typeof cfg === 'object' && cfg.device);
+                if (anyConfig) devId = anyConfig.device;
+              }
+              const gwyUuid = template.mapping.gatewayUuid;
+              let isOnline = getOverallStatus(devId, gwyUuid);
+
+              if (!isOnline && template.mapping) {
+                const activeModules = new Set();
+                ['agLevelConfig', 'agAmpsConfig', 'agStatusConfig', 'agStatusStartConfig', 'agStatusStopConfig', 'agOpenConfig', 'agCloseConfig'].forEach(cfgKey => {
+                  const cfg = template.mapping[cfgKey];
+                  if (cfg && cfg.enabled !== false && cfg.module) {
+                    activeModules.add(String(cfg.module));
+                  }
+                });
+                const hasRecentStats = stats.some(s => activeModules.has(String(s.moduleId)) || activeModules.has(String(s.meta?.module_id)));
+                if (hasRecentStats) {
+                  isOnline = true;
+                }
+              }
+
+              if (newTank.isOnline !== isOnline) {
+                newTank.isOnline = isOnline;
+                updated = true;
+              }
+
               let conditionMet = false;
 
               // 1. Check for START condition (OPEN)
               if (startCfg?.field && startCfg?.module) {
-                let isOnline = tank.isOnline;
-
-                if (startCfg?.device && deviceStatuses[startCfg.device] !== undefined) {
-                  isOnline = deviceStatuses[startCfg.device];
-                }
-
                 const stat = stats.find(s => String(s.moduleId) === String(startCfg.module) || String(s.meta?.module_id) === String(startCfg.module));
                 if (stat && stat.meta) {
-                  const modeObj = stat.meta?.mode || stat.mode;
-
-                  if (startCfg?.device && deviceStatuses[startCfg.device] === undefined) {
-                    if (modeObj && modeObj.name) {
-                      isOnline = modeObj.name === 'ONLINE';
-                    }
-                    else if (stat.meta.created_at_timestamp) {
-                      const ts = stat.meta.created_at_timestamp;
-                      const lastSeen = isNaN(Number(ts)) ? new Date(ts).getTime() : (String(ts).length <= 10 ? Number(ts) * 1000 : Number(ts));
-                      if (!isNaN(lastSeen)) {
-                        isOnline = (Date.now() - lastSeen) < 86400000;
-                      }
-                    }
-                  }
-
                   const currentVal = stat.meta[startCfg.field];
                   const isStartMet = evaluateCondition(currentVal, startCfg.operator || '=', startCfg.value || '10');
 
@@ -587,11 +574,6 @@ const AgTank = () => {
                     newTank.valveStatus = 'OPEN';
                     newTank.status = 'Running';
                   }
-                }
-
-                if (newTank.isOnline !== isOnline) {
-                  newTank.isOnline = isOnline;
-                  updated = true;
                 }
               }
 
@@ -646,26 +628,39 @@ const AgTank = () => {
 
     socket.on('telemetry_update', processTelemetry);
 
-    // Fallback polling for production (where serverless doesn't support WebSockets)
-    const pollInterval = setInterval(async () => {
-      if (!socket.connected) {
-        try {
-          const res = await fetch('/api/templates/stats');
-          if (res.ok) {
-            const stats = await res.json();
-            processTelemetry(stats);
-          }
-        } catch (err) {
-          console.error('Error polling telemetry stats:', err);
+    // ── INSTANT DATA LOAD STRATEGY ────────────────────────────────────────────
+    // Step 1: Show cached data from last session IMMEDIATELY (0ms wait)
+    try {
+      const cached = localStorage.getItem('scada_agtank_telemetry_cache');
+      if (cached) processTelemetry(JSON.parse(cached));
+    } catch (e) { /* ignore cache errors */ }
+
+    // Step 2: HTTP fetch immediately on mount for fresh data (don't wait for WebSocket)
+    const fetchStats = async () => {
+      try {
+        const res = await fetch('/api/templates/stats');
+        if (res.ok) {
+          const stats = await res.json();
+          // Save to cache for next page visit — instant load next time
+          try { localStorage.setItem('scada_agtank_telemetry_cache', JSON.stringify(stats)); } catch (e) {}
+          processTelemetry(stats);
         }
+      } catch (err) {
+        console.error('Error fetching AgTank stats:', err);
       }
-    }, 4000);
+    };
+
+    fetchStats(); // Immediate on mount
+
+    // Step 3: Keep polling every 2s as backup (regardless of WebSocket state)
+    const pollInterval = setInterval(fetchStats, 2000);
+    // ─────────────────────────────────────────────────────────────────────────
 
     return () => {
       socket.disconnect();
       clearInterval(pollInterval);
     };
-  }, [selectedTank, showValveModal, deviceStatuses]);
+  }, [selectedTank, showValveModal, getOverallStatus]);
 
   const isTankDisabled = (tank) => {
     const name = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
