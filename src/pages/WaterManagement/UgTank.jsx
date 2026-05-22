@@ -457,7 +457,10 @@ const UgTank = () => {
             });
           }
         });
-        const res = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates/stats`);
+        const pollList = Array.from(modulesToPoll);
+        const apiBase = process.env.REACT_APP_BACKEND_URL || '';
+        const url = pollList.length > 0 ? `${apiBase}/api/templates/stats?modules=${pollList.join(',')}` : `${apiBase}/api/templates/stats`;
+        const res = await fetch(url);
         if (res.ok) {
           const stats = await res.json();
           // Save to cache for next page visit — instant load next time
