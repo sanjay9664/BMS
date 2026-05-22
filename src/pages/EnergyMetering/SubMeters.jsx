@@ -438,7 +438,7 @@ const SubMeters = () => {
       }
     }
     
-    fetch('/api/templates')
+    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates`)
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         const mapped = data.map(t => {
@@ -862,7 +862,7 @@ const SubMeters = () => {
         const pollList = Array.from(modulesToPoll);
         if (pollList.length === 0) return;
         
-        const url = `/api/templates/stats?modules=${pollList.join(',')}`;
+        const url = `${process.env.REACT_APP_BACKEND_URL}/api/templates/stats?modules=${pollList.join(',')}`;
         const res = await fetch(url);
         if (res.ok) {
           const stats = await res.json();

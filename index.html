@@ -2,6 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      window.process = {
+        env: {
+          NODE_ENV: 'production',
+          REACT_APP_BACKEND_URL: window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? ''
+            : 'https://app.sochiot.com'
+        }
+      };
+    </script>
     <link rel="icon" type="image/svg+xml" href="/src//assets//logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title> Sochiot BMS System</title>  

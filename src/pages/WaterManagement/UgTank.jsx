@@ -667,7 +667,7 @@ const UgTank = () => {
     setActionFeedback("SENDING RULES...");
 
     try {
-      const apiURL = '/api/rule-engine/apply';
+      const apiURL = `${process.env.REACT_APP_BACKEND_URL}/api/rule-engine/apply`;
       const token = localStorage.getItem('sochiot_token');
       let rulesProcessed = 0;
 
