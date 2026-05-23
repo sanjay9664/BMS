@@ -62,9 +62,9 @@ const AgTank = () => {
             }
             const gatewayUuid = template.mapping.gatewayUuid;
             const isOnline = getOverallStatus(deviceId, gatewayUuid);
-            if (tank.isOnline !== isOnline) {
+            if (tank.isOnline !== isOnline || !tank.isMapped) {
               changed = true;
-              return { ...tank, isOnline };
+              return { ...tank, isOnline, isMapped: true };
             }
           }
           return tank;
@@ -86,7 +86,8 @@ const AgTank = () => {
       valveStatus: 'CLOSE',
       minLevel: 20,
       maxLevel: 90,
-      isOnline: true
+      isOnline: false,
+      isMapped: false
     }));
 
     // Initial Sync from LocalStorage templates
@@ -106,6 +107,7 @@ const AgTank = () => {
           if (template && template.mapping) {
             return {
               ...tank,
+              isMapped: true,
               minLevel: template.mapping.rule1Config?.consequence?.value ? Number(template.mapping.rule1Config.consequence.value) : tank.minLevel,
               maxLevel: template.mapping.rule2Config?.consequence?.value ? Number(template.mapping.rule2Config.consequence.value) : tank.maxLevel
             };
@@ -555,8 +557,9 @@ const AgTank = () => {
                 }
               }
 
-              if (newTank.isOnline !== isOnline) {
+              if (newTank.isOnline !== isOnline || !newTank.isMapped) {
                 newTank.isOnline = isOnline;
+                newTank.isMapped = true;
                 updated = true;
               }
 
@@ -860,17 +863,17 @@ const AgTank = () => {
                     <div className="threshold-marker upper" style={{ bottom: `${tank.maxLevel}%` }}></div>
                   </div>
                   <div className="valve-connector-pipe"></div>
-                  <div className={`industrial-valve-node ${!tank.isOnline ? 'valve-offline' : (tank.valveStatus === 'OPEN' ? 'valve-open' : 'valve-closed')}`}>
+                  <div className={`industrial-valve-node ${!tank.isMapped ? 'valve-unmapped' : (!tank.isOnline ? 'valve-offline' : (tank.valveStatus === 'OPEN' ? 'valve-open' : 'valve-closed'))}`}>
                     {/* Mode Indicator A/M */}
-                    <div className={`valve-mode-pill mode-${tank.valveMode.toLowerCase()} ${!tank.isOnline ? 'opacity-25' : ''}`}>
+                    <div className={`valve-mode-pill mode-${tank.valveMode.toLowerCase()} ${(!tank.isMapped || !tank.isOnline) ? 'opacity-25' : ''}`}>
                       {tank.valveMode === 'AUTO' ? 'A' : tank.valveMode === 'MANUAL' ? 'M' : 'B'}
                     </div>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
                       <path d="M4 6L20 18V6L4 18V6Z"
-                        fill={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')}
-                        stroke={!tank.isOnline ? '#475569' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')}
+                        fill={(!tank.isMapped || !tank.isOnline) ? '#334155' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')}
+                        stroke={(!tank.isMapped || !tank.isOnline) ? '#334155' : (tank.valveStatus === 'OPEN' ? '#22c55e' : '#ef4444')}
                         strokeWidth="2"
-                        style={{ transition: 'all 0.3s ease', filter: !tank.isOnline ? 'none' : (tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 5px #22c55e)' : 'drop-shadow(0 0 5px #ef4444)') }} />
+                        style={{ transition: 'all 0.3s ease', filter: (!tank.isMapped || !tank.isOnline) ? 'none' : (tank.valveStatus === 'OPEN' ? 'drop-shadow(0 0 5px #22c55e)' : 'drop-shadow(0 0 5px #ef4444)') }} />
                       <rect x="11" y="2" width="2" height="6" fill="#94a3b8" />
                       <rect x="9" y="2" width="6" height="1" fill="#94a3b8" />
                     </svg>
@@ -882,12 +885,12 @@ const AgTank = () => {
                     </div>
                   )}
                 </div>
-                <div className={`fw-bold mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'} ${!tank.isOnline ? 'text-danger' : 'text-success'}`}>
-                  {tank.isOnline ? 'ONLINE' : 'OFFLINE'}
+                <div className={`fw-bold mb-0 mt-1 ${isFullscreen ? 'fs-7' : 'fs-10'} ${!tank.isMapped ? 'text-secondary opacity-50' : (!tank.isOnline ? 'text-danger' : 'text-success')}`}>
+                  {!tank.isMapped ? 'NOT MAPPED' : (tank.isOnline ? 'ONLINE' : 'OFFLINE')}
                 </div>
                 <div className={`fw-bold mb-0 ${isFullscreen ? 'fs-7' : 'fs-10'} text-muted`}>{tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-{tank.localId}</div>
                 <div className={`d-flex justify-content-center gap-2 opacity-75 ${isFullscreen ? 'fs-7' : 'fs-10'}`}>
-                  <span style={{ color: !tank.isOnline ? '#475569' : getTankColor(tank.type, tank.level, tank.status) }}>{!tank.isOnline ? '--' : tank.level}%</span>
+                  <span style={{ color: !tank.isMapped ? '#334155' : (!tank.isOnline ? '#475569' : getTankColor(tank.type, tank.level, tank.status)) }}>{!tank.isMapped ? '--' : (!tank.isOnline ? '--' : tank.level)}%</span>
                   {tank.isOnline && tank.amps !== undefined && (
                     <span className="text-warning d-flex align-items-center gap-1 fw-bold fs-7">
                       <Zap size={12} className="pulse-icon" /> {tank.amps}A

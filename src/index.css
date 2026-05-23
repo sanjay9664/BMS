@@ -1,4 +1,5 @@
 :root {
+  color-scheme: dark;
   --scada-bg: #0f172a;
   --scada-sidebar: #1e293b;
   --scada-card: #1e293b;
@@ -139,6 +140,7 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {
 .status-fault { background-color: rgba(239, 68, 68, 0.1); color: var(--status-fault); border: 1px solid rgba(239, 68, 68, 0.2); }
 .status-warning { background-color: rgba(245, 158, 11, 0.1); color: var(--status-warning); border: 1px solid rgba(245, 158, 11, 0.2); }
 .status-stopped { background-color: rgba(148, 163, 184, 0.1); color: var(--status-stopped); border: 1px solid rgba(148, 163, 184, 0.2); }
+.status-not-mapped { background-color: rgba(100, 116, 139, 0.08); color: #475569; border: 1px solid rgba(100, 116, 139, 0.15); font-style: italic; opacity: 0.7; }
 
 /* Table Styles */
 .scada-table {
@@ -207,4 +209,23 @@ h1, h2, h3, h4, h5, h6, p, span, div, label {
   color: white !important;
   border-color: var(--scada-accent) !important;
   box-shadow: 0 0 0 0.25rem rgba(56, 189, 248, 0.25) !important;
+}
+
+/* Global Native Dropdown Styles for consistent Dark Theme */
+select, .form-select, select.form-control, input.form-control {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  border: 1px solid var(--scada-border) !important;
+}
+
+select option, option {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
+  padding: 10px !important;
+}
+
+/* Fix browser autocomplete / datalist list options */
+datalist, select:focus, .form-select:focus {
+  background-color: #1e293b !important;
+  color: #f8fafc !important;
 }
