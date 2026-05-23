@@ -148,7 +148,7 @@ const UgTank = () => {
   }, [getOverallStatus]);
 
   useEffect(() => {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const backendUrl = window.process?.env?.REACT_APP_BACKEND_URL || '';
     const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     socket.on('connect', () => {
@@ -459,17 +459,11 @@ const UgTank = () => {
           }
         });
         const apiBase = (() => {
-  // Vite dev environment via process.env
-  if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_BACKEND_URL) {
-    return process.env.REACT_APP_BACKEND_URL.replace(/\/api$/, '');
-  }
-  // Production runtime via injected window.process
-  if (typeof window !== 'undefined' && window.process && window.process.env && window.process.env.REACT_APP_BACKEND_URL) {
-    return window.process.env.REACT_APP_BACKEND_URL.replace(/\/api$/, '');
-  }
-  // Fallback to empty string (relative to current host)
-  return '';
-})();
+          if (typeof window !== 'undefined' && window.process?.env?.REACT_APP_BACKEND_URL) {
+            return window.process.env.REACT_APP_BACKEND_URL.replace(/\/api$/, '');
+          }
+          return '';
+        })();
         const pollList = Array.from(modulesToPoll);
         const url = pollList.length > 0 ? `${apiBase}/api/templates/stats?modules=${pollList.join(',')}` : `${apiBase}/api/templates/stats`;
         const res = await fetch(url);
@@ -602,7 +596,7 @@ const UgTank = () => {
           cmdField: config.field
         };
 
-        const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/command/push`, {
+        const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/command/push`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -682,7 +676,7 @@ const UgTank = () => {
     setActionFeedback("SENDING RULES...");
 
     try {
-      const apiURL = `${process.env.REACT_APP_BACKEND_URL}/api/rule-engine/apply`;
+      const apiURL = `${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/rule-engine/apply`;
       const token = localStorage.getItem('sochiot_token');
       let rulesProcessed = 0;
 
@@ -718,7 +712,7 @@ const UgTank = () => {
           ]
         };
 
-        const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/rule-engine/apply`, {
+        const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/rule-engine/apply`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

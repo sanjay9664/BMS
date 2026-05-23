@@ -445,7 +445,7 @@ const MainMeter = () => {
       }
     }
 
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates`)
+    fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates`)
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         const mapped = data.map(t => {
@@ -599,7 +599,7 @@ const MainMeter = () => {
 
   // Live Telemetry Sync using Websockets and Polling
   useEffect(() => {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const backendUrl = window.process?.env?.REACT_APP_BACKEND_URL || '';
     const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     socket.on('connect', () => {

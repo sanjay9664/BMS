@@ -440,7 +440,7 @@ const SubMeters = () => {
       }
     }
     
-    fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates`)
+    fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates`)
       .then(res => res.ok ? res.json() : [])
       .then(data => {
         const mapped = data.map(t => {
@@ -515,11 +515,11 @@ const SubMeters = () => {
 
   // Live Telemetry Sync using Websockets and Polling
   useEffect(() => {
-    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const backendUrl = window.process?.env?.REACT_APP_BACKEND_URL || '';
     const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     const fetchTemplates = () => {
-      fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates`)
+      fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates`)
         .then(res => res.ok ? res.json() : [])
         .then(data => {
           const mapped = data.map(t => {
@@ -899,7 +899,7 @@ const SubMeters = () => {
         const pollList = Array.from(modulesToPoll);
         if (pollList.length === 0) return;
         
-        const url = `${process.env.REACT_APP_BACKEND_URL}/api/templates/stats?modules=${pollList.join(',')}`;
+        const url = `${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/stats?modules=${pollList.join(',')}`;
         const res = await fetch(url);
         if (res.ok) {
           const stats = await res.json();
