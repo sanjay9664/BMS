@@ -280,7 +280,6 @@ const SubMeters = () => {
   const [meters, setMeters] = useState([]);
   const [templates, setTemplates] = useState([]);
 
-  // Helper to determine if a specific meter is online
   const getMeterOnlineStatus = (meterLabel) => {
     const template = getTemplateForMeter(meterLabel);
     if (template?.mapping) {
@@ -293,29 +292,19 @@ const SubMeters = () => {
       if (devId) {
         const isOnline = getOverallStatus(devId, gatewayUuid);
         if (isOnline) return true;
-
-        // Telemetry-based fallback: ONLY use if data is FRESH (within 24 hours for robust QA/development).
-        // This prevents stale MongoDB events from making an offline device look ONLINE.
-        const FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24 hours
-        const meter = meters.find(m => m.label === meterLabel);
-        if (meter && meter.telemetryValues && meter.lastTelemetryTimestamp) {
-          const isFresh = (Date.now() - meter.lastTelemetryTimestamp) < FRESHNESS_MS;
-          if (isFresh) {
-            const hasV = meter.telemetryValues.vR !== undefined && meter.telemetryValues.vR !== null && Number(meter.telemetryValues.vR) > 0;
-            const hasI = meter.telemetryValues.iR !== undefined && meter.telemetryValues.iR !== null && Number(meter.telemetryValues.iR) > 0;
-            const hasLoad = (Number(meter.telemetryValues.totalKw) > 0) || (Number(meter.telemetryValues.activePower) > 0);
-            const hasSr = meter.telemetryValues.meterSrno !== undefined && meter.telemetryValues.meterSrno !== null && meter.telemetryValues.meterSrno !== '';
-            if (hasV || hasI || hasLoad || hasSr) {
-              return true;
-            }
-          }
-        }
       }
     }
-    // Fallback to legacy check or default to false/offline if not configured
-    const meter = meters.find(m => m.label === meterLabel);
-    if (meter && meter.telemetryValues && meter.telemetryValues.commStatus !== undefined) {
-      return !(meter.telemetryValues.commStatus === 0 || meter.telemetryValues.commStatus === '0' || meter.telemetryValues.commStatus === null || meter.telemetryValues.commStatus === '');
+    
+    // Case-insensitive telemetry-based fallback
+    const meter = meters.find(m => String(m.label).trim().toUpperCase() === String(meterLabel).trim().toUpperCase());
+    if (meter) {
+      const hasV = meter.voltage !== undefined && meter.voltage !== null && Number(meter.voltage) > 0;
+      const hasI = meter.current !== undefined && meter.current !== null && Number(meter.current) > 0;
+      const hasLoad = meter.load !== undefined && meter.load !== null && Number(meter.load) > 0;
+      const hasTelemetry = meter.telemetryValues && Object.keys(meter.telemetryValues).length > 0;
+      if (hasV || hasI || hasLoad || hasTelemetry) {
+        return true;
+      }
     }
     return false; // Default offline
   };
@@ -832,7 +821,7 @@ const SubMeters = () => {
           meterUpdated = true;
 
           if (meterUpdated) {
-            updatedMeter.status = updatedMeter.load > 1 ? 'Running' : 'Stopped';
+            updatedMeter.status = updatedMeter.load > 0.05 ? 'Running' : 'Stopped';
             updated = true;
           }
 

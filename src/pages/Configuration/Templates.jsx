@@ -203,6 +203,7 @@ const ConfigTemplates = () => {
     totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
   });
   const [energyMeteringTarget, setEnergyMeteringTarget] = useState('');
+  const [subMeterCategory, setSubMeterCategory] = useState('');
 
   const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
   const [pressureTarget, setPressureTarget] = useState('');
@@ -2228,7 +2229,7 @@ const ConfigTemplates = () => {
     } else if (selectedCategory === 'Energy Metering' || selectedModule === 'Main Meter' || selectedModule === 'Sub Meters') {
       mapping = {
         emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
-        emChangeConfig, emWarningConfig, emReadConfig, emLimitsConfig, energyMeteringTarget
+        emChangeConfig, emWarningConfig, emReadConfig, emLimitsConfig, energyMeteringTarget, subMeterCategory
       };
     } else {
       // Fallback
@@ -2520,6 +2521,7 @@ const ConfigTemplates = () => {
         totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
       });
       setEnergyMeteringTarget(template.mapping.energyMeteringTarget || '');
+      setSubMeterCategory(template.mapping.subMeterCategory || '');
       setUgConfig(template.mapping.ugConfig || {
         integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
@@ -4042,69 +4044,96 @@ const ConfigTemplates = () => {
                         </h6>
                       </div>
                       
-                      {/* Energy Meter Target Selector */}
-                      <div className="d-flex align-items-center gap-2" style={{ minWidth: '300px' }}>
-                        <span className="text-secondary fs-12 uppercase fw-black opacity-60 text-nowrap">Target Unit:</span>
-                        <Form.Select 
-                          className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner" 
-                          style={{ height: '35px' }} 
-                          value={energyMeteringTarget} 
-                          onChange={(e) => {
-                            setEnergyMeteringTarget(e.target.value);
-                            setTemplateName('');                             const existing = savedTemplates.find(t => 
-                              t.module === selectedModule && 
-                              t.mapping.energyMeteringTarget === e.target.value
-                            );
-                            if (existing) {
-                              setEmVoltageConfig(existing.mapping.emVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
-                              setEmCurrentConfig(existing.mapping.emCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
-                              setEmPowerConfig(existing.mapping.emPowerConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-                              setEmSystemConfig(existing.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
-                              setEmConsumptionConfig(existing.mapping.emConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-                              setEmChangeConfig(existing.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
-                              setEmWarningConfig(existing.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
-                              setEmReadConfig(existing.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
-                              setEmLimitsConfig(existing.mapping.emLimitsConfig || {
-                                vR: { low: '', normalMin: '', normalMax: '', high: '' },
-                                vY: { low: '', normalMin: '', normalMax: '', high: '' },
-                                vB: { low: '', normalMin: '', normalMax: '', high: '' },
-                                iR: { low: '', normalMin: '', normalMax: '', high: '' },
-                                iY: { low: '', normalMin: '', normalMax: '', high: '' },
-                                iB: { low: '', normalMin: '', normalMax: '', high: '' },
-                                totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
-                                totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
-                              });
-                              if (existing.mapping.globalHierarchy) setGlobalLocation(existing.mapping.globalHierarchy);
-                            } else {
-                              setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
-                              setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
-                              setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
-                              setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
-                              setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
-                              setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
-                              setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
-                              setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
-                              setEmLimitsConfig({
-                                vR: { low: '', normalMin: '', normalMax: '', high: '' },
-                                vY: { low: '', normalMin: '', normalMax: '', high: '' },
-                                vB: { low: '', normalMin: '', normalMax: '', high: '' },
-                                iR: { low: '', normalMin: '', normalMax: '', high: '' },
-                                iY: { low: '', normalMin: '', normalMax: '', high: '' },
-                                iB: { low: '', normalMin: '', normalMax: '', high: '' },
-                                totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
-                                totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
-                              });
+                      {/* Energy Meter Target & Category Selector */}
+                      <div className="d-flex align-items-center gap-3">
+                        <div className="d-flex align-items-center gap-2" style={{ minWidth: '220px' }}>
+                          <span className="text-secondary fs-12 uppercase fw-black opacity-60 text-nowrap">Target Unit:</span>
+                          <Form.Select 
+                            className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner" 
+                            style={{ height: '35px' }} 
+                            value={energyMeteringTarget} 
+                            onChange={(e) => {
+                              setEnergyMeteringTarget(e.target.value);
+                              setTemplateName('');
+                              const existing = savedTemplates.find(t => 
+                                t.module === selectedModule && 
+                                t.mapping.energyMeteringTarget === e.target.value
+                              );
+                              if (existing) {
+                                setEmVoltageConfig(existing.mapping.emVoltageConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+                                setEmCurrentConfig(existing.mapping.emCurrentConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+                                setEmPowerConfig(existing.mapping.emPowerConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+                                setEmSystemConfig(existing.mapping.emSystemConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
+                                setEmConsumptionConfig(existing.mapping.emConsumptionConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+                                setEmChangeConfig(existing.mapping.emChangeConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
+                                setEmWarningConfig(existing.mapping.emWarningConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+                                setEmReadConfig(existing.mapping.emReadConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                                setEmLimitsConfig(existing.mapping.emLimitsConfig || {
+                                  vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                                });
+                                setSubMeterCategory(existing.mapping.subMeterCategory || '');
+                                if (existing.mapping.globalHierarchy) setGlobalLocation(existing.mapping.globalHierarchy);
+                              } else {
+                                setEmVoltageConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vR: '', vY: '', vB: '', enabled: true });
+                                setEmCurrentConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', iR: '', iY: '', iB: '', enabled: true });
+                                setEmPowerConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', activePower: '', reactivePower: '', apparentPower: '', enabled: true });
+                                setEmSystemConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', commStatus: '', enabled: true });
+                                setEmConsumptionConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', cumulativekWh: '', enabled: true });
+                                setEmChangeConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', ebKvah: '', ebKwh: '', balance: '', totalKw: '', vR: '', vY: '', vB: '', iR: '', iY: '', iB: '', pf: '', totalKva: '', dgKwh: '', enabled: true });
+                                setEmWarningConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', lowBalanceCut: '', overloadTrip: '', overloadLimitReached: '', connectedStatus: '', forceOff: '', enabled: true });
+                                setEmReadConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', meterSrno: '', noOfOverloadCheck: '', ebDgStatus: '', ebTariff: '', dgTariff: '', ebRLoadSet: '', ebYLoadSet: '', ebBLoadSet: '', dgRLoadSet: '', dgYLoadSet: '', dgBLoadSet: '', enabled: true });
+                                setEmLimitsConfig({
+                                  vR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  vY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  vB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  iR: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  iY: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  iB: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  totalKw: { low: '', normalMin: '', normalMax: '', high: '' },
+                                  totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
+                                });
+                                setSubMeterCategory('');
+                              }
+                            }}
+                          >
+                            <option value="">SELECT TARGET METER</option>
+                            {energyMetersList
+                              .filter(m => selectedModule === 'Main Meter' ? m.id === 'EM-MAIN' : m.id !== 'EM-MAIN')
+                              .map(m => (
+                                <option key={m.id} value={m.name}>{m.name}</option>
+                              ))
                             }
-                          }}
-                        >
-                          <option value="">SELECT TARGET METER</option>
-                          {energyMetersList
-                            .filter(m => selectedModule === 'Main Meter' ? m.id === 'EM-MAIN' : m.id !== 'EM-MAIN')
-                            .map(m => (
-                              <option key={m.id} value={m.name}>{m.name}</option>
-                            ))
-                          }
-                        </Form.Select>
+                          </Form.Select>
+                        </div>
+
+                        {selectedModule === 'Sub Meters' && (
+                          <div className="d-flex align-items-center gap-2" style={{ minWidth: '220px' }}>
+                            <span className="text-secondary fs-12 uppercase fw-black opacity-60 text-nowrap">Group / Category:</span>
+                            <Form.Control 
+                              type="text"
+                              className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner text-white" 
+                              style={{ height: '35px', background: 'rgba(255, 255, 255, 0.05)' }} 
+                              placeholder="e.g. HVAC, Commercial, etc."
+                              value={subMeterCategory}
+                              onChange={(e) => setSubMeterCategory(e.target.value)}
+                              list="submeter-categories"
+                            />
+                            <datalist id="submeter-categories">
+                              <option value="Commercial" />
+                              <option value="Data Center" />
+                              <option value="Water Management" />
+                              <option value="HVAC" />
+                              <option value="Lighting" />
+                            </datalist>
+                          </div>
+                        )}
                       </div>
                     </div>
                     
