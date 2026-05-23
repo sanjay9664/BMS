@@ -84,6 +84,12 @@ const UgTank = () => {
     if (!saved) return;
     try {
       const templates = JSON.parse(saved);
+      let statsCache = [];
+      try {
+        const cached = localStorage.getItem('scada_ugtank_telemetry_cache');
+        if (cached) statsCache = JSON.parse(cached);
+      } catch(err) {}
+
       const updatePumpOnlineStatus = (prev) => {
         let changed = false;
         const next = prev.map(pump => {
@@ -92,7 +98,22 @@ const UgTank = () => {
           );
           if (template && template.mapping) {
             const deviceId = template.mapping.deviceId || template.mapping.ugStatusStartConfig?.device || template.mapping.ugStatusConfig?.device;
-            const isOnline = getOverallStatus(deviceId, template.mapping.gatewayUuid);
+            let isOnline = getOverallStatus(deviceId, template.mapping.gatewayUuid);
+            
+            if (!isOnline && template.mapping) {
+              const activeModules = new Set();
+              ['ugStatusStartConfig', 'ugStatusStopConfig', 'ugAmpsConfig', 'ugStartCmdConfig', 'ugStopCmdConfig'].forEach(cfgKey => {
+                const cfg = template.mapping[cfgKey];
+                if (cfg && cfg.enabled !== false && cfg.module) {
+                  activeModules.add(String(cfg.module));
+                }
+              });
+              const hasRecentStats = statsCache.some(s => activeModules.has(String(s.moduleId)) || activeModules.has(String(s.meta?.module_id)));
+              if (hasRecentStats) {
+                isOnline = true;
+              }
+            }
+
             const isMapped = !!deviceId;
             if (pump.isOnline !== isOnline || pump.isMapped !== isMapped) {
               changed = true;
@@ -128,7 +149,22 @@ const UgTank = () => {
               const anyConfig = Object.values(template.mapping).find(cfg => cfg && typeof cfg === 'object' && cfg.device);
               if (anyConfig) deviceId = anyConfig.device;
             }
-            const isOnline = getOverallStatus(deviceId, template.mapping.gatewayUuid);
+            let isOnline = getOverallStatus(deviceId, template.mapping.gatewayUuid);
+            
+            if (!isOnline && template.mapping) {
+              const activeModules = new Set();
+              ['ugTankLevelConfig', 'ugLevelConfig', 'ugAmpsConfig', 'ugStatusStartConfig', 'ugStatusStopConfig'].forEach(cfgKey => {
+                const cfg = template.mapping[cfgKey];
+                if (cfg && cfg.enabled !== false && cfg.module) {
+                  activeModules.add(String(cfg.module));
+                }
+              });
+              const hasRecentStats = statsCache.some(s => activeModules.has(String(s.moduleId)) || activeModules.has(String(s.meta?.module_id)));
+              if (hasRecentStats) {
+                isOnline = true;
+              }
+            }
+
             const isMapped = !!deviceId;
             if (tank.isOnline !== isOnline || tank.isMapped !== isMapped) {
               changed = true;
@@ -357,6 +393,20 @@ const UgTank = () => {
                     isOnline = (Date.now() - lastSeen) < 86400000;
                   }
                 }
+              }
+            }
+
+            if (!isOnline && template.mapping) {
+              const activeModules = new Set();
+              ['ugStatusStartConfig', 'ugStatusStopConfig', 'ugAmpsConfig', 'ugStartCmdConfig', 'ugStopCmdConfig'].forEach(cfgKey => {
+                const cfg = template.mapping[cfgKey];
+                if (cfg && cfg.enabled !== false && cfg.module) {
+                  activeModules.add(String(cfg.module));
+                }
+              });
+              const hasRecentStats = stats.some(s => activeModules.has(String(s.moduleId)) || activeModules.has(String(s.meta?.module_id)));
+              if (hasRecentStats) {
+                isOnline = true;
               }
             }
 
