@@ -66,6 +66,12 @@ const AgTank = () => {
               changed = true;
               return { ...tank, isOnline, isMapped: true };
             }
+          } else {
+            // No template found — reset to unmapped
+            if (tank.isMapped || tank.isOnline) {
+              changed = true;
+              return { ...tank, isMapped: false, isOnline: false };
+            }
           }
           return tank;
         });
