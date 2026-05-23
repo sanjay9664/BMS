@@ -26,7 +26,7 @@ const Settings = () => {
 
   const fetchGlobalConfig = async () => {
     try {
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/super-admin/config`);
+      const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/super-admin/config`);
       if (response.ok) {
         const data = await response.json();
         
@@ -100,7 +100,7 @@ const Settings = () => {
         backendConfig[key] = modules[label];
       });
 
-      const response = await fetch(`${process.env.REACT_APP_BACKEND_URL}/api/super-admin/config`, {
+      const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/super-admin/config`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ config: backendConfig })
