@@ -102,7 +102,8 @@ const MainLayout = ({ children }) => {
     fetchTemplates();
 
     // Set up WebSocket listener to fetch updated templates instantly without reload
-    const socket = io('/', { path: '/socket.io' });
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     socket.on('templates_updated', (payload) => {
       const userData = JSON.parse(localStorage.getItem('userData') || '{}');

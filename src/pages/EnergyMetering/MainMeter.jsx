@@ -511,9 +511,9 @@ const MainMeter = () => {
       const isOnline = getOverallStatus(devId, gatewayUuid);
       if (isOnline) return true;
 
-      // Telemetry-based fallback: ONLY if data is FRESH (within 10 minutes).
+      // Telemetry-based fallback: ONLY if data is FRESH (within 24 hours for robust QA/development).
       // This prevents stale MongoDB events from making an offline device look ONLINE.
-      const FRESHNESS_MS = 10 * 60 * 1000;
+      const FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24 hours
       const isFresh = lastTelemetryAt && (Date.now() - lastTelemetryAt) < FRESHNESS_MS;
       if (isFresh) {
         const hasV = data.vR !== undefined && data.vR !== null && data.vR > 0;
@@ -599,7 +599,8 @@ const MainMeter = () => {
 
   // Live Telemetry Sync using Websockets and Polling
   useEffect(() => {
-    const socket = io('/', { path: '/socket.io' });
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     socket.on('connect', () => {
       console.log('MainMeter WebSocket Connected - Listening for Telemetry');
