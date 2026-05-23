@@ -148,7 +148,8 @@ const UgTank = () => {
   }, [getOverallStatus]);
 
   useEffect(() => {
-    const socket = io('/', { path: '/socket.io' });
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
     socket.on('connect', () => {
       console.log('UgTank WebSocket Connected - Listening for Telemetry');

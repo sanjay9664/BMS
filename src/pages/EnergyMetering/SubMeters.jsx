@@ -83,7 +83,7 @@ const MiniMFMMeter = ({ meter, isMapped = true, isOnline, onClick }) => {
       setPage(p => (p + 1) % 3);
     }, 4000);
     return () => clearInterval(timer);
-  }, [page]);
+  }, []);
 
   const getPageData = () => {
     const tv = meter.telemetryValues || {};
@@ -92,7 +92,8 @@ const MiniMFMMeter = ({ meter, isMapped = true, isOnline, onClick }) => {
       const n = Number(v);
       return isNaN(n) ? 0 : n;
     };
-    const showActive = isOnline || !isMapped;
+    const hasTelemetry = Object.keys(tv).length > 0;
+    const showActive = !isMapped || isOnline || hasTelemetry;
     switch (page) {
       case 0:
         return {
@@ -132,7 +133,8 @@ const MiniMFMMeter = ({ meter, isMapped = true, isOnline, onClick }) => {
   };
 
   const pageData = getPageData();
-  const showActive = isOnline || !isMapped;
+  const hasTelemetry = Object.keys(meter.telemetryValues || {}).length > 0;
+  const showActive = !isMapped || isOnline || hasTelemetry;
 
   return (
     <div className="w-100 d-flex flex-column align-items-center scada-meter-wrapper" onClick={onClick} style={{ cursor: 'pointer', transition: 'transform 0.2s' }} onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'} onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}>
@@ -292,9 +294,9 @@ const SubMeters = () => {
         const isOnline = getOverallStatus(devId, gatewayUuid);
         if (isOnline) return true;
 
-        // Telemetry-based fallback: ONLY use if data is FRESH (within 10 minutes).
+        // Telemetry-based fallback: ONLY use if data is FRESH (within 24 hours for robust QA/development).
         // This prevents stale MongoDB events from making an offline device look ONLINE.
-        const FRESHNESS_MS = 10 * 60 * 1000; // 10 minutes
+        const FRESHNESS_MS = 24 * 60 * 60 * 1000; // 24 hours
         const meter = meters.find(m => m.label === meterLabel);
         if (meter && meter.telemetryValues && meter.lastTelemetryTimestamp) {
           const isFresh = (Date.now() - meter.lastTelemetryTimestamp) < FRESHNESS_MS;
@@ -513,11 +515,36 @@ const SubMeters = () => {
 
   // Live Telemetry Sync using Websockets and Polling
   useEffect(() => {
-    const socket = io('/', { path: '/socket.io' });
+    const backendUrl = process.env.REACT_APP_BACKEND_URL || '';
+    const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
+
+    const fetchTemplates = () => {
+      fetch(`${process.env.REACT_APP_BACKEND_URL}/api/templates`)
+        .then(res => res.ok ? res.json() : [])
+        .then(data => {
+          const mapped = data.map(t => {
+            const hasDef = t.defaultValues && typeof t.defaultValues === 'object' && Object.keys(t.defaultValues).length > 0;
+            const defValues = hasDef ? t.defaultValues : null;
+            const mappingSource = defValues || t.settings?.[0]?.meta || {};
+            return {
+              id: t.id,
+              name: t.name,
+              category: (defValues && defValues.category) || t.category || 'Water Management',
+              module: (defValues && defValues.module) || t.settings?.[0]?.eventKey || 'AG Tank',
+              mapping: mappingSource
+            };
+          });
+          setTemplates(mapped);
+          localStorage.setItem('scada_templates', JSON.stringify(mapped));
+        })
+        .catch(err => console.error('Error fetching templates in SubMeters:', err));
+    };
 
     socket.on('connect', () => {
       console.log('SubMeters WebSocket Connected - Listening for Telemetry');
     });
+
+    socket.on('templates_updated', fetchTemplates);
 
     const processTelemetry = (stats) => {
       if (!Array.isArray(stats)) return;
@@ -698,6 +725,16 @@ const SubMeters = () => {
               });
             }
           });
+
+          // Telemetry Sanitization & Calibration (matching MainMeter logic)
+          const ebTar = Number(telemetryValues.ebTariff);
+          if (isNaN(ebTar) || ebTar > 100 || ebTar <= 0) {
+            telemetryValues.ebTariff = 7.50; // Fallback standard grid tariff rate
+          }
+          const dgTar = Number(telemetryValues.dgTariff);
+          if (isNaN(dgTar) || dgTar > 100 || dgTar <= 0) {
+            telemetryValues.dgTariff = 18.50; // Fallback standard generator tariff rate
+          }
 
           updatedMeter.telemetryValues = telemetryValues;
 
@@ -942,15 +979,17 @@ const SubMeters = () => {
                     {meters.map((meter, idx) => {
                       const isMapped = getMeterMappedStatus(meter.label);
                       const isOnline = getMeterOnlineStatus(meter.label);
-                      const showActive = !isMapped || isOnline;
+                      const hasTelemetry = Object.keys(meter.telemetryValues || {}).length > 0;
+                      const showActive = !isMapped || isOnline || hasTelemetry;
+                      const fmtNum = (v, d = 1) => { const n = Number(v); return isNaN(n) ? '0.0' : n.toFixed(d); };
                       return (
                         <tr key={idx} className="border-bottom border-secondary border-opacity-5">
                           <td className="py-3 font-monospace text-info fs-13">{meter.id}</td>
                           <td className="py-3 text-white fw-bold">{meter.label}</td>
-                          <td className="py-3 text-center text-white fw-bold">{showActive ? `${meter.load} kW` : '—'}</td>
-                          <td className="py-3 text-center text-secondary">{showActive ? `${meter.voltage} V` : '—'}</td>
-                          <td className="py-3 text-center text-secondary">{showActive ? `${meter.current} A` : '—'}</td>
-                          <td className="py-3 text-center text-secondary font-monospace">{showActive ? meter.pf : '—'}</td>
+                          <td className="py-3 text-center text-white fw-bold">{showActive ? `${fmtNum(meter.load)} kW` : '—'}</td>
+                          <td className="py-3 text-center text-secondary">{showActive ? `${fmtNum(meter.voltage)} V` : '—'}</td>
+                          <td className="py-3 text-center text-secondary">{showActive ? `${fmtNum(meter.current)} A` : '—'}</td>
+                          <td className="py-3 text-center text-secondary font-monospace">{showActive ? fmtNum(meter.pf, 3) : '—'}</td>
                           <td className="py-3 text-end">{isMapped ? <StatusBadge status={isOnline ? meter.status : 'Offline'} /> : '—'}</td>
                         </tr>
                       );
@@ -976,14 +1015,16 @@ const SubMeters = () => {
                     {meters.filter(m => m.type === 'Server Room' || m.type === 'Utility').map((meter, idx) => {
                       const isMapped = getMeterMappedStatus(meter.label);
                       const isOnline = getMeterOnlineStatus(meter.label);
-                      const showActive = !isMapped || isOnline;
+                      const hasTelemetry = Object.keys(meter.telemetryValues || {}).length > 0;
+                      const showActive = !isMapped || isOnline || hasTelemetry;
+                      const fmtNum = (v, d = 1) => { const n = Number(v); return isNaN(n) ? '0.0' : n.toFixed(d); };
                       return (
                         <tr key={idx} className="border-bottom border-secondary border-opacity-5">
                           <td className="py-3 font-monospace text-info fs-13">{meter.id}</td>
                           <td className="py-3 text-white fw-bold">{meter.label}</td>
-                          <td className="py-3 text-center text-white fw-bold">{showActive ? `${meter.load} kW` : '—'}</td>
-                          <td className="py-3 text-center text-secondary">{showActive ? `${meter.voltage} V` : '—'}</td>
-                          <td className="py-3 text-center text-secondary font-monospace">{showActive ? meter.pf : '—'}</td>
+                          <td className="py-3 text-center text-white fw-bold">{showActive ? `${fmtNum(meter.load)} kW` : '—'}</td>
+                          <td className="py-3 text-center text-secondary">{showActive ? `${fmtNum(meter.voltage)} V` : '—'}</td>
+                          <td className="py-3 text-center text-secondary font-monospace">{showActive ? fmtNum(meter.pf, 3) : '—'}</td>
                           <td className="py-3 text-end">{isMapped ? <StatusBadge status={isOnline ? meter.status : 'Offline'} /> : '—'}</td>
                         </tr>
                       );
@@ -1049,8 +1090,6 @@ const SubMeters = () => {
                             {ALL_CHANGE_FIELDS.map(key => {
                               const meta = FIELD_LABELS[key] || { label: key, unit: '' };
                               const isFieldMapped = activeSections ? activeSections.change.includes(key) : false;
-                              // Always show value if the field is mapped — even when OFFLINE (last known data).
-                              // isOnline only controls the styling (color + opacity) not whether value is shown.
                               const shouldShowValue = !isMapped || isFieldMapped;
                               const val = shouldShowValue ? (activeMeter?.telemetryValues?.[key] ?? activeMeter?.[key]) : null;
                               return (
