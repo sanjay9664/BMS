@@ -8,7 +8,6 @@ import { useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import './MFMMeter.css';
 
-const GROUP_STORAGE_KEY = 'scada_energy_meter_groups';
 const GROUP_EVENT_NAME = 'energy-meter-groups-updated';
 const GROUP_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#f97316', '#a78bfa', '#f43f5e'];
 const createGroupId = () => `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -282,12 +281,19 @@ const StatBox = ({ label, value, unit, colorClass }) => (
 
 const normalizeMeterGroups = (groups, meters) => {
   const templateIdMap = new Map();
+  const meterLookup = new Map();
   const globallyAssigned = new Set();
   const usedGroupIds = new Set();
   meters.forEach(meter => {
     const templateId = String(meter.templateId ?? meter.id);
     templateIdMap.set(templateId, templateId);
     templateIdMap.set(String(meter.id), templateId);
+    meterLookup.set(templateId, {
+      id: templateId,
+      label: meter.label,
+      type: meter.type || 'Sub Meter',
+      category: meter.type || 'Sub Meter'
+    });
   });
   return (Array.isArray(groups) ? groups : [])
     .map((group, index) => {
@@ -295,52 +301,41 @@ const normalizeMeterGroups = (groups, meters) => {
       const safeId = requestedId && !usedGroupIds.has(requestedId) ? requestedId : createGroupId();
       usedGroupIds.add(safeId);
 
+      const groupMeterIds = Array.from(
+        new Set((Array.isArray(group?.meterIds) ? group.meterIds : []).map(id => String(id)))
+      )
+        .map(id => templateIdMap.get(id))
+        .filter(Boolean)
+        .filter(id => {
+          if (globallyAssigned.has(id)) return false;
+          globallyAssigned.add(id);
+          return true;
+        });
+
       return {
         id: safeId,
         name: String(group?.name || '').trim() || `Group ${index + 1}`,
         color: group?.color || GROUP_COLORS[index % GROUP_COLORS.length],
-        meterIds: Array.from(
-          new Set((Array.isArray(group?.meterIds) ? group.meterIds : []).map(id => String(id)))
-        )
-          .map(id => templateIdMap.get(id))
-          .filter(Boolean)
-          .filter(id => {
-            if (globallyAssigned.has(id)) return false;
-            globallyAssigned.add(id);
-            return true;
-          })
+        meterIds: groupMeterIds,
+        meterDetails: groupMeterIds.map(id => meterLookup.get(id)).filter(Boolean)
       };
     })
     .filter(group => group.name);
 };
 
-const loadStoredMeterGroups = (meters) => {
-  try {
-    const raw = localStorage.getItem(GROUP_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    const groups = Array.isArray(parsed) ? parsed : parsed?.groups;
-    return normalizeMeterGroups(groups, meters);
-  } catch (error) {
-    console.error('Failed to parse stored meter groups:', error);
-    return [];
-  }
-};
-
 const fetchSavedMeterGroups = async (meters) => {
-  try {
-    const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch saved energy meter groups');
-    }
-    const data = await response.json();
-    const groups = Array.isArray(data?.groups) ? data.groups : [];
-    localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups }));
-    return normalizeMeterGroups(groups, meters);
-  } catch (error) {
-    console.error('Failed to load groups from backend, using local cache:', error);
-    return loadStoredMeterGroups(meters);
+  const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+  const tenantId = userData?.tenantId;
+  const url = tenantId 
+    ? `${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups?tenantId=${tenantId}`
+    : `${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error('Failed to fetch saved energy meter groups');
   }
+  const data = await response.json();
+  const groups = Array.isArray(data?.groups) ? data.groups : [];
+  return normalizeMeterGroups(groups, meters);
 };
 
 const SubMeters = () => {
@@ -473,10 +468,19 @@ const SubMeters = () => {
       });
 
       if (!groupsHydratedRef.current) {
-        const backendGroups = await fetchSavedMeterGroups(meters);
-        if (!active) return;
-        groupsHydratedRef.current = true;
-        setMeterGroups(backendGroups);
+        try {
+          const backendGroups = await fetchSavedMeterGroups(meters);
+          if (!active) return;
+          groupsHydratedRef.current = true;
+          setMeterGroups(backendGroups);
+        } catch (error) {
+          console.error('Failed to load groups from backend:', error);
+          if (!active) return;
+          groupsHydratedRef.current = true;
+          setMeterGroups([]);
+          setGroupSaveStatus('Could not load saved groups');
+          setTimeout(() => setGroupSaveStatus(null), 3000);
+        }
       }
     };
 
@@ -489,10 +493,14 @@ const SubMeters = () => {
   useEffect(() => {
     let active = true;
     const syncGroups = async () => {
-      const groups = await fetchSavedMeterGroups(meters);
-      if (active) {
-        groupsHydratedRef.current = true;
-        setMeterGroups(groups);
+      try {
+        const groups = await fetchSavedMeterGroups(meters);
+        if (active) {
+          groupsHydratedRef.current = true;
+          setMeterGroups(groups);
+        }
+      } catch (error) {
+        console.error('Failed to sync groups from backend:', error);
       }
     };
     window.addEventListener(GROUP_EVENT_NAME, syncGroups);
@@ -622,12 +630,14 @@ const SubMeters = () => {
       return;
     }
 
+    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    const tenantId = userData?.tenantId;
     const normalized = normalizeMeterGroups(meterGroups, meters);
     try {
       const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ groups: normalized })
+        body: JSON.stringify({ groups: normalized, tenantId })
       });
 
       if (!response.ok) {
@@ -636,7 +646,6 @@ const SubMeters = () => {
 
       const data = await response.json();
       const savedGroups = normalizeMeterGroups(data?.groups || normalized, meters);
-      localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: savedGroups }));
       setMeterGroups(savedGroups);
       window.dispatchEvent(new Event(GROUP_EVENT_NAME));
       setGroupSaveStatus('Group saved');
@@ -645,12 +654,9 @@ const SubMeters = () => {
       setShowGroupingSettings(false);
     } catch (error) {
       console.error('Failed to save groups to backend:', error);
-      localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: normalized }));
-      setMeterGroups(normalized);
-      setGroupSaveStatus('Group draft saved');
-      setSaveSuccessMessage('Group draft saved');
+      setGroupSaveStatus('Group save failed');
+      setSaveSuccessMessage('Could not save group to database');
       setShowSaveSuccessPopup(true);
-      setShowGroupingSettings(false);
     } finally {
       setTimeout(() => setGroupSaveStatus(null), 3000);
       setTimeout(() => setShowSaveSuccessPopup(false), 2600);
@@ -1394,85 +1400,91 @@ const SubMeters = () => {
                     <p className="text-secondary mb-0">Start by creating a group like HVAC, Utility Block, Commercial Wing or Lighting.</p>
                   </div>
                 ) : (
-                  meterGroups.map((group, index) => (
-                    <div key={group.id} className="grouping-panel">
-                      {(() => {
-                        const normalizedName = String(group.name || '').trim().toLowerCase();
-                        const hasDuplicateName = normalizedName && duplicateGroupNames.has(normalizedName);
-                        return (
-                      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
-                        <div className="d-flex align-items-center gap-3 flex-grow-1">
-                          <div className="grouping-strip" style={{ background: group.color }} />
-                          <div className="d-flex gap-2 flex-wrap flex-grow-1">
-                            <Form.Control
-                              value={group.name}
-                              onChange={(e) => updateMeterGroup(group.id, 'name', e.target.value)}
-                              className={`grouping-input ${hasDuplicateName ? 'is-invalid' : ''}`}
-                              placeholder={`Group ${index + 1}`}
-                            />
-                            <Form.Control
-                              type="color"
-                              value={group.color}
-                              onChange={(e) => updateMeterGroup(group.id, 'color', e.target.value)}
-                              className="grouping-color-input"
-                            />
-                            {hasDuplicateName && (
-                              <div className="w-100">
-                                <small className="text-danger">This group name is already used. Choose a different name.</small>
-                              </div>
-                            )}
+                  meterGroups.map((group, index) => {
+                    const hasNewGroup = meterGroups.some(g => g.isNew);
+                    const isGroupDisabled = hasNewGroup && !group.isNew;
+                    const normalizedName = String(group.name || '').trim().toLowerCase();
+                    const hasDuplicateName = normalizedName && duplicateGroupNames.has(normalizedName);
+                    return (
+                      <div key={group.id} className="grouping-panel" style={{ opacity: isGroupDisabled ? 0.65 : 1 }}>
+                        <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                          <div className="d-flex align-items-center gap-3 flex-grow-1">
+                            <div className="grouping-strip" style={{ background: isGroupDisabled ? '#475569' : group.color }} />
+                            <div className="d-flex gap-2 flex-wrap flex-grow-1">
+                              <Form.Control
+                                value={group.name}
+                                onChange={(e) => updateMeterGroup(group.id, 'name', e.target.value)}
+                                className={`grouping-input ${hasDuplicateName ? 'is-invalid' : ''}`}
+                                placeholder={`Group ${index + 1}`}
+                                disabled={isGroupDisabled}
+                              />
+                              <Form.Control
+                                type="color"
+                                value={group.color}
+                                onChange={(e) => updateMeterGroup(group.id, 'color', e.target.value)}
+                                className="grouping-color-input"
+                                disabled={isGroupDisabled}
+                              />
+                              {hasDuplicateName && (
+                                <div className="w-100">
+                                  <small className="text-danger">This group name is already used. Choose a different name.</small>
+                                </div>
+                              )}
+                            </div>
                           </div>
+                          <button
+                            onClick={() => removeMeterGroup(group.id)}
+                            disabled={isGroupDisabled}
+                            className="btn btn-outline-danger rounded-pill px-3 py-2 d-flex align-items-center gap-2"
+                          >
+                            <Trash2 size={14} /> Remove
+                          </button>
                         </div>
-                        <button onClick={() => removeMeterGroup(group.id)} className="btn btn-outline-danger rounded-pill px-3 py-2 d-flex align-items-center gap-2">
-                          <Trash2 size={14} /> Remove
-                        </button>
-                      </div>
-                        );
-                      })()}
 
-                      <div className="d-flex flex-wrap gap-2">
-                        {getGroupMeterOptions(group.id).map(meter => {
-                          const meterKey = String(meter.templateId ?? meter.id);
-                          const checked = group.meterIds.includes(meterKey);
-                          const assignedElsewhere = getAssignedGroupForMeter(meterKey, group.id);
-                          const disabled = !checked && !!assignedElsewhere;
-                          return (
-                            <label
-                              key={`${group.id}-${meter.id}`}
-                              className={`grouping-chip ${checked ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
-                              style={{
-                                borderColor: checked ? `${group.color}55` : disabled ? 'rgba(239,68,68,0.28)' : 'rgba(148,163,184,0.12)',
-                                background: checked ? `${group.color}15` : disabled ? 'rgba(51, 65, 85, 0.55)' : 'rgba(15,23,42,0.72)',
-                                opacity: disabled ? 0.5 : 1,
-                                pointerEvents: disabled ? 'none' : 'auto'
-                              }}
-                            >
-                              <span
-                                className={`grouping-checkmark ${checked ? 'visible' : ''}`}
+                        <div className="d-flex flex-wrap gap-2">
+                          {getGroupMeterOptions(group.id).map(meter => {
+                            const meterKey = String(meter.templateId ?? meter.id);
+                            const checked = group.meterIds.includes(meterKey);
+                            const assignedElsewhere = getAssignedGroupForMeter(meterKey, group.id);
+                            const disabled = (!checked && !!assignedElsewhere) || isGroupDisabled;
+                            return (
+                              <label
+                                key={`${group.id}-${meter.id}`}
+                                className={`grouping-chip ${checked ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
                                 style={{
-                                  background: checked ? '#d946ef' : 'rgba(148,163,184,0.18)',
-                                  borderColor: checked ? '#e879f9' : 'rgba(255,255,255,0.16)',
-                                  color: checked ? '#ffffff' : 'transparent'
+                                  borderColor: checked ? (isGroupDisabled ? 'rgba(148,163,184,0.12)' : `${group.color}55`) : disabled ? 'rgba(239,68,68,0.28)' : 'rgba(148,163,184,0.12)',
+                                  background: checked ? (isGroupDisabled ? 'rgba(148,163,184,0.08)' : `${group.color}15`) : disabled ? 'rgba(51, 65, 85, 0.55)' : 'rgba(15,23,42,0.72)',
+                                  opacity: disabled ? 0.5 : 1,
+                                  pointerEvents: disabled ? 'none' : 'auto'
                                 }}
                               >
-                                <Check size={12} strokeWidth={3} />
-                              </span>
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                disabled={disabled}
-                                onChange={() => toggleMeterAssignment(group.id, meterKey)}
-                              />
-                              <span className="text-white fw-bold fs-13">{meter.label}</span>
-                              <small className={disabled ? 'text-danger' : 'text-secondary'}>
-                                {disabled ? `Locked in ${assignedElsewhere.name}` : meter.type}
-                              </small>
-                            </label>
-                          );
-                        })}
+                                <span
+                                  className={`grouping-checkmark ${checked ? 'visible' : ''}`}
+                                  style={{
+                                    background: checked ? (isGroupDisabled ? '#64748b' : '#d946ef') : 'rgba(148,163,184,0.18)',
+                                    borderColor: checked ? (isGroupDisabled ? '#94a3b8' : '#e879f9') : 'rgba(255,255,255,0.16)',
+                                    color: checked ? '#ffffff' : 'transparent'
+                                  }}
+                                >
+                                  <Check size={12} strokeWidth={3} />
+                                </span>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  disabled={disabled}
+                                  onChange={() => toggleMeterAssignment(group.id, meterKey)}
+                                />
+                                <span className="text-white fw-bold fs-13">{meter.label}</span>
+                                <small className={disabled ? 'text-danger' : 'text-secondary'}>
+                                  {disabled ? (isGroupDisabled ? 'Locked (Editing new group)' : `Locked in ${assignedElsewhere.name}`) : meter.type}
+                                </small>
+                              </label>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </Col>
