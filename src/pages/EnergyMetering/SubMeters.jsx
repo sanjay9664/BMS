@@ -1,11 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Row, Col, Card, Badge, Table, Tab, Tabs, Modal, Button } from 'react-bootstrap';
-import { Zap, Activity, Cpu, ShieldCheck, RefreshCcw } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Row, Col, Card, Badge, Table, Tab, Tabs, Modal, Button, Form } from 'react-bootstrap';
+import { Zap, Activity, Cpu, ShieldCheck, RefreshCcw, Settings2, Plus, Trash2, FolderTree, CheckCircle2, Check } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
 import PdfButton from '../../components/PdfButton';
 import { useDeviceStatus } from '../../services/DeviceStatusContext';
+import { useLocation } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import './MFMMeter.css';
+
+const GROUP_STORAGE_KEY = 'scada_energy_meter_groups';
+const GROUP_EVENT_NAME = 'energy-meter-groups-updated';
+const GROUP_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#f97316', '#a78bfa', '#f43f5e'];
+const createGroupId = () => `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
 const FIELD_LABELS = {
   ebKvah: { label: 'EB KVAH', unit: 'kVAh' },
@@ -274,13 +280,87 @@ const StatBox = ({ label, value, unit, colorClass }) => (
   </div>
 );
 
+const normalizeMeterGroups = (groups, meters) => {
+  const templateIdMap = new Map();
+  const globallyAssigned = new Set();
+  const usedGroupIds = new Set();
+  meters.forEach(meter => {
+    const templateId = String(meter.templateId ?? meter.id);
+    templateIdMap.set(templateId, templateId);
+    templateIdMap.set(String(meter.id), templateId);
+  });
+  return (Array.isArray(groups) ? groups : [])
+    .map((group, index) => {
+      const requestedId = String(group?.id || '').trim();
+      const safeId = requestedId && !usedGroupIds.has(requestedId) ? requestedId : createGroupId();
+      usedGroupIds.add(safeId);
+
+      return {
+        id: safeId,
+        name: String(group?.name || '').trim() || `Group ${index + 1}`,
+        color: group?.color || GROUP_COLORS[index % GROUP_COLORS.length],
+        meterIds: Array.from(
+          new Set((Array.isArray(group?.meterIds) ? group.meterIds : []).map(id => String(id)))
+        )
+          .map(id => templateIdMap.get(id))
+          .filter(Boolean)
+          .filter(id => {
+            if (globallyAssigned.has(id)) return false;
+            globallyAssigned.add(id);
+            return true;
+          })
+      };
+    })
+    .filter(group => group.name);
+};
+
+const loadStoredMeterGroups = (meters) => {
+  try {
+    const raw = localStorage.getItem(GROUP_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const groups = Array.isArray(parsed) ? parsed : parsed?.groups;
+    return normalizeMeterGroups(groups, meters);
+  } catch (error) {
+    console.error('Failed to parse stored meter groups:', error);
+    return [];
+  }
+};
+
+const fetchSavedMeterGroups = async (meters) => {
+  try {
+    const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch saved energy meter groups');
+    }
+    const data = await response.json();
+    const groups = Array.isArray(data?.groups) ? data.groups : [];
+    localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups }));
+    return normalizeMeterGroups(groups, meters);
+  } catch (error) {
+    console.error('Failed to load groups from backend, using local cache:', error);
+    return loadStoredMeterGroups(meters);
+  }
+};
+
 const SubMeters = () => {
+  const location = useLocation();
   const { getOverallStatus, refreshStatuses } = useDeviceStatus();
   const [selectedMeter, setSelectedMeter] = useState(null);
   const [meters, setMeters] = useState([]);
   const [templates, setTemplates] = useState([]);
+  const [showGroupingSettings, setShowGroupingSettings] = useState(false);
+  const [meterGroups, setMeterGroups] = useState([]);
+  const [groupSaveStatus, setGroupSaveStatus] = useState(null);
+  const [showSaveSuccessPopup, setShowSaveSuccessPopup] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('Group created successfully');
+  const groupsHydratedRef = useRef(false);
+  const TELEMETRY_FRESHNESS_MS = 24 * 60 * 60 * 1000;
 
   const getMeterOnlineStatus = (meterLabel) => {
+    const meter = meters.find(
+      m => String(m.label).trim().toUpperCase() === String(meterLabel).trim().toUpperCase()
+    );
     const template = getTemplateForMeter(meterLabel);
     if (template?.mapping) {
       let devId = template.mapping.deviceId;
@@ -294,15 +374,27 @@ const SubMeters = () => {
         if (isOnline) return true;
       }
     }
-    
-    // Case-insensitive telemetry-based fallback
-    const meter = meters.find(m => String(m.label).trim().toUpperCase() === String(meterLabel).trim().toUpperCase());
+
+    // Telemetry fallback is allowed only for fresh readings, otherwise stale data
+    // would incorrectly keep an offline sub-meter marked as online.
     if (meter) {
+      const lastTelemetryTs = Number(meter.lastTelemetryTimestamp);
+      const isFreshTelemetry =
+        Number.isFinite(lastTelemetryTs) &&
+        lastTelemetryTs > 0 &&
+        Date.now() - lastTelemetryTs < TELEMETRY_FRESHNESS_MS;
       const hasV = meter.voltage !== undefined && meter.voltage !== null && Number(meter.voltage) > 0;
       const hasI = meter.current !== undefined && meter.current !== null && Number(meter.current) > 0;
       const hasLoad = meter.load !== undefined && meter.load !== null && Number(meter.load) > 0;
       const hasTelemetry = meter.telemetryValues && Object.keys(meter.telemetryValues).length > 0;
-      if (hasV || hasI || hasLoad || hasTelemetry) {
+      const hasCommStatus =
+        meter.telemetryValues?.commStatus !== undefined &&
+        meter.telemetryValues?.commStatus !== null &&
+        meter.telemetryValues?.commStatus !== '' &&
+        meter.telemetryValues?.commStatus !== 0 &&
+        meter.telemetryValues?.commStatus !== '0';
+
+      if (isFreshTelemetry && (hasV || hasI || hasLoad || hasTelemetry || hasCommStatus)) {
         return true;
       }
     }
@@ -334,6 +426,7 @@ const SubMeters = () => {
           const existing = prev.find(m => m.id === meterId || String(m.label).toUpperCase() === String(label).toUpperCase());
           return {
             id: meterId,
+            templateId: String(t.id),
             label: label,
             type: t.category || 'Sub Meter',
             load: existing?.load ?? 0.0,
@@ -359,6 +452,62 @@ const SubMeters = () => {
     }
   }, [templates]);
 
+  useEffect(() => {
+    let active = true;
+
+    const hydrateGroups = async () => {
+      if (meters.length === 0) {
+        if (active) setMeterGroups([]);
+        return;
+      }
+
+      setMeterGroups(prev => {
+        if (!groupsHydratedRef.current) {
+          return prev;
+        }
+
+        const normalizedCurrent = normalizeMeterGroups(prev, meters);
+        const prevSerialized = JSON.stringify(prev);
+        const normalizedSerialized = JSON.stringify(normalizedCurrent);
+        return prevSerialized === normalizedSerialized ? prev : normalizedCurrent;
+      });
+
+      if (!groupsHydratedRef.current) {
+        const backendGroups = await fetchSavedMeterGroups(meters);
+        if (!active) return;
+        groupsHydratedRef.current = true;
+        setMeterGroups(backendGroups);
+      }
+    };
+
+    hydrateGroups();
+    return () => {
+      active = false;
+    };
+  }, [meters]);
+
+  useEffect(() => {
+    let active = true;
+    const syncGroups = async () => {
+      const groups = await fetchSavedMeterGroups(meters);
+      if (active) {
+        groupsHydratedRef.current = true;
+        setMeterGroups(groups);
+      }
+    };
+    window.addEventListener(GROUP_EVENT_NAME, syncGroups);
+    return () => {
+      active = false;
+      window.removeEventListener(GROUP_EVENT_NAME, syncGroups);
+    };
+  }, [meters]);
+
+  useEffect(() => {
+    if (location.state?.openGroupSettings) {
+      setShowGroupingSettings(true);
+    }
+  }, [location.state]);
+
   // Trigger status refresh when templates state is updated
   useEffect(() => {
     if (templates.length > 0 && refreshStatuses) {
@@ -371,6 +520,142 @@ const SubMeters = () => {
     if (!selectedMeter) return null;
     return meters.find(m => m.id === selectedMeter.id) || selectedMeter;
   }, [meters, selectedMeter]);
+
+  const assignedMeterIds = useMemo(
+    () => new Set(meterGroups.flatMap(group => group.meterIds.map(id => String(id)))),
+    [meterGroups]
+  );
+
+  const ungroupedMeters = useMemo(
+    () => meters.filter(meter => !assignedMeterIds.has(String(meter.templateId ?? meter.id))),
+    [meters, assignedMeterIds]
+  );
+
+  const getAssignedGroupForMeter = (meterId, currentGroupId = null) => {
+    const targetId = String(meterId);
+    return meterGroups.find(
+      group => group.id !== currentGroupId && group.meterIds.includes(targetId)
+    );
+  };
+
+  const getGroupMeterOptions = (groupId) =>
+    [...meters].sort((left, right) => {
+      const leftKey = String(left.templateId ?? left.id);
+      const rightKey = String(right.templateId ?? right.id);
+      const leftChecked = meterGroups.find(group => group.id === groupId)?.meterIds.includes(leftKey);
+      const rightChecked = meterGroups.find(group => group.id === groupId)?.meterIds.includes(rightKey);
+      const leftAssignedElsewhere = !!getAssignedGroupForMeter(leftKey, groupId);
+      const rightAssignedElsewhere = !!getAssignedGroupForMeter(rightKey, groupId);
+
+      if (leftChecked !== rightChecked) return leftChecked ? -1 : 1;
+      if (leftAssignedElsewhere !== rightAssignedElsewhere) return leftAssignedElsewhere ? 1 : -1;
+      return String(left.label || '').localeCompare(String(right.label || ''));
+    });
+
+  const duplicateGroupNames = useMemo(() => {
+    const counts = new Map();
+    meterGroups.forEach(group => {
+      const normalizedName = String(group.name || '').trim().toLowerCase();
+      if (!normalizedName) return;
+      counts.set(normalizedName, (counts.get(normalizedName) || 0) + 1);
+    });
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([name]) => name)
+    );
+  }, [meterGroups]);
+
+  const addMeterGroup = () => {
+    setMeterGroups(prev => [
+      ...prev,
+      {
+        id: createGroupId(),
+        name: `Group ${prev.length + 1}`,
+        color: GROUP_COLORS[prev.length % GROUP_COLORS.length],
+        meterIds: []
+      }
+    ]);
+  };
+
+  const removeMeterGroup = (groupId) => {
+    setMeterGroups(prev => prev.filter(group => group.id !== groupId));
+  };
+
+  const updateMeterGroup = (groupId, field, value) => {
+    setMeterGroups(prev => prev.map(group => (group.id === groupId ? { ...group, [field]: value } : group)));
+  };
+
+  const toggleMeterAssignment = (groupId, meterId) => {
+    const targetId = String(meterId);
+    setMeterGroups(prev => {
+      const assignedElsewhere = prev.find(
+        group => group.id !== groupId && group.meterIds.includes(targetId)
+      );
+
+      if (assignedElsewhere) {
+        return prev;
+      }
+
+      return prev.map(group => {
+        const isSelected = group.meterIds.includes(targetId);
+        if (group.id === groupId) {
+          return {
+            ...group,
+            meterIds: isSelected
+              ? group.meterIds.filter(id => id !== targetId)
+              : [...group.meterIds, targetId]
+          };
+        }
+        return group;
+      });
+    });
+  };
+
+  const saveMeterGroups = async () => {
+    if (duplicateGroupNames.size > 0) {
+      setGroupSaveStatus('Use a different group name');
+      setSaveSuccessMessage('Group name already exists');
+      setShowSaveSuccessPopup(true);
+      setTimeout(() => setGroupSaveStatus(null), 3000);
+      setTimeout(() => setShowSaveSuccessPopup(false), 2600);
+      return;
+    }
+
+    const normalized = normalizeMeterGroups(meterGroups, meters);
+    try {
+      const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ groups: normalized })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save energy meter groups');
+      }
+
+      const data = await response.json();
+      const savedGroups = normalizeMeterGroups(data?.groups || normalized, meters);
+      localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: savedGroups }));
+      setMeterGroups(savedGroups);
+      window.dispatchEvent(new Event(GROUP_EVENT_NAME));
+      setGroupSaveStatus('Group saved');
+      setSaveSuccessMessage('Group saved successfully');
+      setShowSaveSuccessPopup(true);
+      setShowGroupingSettings(false);
+    } catch (error) {
+      console.error('Failed to save groups to backend:', error);
+      localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: normalized }));
+      setMeterGroups(normalized);
+      setGroupSaveStatus('Group draft saved');
+      setSaveSuccessMessage('Group draft saved');
+      setShowSaveSuccessPopup(true);
+      setShowGroupingSettings(false);
+    } finally {
+      setTimeout(() => setGroupSaveStatus(null), 3000);
+      setTimeout(() => setShowSaveSuccessPopup(false), 2600);
+    }
+  };
 
   // Derive activeSections mapped/saved in the template settings
   const activeSections = useMemo(() => {
@@ -918,7 +1203,17 @@ const SubMeters = () => {
           </h2>
           <p className="text-secondary fs-7">Granular power metrics, current loading, and status indicators across individual feeds.</p>
         </div>
-        <PdfButton />
+        <div className="d-flex align-items-center gap-2 flex-wrap justify-content-end">
+          {groupSaveStatus && <Badge bg="success" className="px-3 py-2">{groupSaveStatus}</Badge>}
+          <button
+            onClick={() => setShowGroupingSettings(true)}
+            className="btn btn-outline-info rounded-pill px-3 py-2 d-flex align-items-center gap-2"
+            style={{ borderColor: 'rgba(56,189,248,0.35)', color: '#7dd3fc', background: 'rgba(56,189,248,0.08)' }}
+          >
+            <Settings2 size={16} /> MFM Group Settings
+          </button>
+          <PdfButton />
+        </div>
       </div>
 
       {/* METERS CARD GRID */}
@@ -1025,6 +1320,202 @@ const SubMeters = () => {
           </Tabs>
         </Card.Body>
       </Card>
+
+      <Modal
+        show={showGroupingSettings}
+        onHide={() => setShowGroupingSettings(false)}
+        size="xl"
+        centered
+        dialogClassName="scada-glass-modal"
+        contentClassName="border-0 text-white"
+      >
+        <Modal.Header closeButton closeVariant="white" className="border-bottom border-secondary border-opacity-25 py-3" style={{ background: 'rgba(15, 23, 42, 0.55)' }}>
+          <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+            <FolderTree className="text-info" size={18} /> Sub Meter Group Settings
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-4" style={{ background: 'rgba(15, 23, 42, 0.94)' }}>
+          <div className="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+            <div>
+              <h6 className="text-info fw-bold mb-2">Group your MFM meters from here</h6>
+              <p className="text-secondary mb-0" style={{ fontSize: '0.88rem' }}>
+                User yahin se sub meters ko custom groups me daal sakta hai. Save karte hi Energy Metering Overview me grouped values dikh jayengi.
+              </p>
+            </div>
+            <div className="d-flex gap-2 flex-wrap">
+              <button onClick={addMeterGroup} className="btn btn-outline-info rounded-pill px-3 py-2 d-flex align-items-center gap-2">
+                <Plus size={15} /> Add Group
+              </button>
+              <button onClick={saveMeterGroups} disabled={duplicateGroupNames.size > 0} className="btn btn-info rounded-pill px-4 py-2 fw-bold d-flex align-items-center gap-2">
+                <Settings2 size={15} /> Save Groups
+              </button>
+            </div>
+          </div>
+
+          <Row className="g-4">
+            <Col lg={4}>
+              <div className="grouping-panel h-100">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <span className="grouping-panel-title">Available MFM Meters</span>
+                  <Badge bg="dark" className="border border-info border-opacity-25 text-info">{meters.length}</Badge>
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {meters.map(meter => {
+                    const assignedGroup = meterGroups.find(group => group.meterIds.includes(String(meter.templateId ?? meter.id)));
+                    return (
+                      <div key={meter.id} className="group-meter-pill">
+                        <div>
+                          <div className="text-white fw-bold fs-13">{meter.label}</div>
+                          <small className="text-secondary">{meter.type}</small>
+                        </div>
+                        <Badge
+                          bg="none"
+                          className="border"
+                          style={{
+                            color: assignedGroup?.color || '#94a3b8',
+                            borderColor: `${assignedGroup?.color || '#94a3b8'}55`,
+                            background: assignedGroup ? `${assignedGroup.color}15` : 'rgba(148,163,184,0.08)'
+                          }}
+                        >
+                          {assignedGroup?.name || 'Ungrouped'}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Col>
+
+            <Col lg={8}>
+              <div className="d-flex flex-column gap-3">
+                {meterGroups.length === 0 ? (
+                  <div className="grouping-panel text-center py-5">
+                    <h6 className="text-white mb-2">No groups created yet</h6>
+                    <p className="text-secondary mb-0">Start by creating a group like HVAC, Utility Block, Commercial Wing or Lighting.</p>
+                  </div>
+                ) : (
+                  meterGroups.map((group, index) => (
+                    <div key={group.id} className="grouping-panel">
+                      {(() => {
+                        const normalizedName = String(group.name || '').trim().toLowerCase();
+                        const hasDuplicateName = normalizedName && duplicateGroupNames.has(normalizedName);
+                        return (
+                      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                        <div className="d-flex align-items-center gap-3 flex-grow-1">
+                          <div className="grouping-strip" style={{ background: group.color }} />
+                          <div className="d-flex gap-2 flex-wrap flex-grow-1">
+                            <Form.Control
+                              value={group.name}
+                              onChange={(e) => updateMeterGroup(group.id, 'name', e.target.value)}
+                              className={`grouping-input ${hasDuplicateName ? 'is-invalid' : ''}`}
+                              placeholder={`Group ${index + 1}`}
+                            />
+                            <Form.Control
+                              type="color"
+                              value={group.color}
+                              onChange={(e) => updateMeterGroup(group.id, 'color', e.target.value)}
+                              className="grouping-color-input"
+                            />
+                            {hasDuplicateName && (
+                              <div className="w-100">
+                                <small className="text-danger">This group name is already used. Choose a different name.</small>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button onClick={() => removeMeterGroup(group.id)} className="btn btn-outline-danger rounded-pill px-3 py-2 d-flex align-items-center gap-2">
+                          <Trash2 size={14} /> Remove
+                        </button>
+                      </div>
+                        );
+                      })()}
+
+                      <div className="d-flex flex-wrap gap-2">
+                        {getGroupMeterOptions(group.id).map(meter => {
+                          const meterKey = String(meter.templateId ?? meter.id);
+                          const checked = group.meterIds.includes(meterKey);
+                          const assignedElsewhere = getAssignedGroupForMeter(meterKey, group.id);
+                          const disabled = !checked && !!assignedElsewhere;
+                          return (
+                            <label
+                              key={`${group.id}-${meter.id}`}
+                              className={`grouping-chip ${checked ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
+                              style={{
+                                borderColor: checked ? `${group.color}55` : disabled ? 'rgba(239,68,68,0.28)' : 'rgba(148,163,184,0.12)',
+                                background: checked ? `${group.color}15` : disabled ? 'rgba(51, 65, 85, 0.55)' : 'rgba(15,23,42,0.72)',
+                                opacity: disabled ? 0.5 : 1,
+                                pointerEvents: disabled ? 'none' : 'auto'
+                              }}
+                            >
+                              <span
+                                className={`grouping-checkmark ${checked ? 'visible' : ''}`}
+                                style={{
+                                  background: checked ? '#d946ef' : 'rgba(148,163,184,0.18)',
+                                  borderColor: checked ? '#e879f9' : 'rgba(255,255,255,0.16)',
+                                  color: checked ? '#ffffff' : 'transparent'
+                                }}
+                              >
+                                <Check size={12} strokeWidth={3} />
+                              </span>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={() => toggleMeterAssignment(group.id, meterKey)}
+                              />
+                              <span className="text-white fw-bold fs-13">{meter.label}</span>
+                              <small className={disabled ? 'text-danger' : 'text-secondary'}>
+                                {disabled ? `Locked in ${assignedElsewhere.name}` : meter.type}
+                              </small>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Col>
+          </Row>
+
+          <div className="grouping-panel mt-4">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+              <span className="grouping-panel-title">Ungrouped meters still shown individually on overview</span>
+              <Badge bg="dark" className="border border-warning border-opacity-25 text-warning">{ungroupedMeters.length}</Badge>
+            </div>
+            <div className="d-flex flex-wrap gap-2">
+              {ungroupedMeters.length === 0 ? (
+                <span className="text-secondary">All sub meters are assigned to a custom group.</span>
+              ) : (
+                ungroupedMeters.map(meter => (
+                  <div key={meter.id} className="group-ungrouped-chip">
+                    <span className="text-white fw-bold fs-13">{meter.label}</span>
+                    <small className="text-secondary">{meter.type}</small>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </Modal.Body>
+      </Modal>
+
+      <Modal
+        show={showSaveSuccessPopup}
+        onHide={() => setShowSaveSuccessPopup(false)}
+        centered
+        dialogClassName="success-modal"
+        contentClassName="border-0 text-white"
+      >
+        <Modal.Body className="p-4 text-center" style={{ background: 'linear-gradient(180deg, rgba(8,47,73,0.96), rgba(15,23,42,0.98))' }}>
+          <div className="success-pop-wrap">
+            <div className="success-pop-icon">
+              <CheckCircle2 size={38} />
+            </div>
+            <h4 className="text-white fw-black mb-2">{saveSuccessMessage}</h4>
+            <p className="text-info mb-0">Overview updated.</p>
+          </div>
+        </Modal.Body>
+      </Modal>
 
       {/* DETAILED DATA MODAL */}
       <Modal show={selectedMeter !== null && activeMeter !== null} onHide={() => setSelectedMeter(null)} size="lg" centered dialogClassName="scada-glass-modal" contentClassName="border-0 text-white">
@@ -1249,6 +1740,124 @@ const SubMeters = () => {
           0% { transform: scale(0.8); opacity: 0.5; }
           50% { transform: scale(1.2); opacity: 1; }
           100% { transform: scale(0.8); opacity: 0.5; }
+        }
+        .grouping-panel {
+          background: linear-gradient(180deg, rgba(15,23,42,0.78), rgba(15,23,42,0.62));
+          border: 1px solid rgba(148,163,184,0.12);
+          border-radius: 18px;
+          padding: 18px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .grouping-panel-title {
+          color: #cbd5e1;
+          font-size: 0.72rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        .group-meter-pill,
+        .group-ungrouped-chip {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          border-radius: 14px;
+          padding: 12px 14px;
+          background: rgba(15,23,42,0.72);
+          border: 1px solid rgba(148,163,184,0.1);
+        }
+        .group-ungrouped-chip {
+          flex-direction: column;
+          align-items: flex-start;
+          min-width: 220px;
+        }
+        .grouping-strip {
+          width: 12px;
+          height: 48px;
+          border-radius: 999px;
+          box-shadow: 0 0 18px rgba(255,255,255,0.12);
+        }
+        .grouping-input {
+          min-width: 240px;
+          background: rgba(15,23,42,0.92) !important;
+          color: #fff !important;
+          border: 1px solid rgba(148,163,184,0.18) !important;
+        }
+        .grouping-color-input {
+          width: 54px;
+          min-height: 42px;
+          background: transparent !important;
+          border: 1px solid rgba(148,163,184,0.18) !important;
+          border-radius: 12px;
+          padding: 4px;
+        }
+        .grouping-chip {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 220px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          border: 1px solid rgba(148,163,184,0.12);
+          cursor: pointer;
+          transition: transform 0.18s ease, border-color 0.18s ease;
+        }
+        .grouping-chip:hover {
+          transform: translateY(-2px);
+        }
+        .grouping-checkmark {
+          width: 16px;
+          height: 16px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+          border: 1px solid rgba(255,255,255,0.16);
+          margin-bottom: 10px;
+          transition: all 0.18s ease;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.05);
+        }
+        .grouping-checkmark.visible {
+          box-shadow: 0 0 14px rgba(217,70,239,0.18);
+          transform: scale(1.03);
+        }
+        .grouping-chip input {
+          display: none;
+        }
+        .grouping-chip.active {
+          box-shadow: 0 12px 22px rgba(2,6,23,0.22);
+        }
+        .grouping-chip.disabled {
+          cursor: not-allowed;
+        }
+        .grouping-chip.disabled:hover {
+          transform: none;
+        }
+        .success-modal .modal-content {
+          background: transparent !important;
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border-radius: 24px;
+          overflow: hidden;
+          box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+        }
+        .success-pop-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 14px;
+          padding: 12px 4px;
+        }
+        .success-pop-icon {
+          width: 78px;
+          height: 78px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          color: #86efac;
+          background: radial-gradient(circle, rgba(34,197,94,0.28), rgba(34,197,94,0.08));
+          box-shadow: 0 0 30px rgba(34,197,94,0.22);
         }
       `}} />
     </div>

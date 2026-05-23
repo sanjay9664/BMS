@@ -1,791 +1,761 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Row, Col, Card, ProgressBar, Badge, Table, Form } from 'react-bootstrap';
-import { Zap, Activity, BatteryCharging, Award, TrendingUp, Cpu } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Row, Col, Card, Badge, Table, Modal, Form, Button } from 'react-bootstrap';
+import {
+  Zap,
+  Cpu,
+  Activity,
+  Gauge,
+  Layers3,
+  FolderTree,
+  Network,
+  Sparkles,
+  Settings2,
+  Plus,
+  Trash2,
+  CheckCircle2
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import StatusBadge from '../../components/StatusBadge';
-import PdfButton from '../../components/PdfButton';
-import { useDeviceStatus } from '../../services/DeviceStatusContext';
 import { io } from 'socket.io-client';
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
+import PdfButton from '../../components/PdfButton';
+import StatusBadge from '../../components/StatusBadge';
+import { useDeviceStatus } from '../../services/DeviceStatusContext';
 
-// System telemetry refresh flag
+const GROUP_STORAGE_KEY = 'scada_energy_meter_groups';
+const GROUP_EVENT_NAME = 'energy-meter-groups-updated';
+const GROUP_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#f97316', '#a78bfa', '#f43f5e'];
+const createGroupId = () => `group-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const CATEGORY_COLORS = {
+  Commercial: '#38bdf8',
+  'Data Center': '#fb923c',
+  'Water Management': '#22c55e',
+  HVAC: '#f87171',
+  Lighting: '#a78bfa',
+  'Sub Meter': '#94a3b8',
+  Ungrouped: '#facc15'
+};
+
+const loadStoredGroups = () => {
+  try {
+    const raw = localStorage.getItem(GROUP_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+    if (Array.isArray(parsed?.groups)) return parsed.groups;
+  } catch (error) {
+    console.error('Failed to load energy meter groups:', error);
+  }
+  return [];
+};
+
+const normalizeOverviewGroups = (groups, subMeterRows) => {
+  const validIds = new Set(subMeterRows.map(row => String(row.templateId)));
+  const globallyAssigned = new Set();
+  const usedGroupIds = new Set();
+  return (Array.isArray(groups) ? groups : [])
+    .map((group, index) => {
+      const requestedId = String(group?.id || '').trim();
+      const safeId = requestedId && !usedGroupIds.has(requestedId) ? requestedId : createGroupId();
+      usedGroupIds.add(safeId);
+
+      return {
+        id: safeId,
+        name: String(group?.name || '').trim() || `Group ${index + 1}`,
+        color: group?.color || GROUP_COLORS[index % GROUP_COLORS.length],
+        meterIds: Array.from(
+          new Set((Array.isArray(group?.meterIds) ? group.meterIds : []).map(id => String(id)))
+        )
+          .filter(id => validIds.has(id))
+          .filter(id => {
+            if (globallyAssigned.has(id)) return false;
+            globallyAssigned.add(id);
+            return true;
+          })
+      };
+    })
+    .filter(group => group.name);
+};
+
+const fetchPersistedGroups = async () => {
+  try {
+    const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch persisted energy meter groups');
+    }
+    const data = await response.json();
+    const groups = Array.isArray(data?.groups) ? data.groups : [];
+    localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups }));
+    return groups;
+  } catch (error) {
+    console.error('Failed to fetch backend groups, using local cache:', error);
+    return loadStoredGroups();
+  }
+};
+
+const resolveSubMeterCategory = (template) => {
+  const targetName = String(template?.mapping?.energyMeteringTarget || template?.name || '').toUpperCase();
+  const mappedCategory = template?.mapping?.subMeterCategory || template?.category;
+  if (mappedCategory) return mappedCategory;
+  if (targetName.includes('COMMERCIAL') || targetName.includes('WING') || targetName.includes('OFFICE')) return 'Commercial';
+  if (targetName.includes('SERVER') || targetName.includes('UPS') || targetName.includes('DATA CENTER') || targetName.includes('IT')) return 'Data Center';
+  if (targetName.includes('WATER') || targetName.includes('PLANT') || targetName.includes('UTILITY') || targetName.includes('MOTOR') || targetName.includes('PUMP')) return 'Water Management';
+  if (targetName.includes('HVAC') || targetName.includes('CHILLER') || targetName.includes('AC')) return 'HVAC';
+  if (targetName.includes('LIGHT') || targetName.includes('STREET') || targetName.includes('PARKING')) return 'Lighting';
+  return 'Sub Meter';
+};
+
+const parseNumber = (value, fallback = 0) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : fallback;
+};
+
+const formatMetric = (value, digits = 1) => parseNumber(value, 0).toFixed(digits);
+
 const EnergyMeteringOverview = () => {
   const navigate = useNavigate();
   const { getOverallStatus } = useDeviceStatus();
 
-  // Simulated base dynamic metrics as fallback
-  const [metrics, setMetrics] = useState({
-    activePower: 485.4,
-    powerFactor: 0.97,
-    todayConsumption: 3420,
-    peakDemand: 620,
-    voltageBalance: 1.1,
-    frequency: 50.02,
-    cumulativekWh: 14285.4
-  });
-
-  const [miniLcdIndex, setMiniLcdIndex] = useState(0);
-  const [autoCycle, setAutoCycle] = useState(true);
-  const [calBlink, setCalBlink] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [telemetryStats, setTelemetryStats] = useState([]);
-  const [groupByCategory, setGroupByCategory] = useState(true);
+  const [meterGroups, setMeterGroups] = useState([]);
+  const [showGroupManager, setShowGroupManager] = useState(false);
+  const [groupDrafts, setGroupDrafts] = useState([]);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('Your setting is successfully saved');
+  const [groupActionStatus, setGroupActionStatus] = useState(null);
 
-  // Base simulation loop
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics(prev => {
-        const activePower = +(prev.activePower + (Math.random() * 6 - 3)).toFixed(1);
-        const powerFactor = +(Math.min(1.0, Math.max(0.92, prev.powerFactor + (Math.random() * 0.02 - 0.01)))).toFixed(2);
-        const frequency = +(50.0 + (Math.random() * 0.06 - 0.03)).toFixed(2);
-        const cumulativekWh = +(prev.cumulativekWh + 0.05).toFixed(2);
-        return {
-          ...prev,
-          activePower,
-          powerFactor,
-          frequency,
-          cumulativekWh,
-          todayConsumption: +(prev.todayConsumption + 0.1).toFixed(1)
-        };
-      });
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, []);
-
-  // Load templates from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem('scada_templates');
-    if (saved) {
-      try {
-        setTemplates(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
-      }
+  const refreshTemplates = () => {
+    try {
+      const raw = localStorage.getItem('scada_templates');
+      setTemplates(raw ? JSON.parse(raw) : []);
+    } catch (error) {
+      console.error('Failed to parse templates:', error);
+      setTemplates([]);
     }
+  };
+
+  useEffect(() => {
+    refreshTemplates();
+    let active = true;
+
+    const syncState = async () => {
+      refreshTemplates();
+      const cachedGroups = loadStoredGroups();
+      if (active) setMeterGroups(cachedGroups);
+
+      const groups = await fetchPersistedGroups();
+      if (active) setMeterGroups(groups);
+    };
+
+    syncState();
+    window.addEventListener('storage', syncState);
+    window.addEventListener('storage-update', syncState);
+    window.addEventListener(GROUP_EVENT_NAME, syncState);
+    return () => {
+      active = false;
+      window.removeEventListener('storage', syncState);
+      window.removeEventListener('storage-update', syncState);
+      window.removeEventListener(GROUP_EVENT_NAME, syncState);
+    };
   }, []);
 
-  // Set up Live Telemetry Sync using Websockets and Polling
   useEffect(() => {
     const backendUrl = window.process?.env?.REACT_APP_BACKEND_URL || '';
     const socket = io(backendUrl, { path: '/socket.io', transports: ['websocket', 'polling'] });
 
-    socket.on('connect', () => {
-      console.log('EnergyOverview WebSocket Connected');
-    });
-
     const processTelemetry = (stats) => {
-      if (Array.isArray(stats)) {
-        setTelemetryStats(stats);
-        try {
-          localStorage.setItem('scada_energy_overview_cache', JSON.stringify(stats));
-        } catch (e) {}
+      if (!Array.isArray(stats)) return;
+      setTelemetryStats(stats);
+      try {
+        localStorage.setItem('scada_energy_overview_cache', JSON.stringify(stats));
+      } catch (error) {
+        console.error('Failed to cache overview telemetry:', error);
       }
     };
 
     socket.on('telemetry_update', processTelemetry);
 
-    // Initial Cache Load
     try {
       const cached = localStorage.getItem('scada_energy_overview_cache');
       if (cached) processTelemetry(JSON.parse(cached));
-    } catch (e) {}
+    } catch (error) {
+      console.error('Failed to load cached telemetry:', error);
+    }
 
-    // Polling Fetch stats backup
     const fetchStats = async () => {
       try {
         const modulesToPoll = new Set();
-        templates.forEach(t => {
-          if (t.mapping) {
-            Object.values(t.mapping).forEach(cfg => {
-              if (cfg && typeof cfg === 'object' && cfg.module && cfg.module !== 'ALL') {
-                modulesToPoll.add(String(cfg.module));
-              }
-            });
-          }
+        templates.forEach(template => {
+          if (!template.mapping) return;
+          Object.values(template.mapping).forEach(cfg => {
+            if (cfg && typeof cfg === 'object' && cfg.module && cfg.module !== 'ALL') {
+              modulesToPoll.add(String(cfg.module));
+            }
+          });
         });
+
         const pollList = Array.from(modulesToPoll);
-        if (pollList.length === 0) return;
-        
+        if (!pollList.length) return;
+
         const url = `${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/stats?modules=${pollList.join(',')}`;
         const res = await fetch(url);
         if (res.ok) {
-          const stats = await res.json();
-          processTelemetry(stats);
+          processTelemetry(await res.json());
         }
-      } catch (err) {
-        console.error('Error in Overview fetchStats:', err);
+      } catch (error) {
+        console.error('Error in overview fetchStats:', error);
       }
     };
 
     fetchStats();
-    const pollingInterval = setInterval(fetchStats, 2000);
-
+    const pollingInterval = setInterval(fetchStats, 2500);
     return () => {
       socket.disconnect();
       clearInterval(pollingInterval);
     };
   }, [templates]);
 
-  // Cycle mini display screen
-  useEffect(() => {
-    if (!autoCycle) return;
-    const timer = setInterval(() => {
-      setMiniLcdIndex(prev => (prev + 1) % 5);
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [autoCycle]);
-
-  // Helper to extract a telemetry field value dynamically
   const getTelemetryValue = (template, sectionKey, fieldKey) => {
     if (!template?.mapping?.[sectionKey]) return null;
     const config = template.mapping[sectionKey];
     if (config.enabled === false) return null;
     const field = config[fieldKey];
     if (!field) return null;
-    
-    let modId = config.module;
+
+    let moduleId = config.module;
     let fieldId = field;
-    if (field.includes('::')) {
-      const parts = field.split('::');
-      modId = parts[0];
-      fieldId = parts[1];
+    if (String(field).includes('::')) {
+      const [modulePart, fieldPart] = String(field).split('::');
+      moduleId = modulePart;
+      fieldId = fieldPart;
     }
-    
-    const stat = telemetryStats.find(s => String(s.moduleId) === String(modId) || String(s.meta?.module_id) === String(modId));
-    if (stat && stat.meta && stat.meta[fieldId] !== undefined) {
-      return stat.meta[fieldId];
-    }
+
+    const stat = telemetryStats.find(
+      item => String(item.moduleId) === String(moduleId) || String(item.meta?.module_id) === String(moduleId)
+    );
+
+    if (stat?.meta?.[fieldId] !== undefined) return stat.meta[fieldId];
     return null;
   };
 
-  // Find Templates
-  const mainMeterTemplate = useMemo(() => {
-    return templates.find(t => t.module === 'Main Meter');
-  }, [templates]);
+  const isTemplateOnline = (template) => {
+    if (!template?.mapping) return false;
+    const deviceId = template.mapping?.deviceId || template.mapping?.emChangeConfig?.device;
+    const gatewayUuid = template.mapping?.gatewayUuid;
+    if (deviceId && getOverallStatus(deviceId, gatewayUuid)) return true;
 
-  const subMeterTemplates = useMemo(() => {
-    return templates.filter(t => t.module === 'Sub Meters');
-  }, [templates]);
-
-  // Compute display metrics dynamically
-  const displayMetrics = useMemo(() => {
-    let activePower = metrics.activePower;
-    let powerFactor = metrics.powerFactor;
-    let todayConsumption = metrics.todayConsumption;
-    let cumulativekWh = metrics.cumulativekWh;
-
-    if (mainMeterTemplate) {
-      const livePower = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'totalKw') || getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'activePower');
-      if (livePower !== null) activePower = Number(livePower);
-
-      const livePf = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'pf');
-      if (livePf !== null) powerFactor = Number(livePf);
-
-      const liveKwh = getTelemetryValue(mainMeterTemplate, 'emReadConfig', 'ebKwh') || getTelemetryValue(mainMeterTemplate, 'emReadConfig', 'cumulativekWh');
-      if (liveKwh !== null) {
-        cumulativekWh = Number(liveKwh);
-        todayConsumption = Math.round(Number(liveKwh) % 10000); 
-      }
-    } else if (subMeterTemplates.length > 0) {
-      let totalSubLoad = 0;
-      subMeterTemplates.forEach(t => {
-        const val = getTelemetryValue(t, 'emChangeConfig', 'totalKw') || getTelemetryValue(t, 'emChangeConfig', 'activePower') || 0;
-        totalSubLoad += Number(val);
-      });
-      if (totalSubLoad > 0) {
-        activePower = totalSubLoad;
-      }
-    }
-
-    const co2Offset = (cumulativekWh * 0.0004).toFixed(2);
-
-    return {
-      activePower: Number(activePower).toFixed(1),
-      powerFactor: Number(powerFactor).toFixed(2),
-      todayConsumption: Math.round(todayConsumption),
-      cumulativekWh: Number(cumulativekWh),
-      co2Offset: co2Offset
-    };
-  }, [templates, telemetryStats, metrics, mainMeterTemplate, subMeterTemplates]);
-
-  // Cal LED blink rate based on load
-  useEffect(() => {
-    const rate = Math.max(150, Math.min(2000, 120000 / parseFloat(displayMetrics.activePower)));
-    const blinkTimer = setInterval(() => {
-      setCalBlink(prev => !prev);
-    }, rate);
-    return () => clearInterval(blinkTimer);
-  }, [displayMetrics.activePower]);
-
-  // Dynamic Zone/Sub-Meters load distribution
-  const zoneDistribution = useMemo(() => {
-    if (subMeterTemplates.length > 0) {
-      let totalSubLoad = 0;
-      const zones = subMeterTemplates.map((t, idx) => {
-        const loadVal = getTelemetryValue(t, 'emChangeConfig', 'totalKw') || getTelemetryValue(t, 'emChangeConfig', 'activePower') || 0;
-        totalSubLoad += Number(loadVal);
-        
-        const targetName = t.mapping?.energyMeteringTarget || t.name || '';
-        let resolvedCategory = t.mapping?.subMeterCategory;
-        
-        if (!resolvedCategory) {
-          const nameUpper = targetName.toUpperCase();
-          if (nameUpper.includes('COMMERCIAL') || nameUpper.includes('WING') || nameUpper.includes('OFFICE')) {
-            resolvedCategory = 'Commercial';
-          } else if (nameUpper.includes('SERVER') || nameUpper.includes('UPS') || nameUpper.includes('DATA CENTER') || nameUpper.includes('IT')) {
-            resolvedCategory = 'Data Center';
-          } else if (nameUpper.includes('WATER') || nameUpper.includes('PLANT') || nameUpper.includes('UTILITY') || nameUpper.includes('MOTOR') || nameUpper.includes('PUMP')) {
-            resolvedCategory = 'Water Management';
-          } else if (nameUpper.includes('HVAC') || nameUpper.includes('CHILLER') || nameUpper.includes('AC')) {
-            resolvedCategory = 'HVAC';
-          } else if (nameUpper.includes('LIGHT') || nameUpper.includes('STREET') || nameUpper.includes('PARKING')) {
-            resolvedCategory = 'Lighting';
-          } else {
-            resolvedCategory = 'Sub Meter';
-          }
-        }
-
-        const colors = ['info', 'warning', 'success', 'danger', 'purple'];
-        const color = colors[idx % colors.length];
-
-        return {
-          name: targetName,
-          load: `${Number(loadVal).toFixed(1)} kW`,
-          rawLoad: Number(loadVal),
-          color: color,
-          category: resolvedCategory
-        };
+    const activeModules = new Set();
+    ['emChangeConfig', 'emWarningConfig', 'emReadConfig', 'emVoltageConfig', 'emCurrentConfig', 'emPowerConfig', 'emSystemConfig']
+      .forEach(key => {
+        const cfg = template.mapping?.[key];
+        if (cfg?.enabled !== false && cfg?.module) activeModules.add(String(cfg.module));
       });
 
-      const divisor = totalSubLoad > 0 ? totalSubLoad : 1;
+    return telemetryStats.some(
+      stat => activeModules.has(String(stat.moduleId)) || activeModules.has(String(stat.meta?.module_id))
+    );
+  };
 
-      return zones.map(z => ({
-        ...z,
-        percentage: Math.min(100, Math.max(0, Math.round((z.rawLoad / divisor) * 100)))
-      }));
-    }
+  const mainMeterTemplate = useMemo(
+    () => templates.find(template => template.module === 'Main Meter'),
+    [templates]
+  );
 
-    // Default static fallback if no templates configured yet
-    return [
-      { name: 'Commercial Tower Wing-A Incomer', load: '185 kW', percentage: 38, color: 'info', category: 'Commercial' },
-      { name: 'Data Center Main UPS Input', load: '142 kW', percentage: 29, color: 'warning', category: 'Data Center' },
-      { name: 'Water Plant & Utility Motors Room', load: '95 kW', percentage: 20, color: 'success', category: 'Water Management' },
-      { name: 'HVAC Chiller Main Feeder', load: '63.4 kW', percentage: 13, color: 'danger', category: 'HVAC' }
-    ];
-  }, [templates, telemetryStats, subMeterTemplates]);
+  const subMeterTemplates = useMemo(
+    () => templates.filter(template => template.module === 'Sub Meters'),
+    [templates]
+  );
 
-  // Dynamic status rows for both main and sub-meters
-  const tableRows = useMemo(() => {
+  const meterRows = useMemo(() => {
     const rows = [];
-    
-    // 1. Main Meter Incomer
+
     if (mainMeterTemplate) {
-      const loadVal = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'totalKw') || getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'activePower');
-      const vVal = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'vR');
-      const iVal = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'iR');
+      const loadVal =
+        getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'totalKw') ??
+        getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'activePower');
+      const voltageVal = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'vR');
+      const currentVal = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'iR');
       const pfVal = getTelemetryValue(mainMeterTemplate, 'emChangeConfig', 'pf');
-      
-      const deviceId = mainMeterTemplate.mapping?.deviceId || mainMeterTemplate.mapping?.emChangeConfig?.device;
-      const gatewayUuid = mainMeterTemplate.mapping?.gatewayUuid;
-      let isOnline = getOverallStatus(deviceId, gatewayUuid);
-      
-      if (!isOnline && mainMeterTemplate.mapping) {
-        const activeModules = new Set();
-        ['emChangeConfig', 'emWarningConfig', 'emReadConfig'].forEach(k => {
-          const cfg = mainMeterTemplate.mapping[k];
-          if (cfg?.enabled !== false && cfg?.module) activeModules.add(String(cfg.module));
-        });
-        if (telemetryStats.some(s => activeModules.has(String(s.moduleId)) || activeModules.has(String(s.meta?.module_id)))) {
-          isOnline = true;
-        }
-      }
+      const kwhVal =
+        getTelemetryValue(mainMeterTemplate, 'emReadConfig', 'ebKwh') ??
+        getTelemetryValue(mainMeterTemplate, 'emReadConfig', 'cumulativekWh');
 
       rows.push({
-        id: 'M-MAIN-GRID-01',
+        id: `MAIN-${mainMeterTemplate.id || '01'}`,
+        templateId: String(mainMeterTemplate.id || 'main'),
         name: mainMeterTemplate.mapping?.energyMeteringTarget || mainMeterTemplate.name || 'Main Power Grid Incomer',
-        category: mainMeterTemplate.category || 'Main Feed',
-        load: loadVal !== null ? `${Number(loadVal).toFixed(1)} kW` : `${parseFloat(displayMetrics.activePower).toFixed(1)} kW`,
-        voltage: vVal !== null ? `${Number(vVal).toFixed(1)} V` : '232.4 V',
-        current: iVal !== null ? `${Number(iVal).toFixed(1)} A` : '712.4 A',
-        pf: pfVal !== null ? Number(pfVal).toFixed(2) : displayMetrics.powerFactor,
-        status: isOnline ? 'Running' : 'Offline',
-        path: '/energy-metering/main',
-        isMain: true,
-        isMapped: true
-      });
-    } else {
-      rows.push({
-        id: 'M-MAIN-GRID-01',
-        name: 'Main Power Grid Incomer',
         category: 'Main Feed',
-        load: '-- kW',
-        voltage: '-- V',
-        current: '-- A',
-        pf: '--',
-        status: 'Not Mapped',
-        path: '/energy-metering/main',
+        load: parseNumber(loadVal),
+        voltage: parseNumber(voltageVal, 0),
+        current: parseNumber(currentVal, 0),
+        pf: parseNumber(pfVal, 0),
+        cumulative: parseNumber(kwhVal, 0),
+        status: isTemplateOnline(mainMeterTemplate) ? 'Running' : 'Offline',
+        isOnline: isTemplateOnline(mainMeterTemplate),
         isMain: true,
-        isMapped: false
+        path: '/energy-metering/main'
       });
     }
 
-    // 2. Sub Meters
-    if (subMeterTemplates.length > 0) {
-      subMeterTemplates.forEach((t, index) => {
-        const loadVal = getTelemetryValue(t, 'emChangeConfig', 'totalKw') || getTelemetryValue(t, 'emChangeConfig', 'activePower');
-        const vVal = getTelemetryValue(t, 'emChangeConfig', 'vR');
-        const iVal = getTelemetryValue(t, 'emChangeConfig', 'iR');
-        const pfVal = getTelemetryValue(t, 'emChangeConfig', 'pf');
+    subMeterTemplates.forEach((template, index) => {
+      const loadVal =
+        getTelemetryValue(template, 'emChangeConfig', 'totalKw') ??
+        getTelemetryValue(template, 'emChangeConfig', 'activePower');
+      const voltageVal = getTelemetryValue(template, 'emChangeConfig', 'vR');
+      const currentVal = getTelemetryValue(template, 'emChangeConfig', 'iR');
+      const pfVal = getTelemetryValue(template, 'emChangeConfig', 'pf');
+      const kwhVal =
+        getTelemetryValue(template, 'emReadConfig', 'ebKwh') ??
+        getTelemetryValue(template, 'emReadConfig', 'cumulativekWh');
 
-        const deviceId = t.mapping?.deviceId || t.mapping?.emChangeConfig?.device;
-        const gatewayUuid = t.mapping?.gatewayUuid;
-        let isOnline = getOverallStatus(deviceId, gatewayUuid);
-        
-        if (!isOnline && t.mapping) {
-          const activeModules = new Set();
-          ['emChangeConfig', 'emWarningConfig', 'emReadConfig'].forEach(k => {
-            const cfg = t.mapping[k];
-            if (cfg?.enabled !== false && cfg?.module) activeModules.add(String(cfg.module));
-          });
-          if (telemetryStats.some(s => activeModules.has(String(s.moduleId)) || activeModules.has(String(s.meta?.module_id)))) {
-            isOnline = true;
-          }
-        }
-
-        const targetName = t.mapping?.energyMeteringTarget || t.name || '';
-        let resolvedCategory = t.mapping?.subMeterCategory;
-        
-        if (!resolvedCategory) {
-          const nameUpper = targetName.toUpperCase();
-          if (nameUpper.includes('COMMERCIAL') || nameUpper.includes('WING') || nameUpper.includes('OFFICE')) {
-            resolvedCategory = 'Commercial';
-          } else if (nameUpper.includes('SERVER') || nameUpper.includes('UPS') || nameUpper.includes('DATA CENTER') || nameUpper.includes('IT')) {
-            resolvedCategory = 'Data Center';
-          } else if (nameUpper.includes('WATER') || nameUpper.includes('PLANT') || nameUpper.includes('UTILITY') || nameUpper.includes('MOTOR') || nameUpper.includes('PUMP')) {
-            resolvedCategory = 'Water Management';
-          } else if (nameUpper.includes('HVAC') || nameUpper.includes('CHILLER') || nameUpper.includes('AC')) {
-            resolvedCategory = 'HVAC';
-          } else if (nameUpper.includes('LIGHT') || nameUpper.includes('STREET') || nameUpper.includes('PARKING')) {
-            resolvedCategory = 'Lighting';
-          } else {
-            resolvedCategory = 'Sub Meter';
-          }
-        }
-
-        rows.push({
-          id: `SM-${t.id || (100 + index)}`,
-          name: targetName,
-          category: resolvedCategory,
-          load: loadVal !== null ? `${Number(loadVal).toFixed(1)} kW` : '0.0 kW',
-          voltage: vVal !== null ? `${Number(vVal).toFixed(1)} V` : '0.0 V',
-          current: iVal !== null ? `${Number(iVal).toFixed(1)} A` : '0.0 A',
-          pf: pfVal !== null ? Number(pfVal).toFixed(2) : '1.00',
-          status: isOnline ? 'Running' : 'Offline',
-          path: '/energy-metering/sub',
-          isMain: false,
-          isMapped: true
-        });
+      rows.push({
+        id: `SM-${template.id || index + 1}`,
+        templateId: String(template.id || index + 1),
+        name: template.mapping?.energyMeteringTarget || template.name || `Sub Meter ${index + 1}`,
+        category: resolveSubMeterCategory(template),
+        load: parseNumber(loadVal),
+        voltage: parseNumber(voltageVal, 0),
+        current: parseNumber(currentVal, 0),
+        pf: parseNumber(pfVal, 0),
+        cumulative: parseNumber(kwhVal, 0),
+        status: isTemplateOnline(template) ? 'Running' : 'Offline',
+        isOnline: isTemplateOnline(template),
+        isMain: false,
+        path: '/energy-metering/sub'
       });
-    } else {
-      rows.push(
-        { id: 'SM-WING-A-01', name: 'Commercial Tower Wing-A Incomer', category: 'Commercial', load: '-- kW', voltage: '-- V', current: '-- A', pf: '--', status: 'Not Mapped', path: '/energy-metering/sub', isMapped: false },
-        { id: 'SM-SERVER-02', name: 'Data Center Main UPS Input', category: 'Data Center', load: '-- kW', voltage: '-- V', current: '-- A', pf: '--', status: 'Not Mapped', path: '/energy-metering/sub', isMapped: false },
-        { id: 'SM-UTILITY-03', name: 'Water Plant & Utility Motors Room', category: 'Water Management', load: '-- kW', voltage: '-- V', current: '-- A', pf: '--', status: 'Not Mapped', path: '/energy-metering/sub', isMapped: false },
-        { id: 'SM-HVAC-04', name: 'HVAC Chiller Main Feeder', category: 'HVAC', load: '-- kW', voltage: '-- V', current: '-- A', pf: '--', status: 'Not Mapped', path: '/energy-metering/sub', isMapped: false }
-      );
-    }
+    });
 
     return rows;
-  }, [templates, telemetryStats, displayMetrics, getOverallStatus, subMeterTemplates, mainMeterTemplate]);
+  }, [mainMeterTemplate, subMeterTemplates, telemetryStats, getOverallStatus]);
 
-  // Grouped sub meters mapping
-  const groupedSubMeters = useMemo(() => {
-    const groups = {};
-    tableRows.forEach(row => {
-      if (row.isMain) return;
-      const cat = row.category || 'Other Feeds';
-      if (!groups[cat]) groups[cat] = [];
-      groups[cat].push(row);
+  const mainMeterRow = meterRows.find(row => row.isMain);
+  const subMeterRows = meterRows.filter(row => !row.isMain);
+  const groupLookup = useMemo(() => {
+    const map = new Map();
+    meterGroups.forEach(group => {
+      (group.meterIds || []).forEach(id => {
+        map.set(String(id), group);
+      });
     });
-    return groups;
-  }, [tableRows]);
+    return map;
+  }, [meterGroups]);
 
-  // Helper to resolve descriptive visual emojis for different zones
-  const getZoneEmoji = (category) => {
-    switch (category) {
-      case 'Commercial': return '🏢';
-      case 'Data Center': return '🖥️';
-      case 'Water Management': return '💧';
-      case 'HVAC': return '❄️';
-      case 'Lighting': return '💡';
-      default: return '⚡';
+  const groupedCollections = useMemo(() => {
+    return meterGroups
+      .map((group, index) => {
+        const meters = subMeterRows.filter(row => groupLookup.get(String(row.templateId))?.id === group.id);
+        const totalLoad = meters.reduce((sum, row) => sum + row.load, 0);
+        const onlineCount = meters.filter(row => row.isOnline).length;
+        return {
+          id: group.id || `group-${index}`,
+          name: group.name || `Group ${index + 1}`,
+          color: group.color || CATEGORY_COLORS['Sub Meter'],
+          meters,
+          totalLoad,
+          onlineCount
+        };
+      })
+      .filter(group => group.meters.length > 0);
+  }, [meterGroups, subMeterRows, groupLookup]);
+
+  useEffect(() => {
+    setGroupDrafts(prev => {
+      if (prev.length === 0) {
+        return normalizeOverviewGroups(meterGroups, subMeterRows);
+      }
+      return normalizeOverviewGroups(prev, subMeterRows);
+    });
+  }, [meterGroups, subMeterRows]);
+
+  const ungroupedMeters = useMemo(
+    () => subMeterRows.filter(row => !groupLookup.has(String(row.templateId))),
+    [subMeterRows, groupLookup]
+  );
+
+  const headlineMetrics = useMemo(() => {
+    const totalLoad = mainMeterRow?.load || subMeterRows.reduce((sum, row) => sum + row.load, 0);
+    const onlineMeters = meterRows.filter(row => row.isOnline).length;
+    const groupedMeters = groupedCollections.reduce((sum, group) => sum + group.meters.length, 0);
+    const totalConsumption =
+      mainMeterRow?.cumulative ||
+      subMeterRows.reduce((sum, row) => sum + row.cumulative, 0);
+    return {
+      totalLoad,
+      onlineMeters,
+      groupedMeters,
+      totalMeters: meterRows.length,
+      ungroupedMeters: ungroupedMeters.length,
+      totalConsumption
+    };
+  }, [subMeterRows, mainMeterRow, meterRows, groupedCollections, ungroupedMeters]);
+
+  const zoneBreakdown = useMemo(() => {
+    const categoryMap = {};
+    subMeterRows.forEach(row => {
+      const key = row.category || 'Sub Meter';
+      if (!categoryMap[key]) {
+        categoryMap[key] = {
+          name: key,
+          load: 0,
+          meters: 0,
+          color: CATEGORY_COLORS[key] || '#94a3b8'
+        };
+      }
+      categoryMap[key].load += row.load;
+      categoryMap[key].meters += 1;
+    });
+    const total = Object.values(categoryMap).reduce((sum, item) => sum + item.load, 0) || 1;
+    return Object.values(categoryMap)
+      .sort((a, b) => b.load - a.load)
+      .map(item => ({
+        ...item,
+        percentage: Math.round((item.load / total) * 100)
+      }));
+  }, [subMeterRows]);
+
+  const spotlightFeed = groupedCollections[0]?.meters[0] || ungroupedMeters[0] || mainMeterRow;
+
+  const openGroupManager = () => {
+    setGroupDrafts(normalizeOverviewGroups(meterGroups, subMeterRows));
+    setShowGroupManager(true);
+  };
+
+  const handleEditGroup = (groupId) => {
+    const orderedDrafts = [
+      ...groupDrafts.filter(group => group.id === groupId),
+      ...groupDrafts.filter(group => group.id !== groupId)
+    ];
+    setGroupDrafts(orderedDrafts.length ? orderedDrafts : normalizeOverviewGroups(meterGroups, subMeterRows));
+    setShowGroupManager(true);
+  };
+
+  const getDraftAssignedGroupForMeter = (templateId, currentGroupId = null) => {
+    const targetId = String(templateId);
+    return groupDrafts.find(
+      group => group.id !== currentGroupId && group.meterIds.includes(targetId)
+    );
+  };
+
+  const getDraftMeterOptions = (groupId) =>
+    [...subMeterRows].sort((left, right) => {
+      const leftKey = String(left.templateId);
+      const rightKey = String(right.templateId);
+      const currentGroup = groupDrafts.find(group => group.id === groupId);
+      const leftChecked = currentGroup?.meterIds.includes(leftKey);
+      const rightChecked = currentGroup?.meterIds.includes(rightKey);
+      const leftAssignedElsewhere = !!getDraftAssignedGroupForMeter(leftKey, groupId);
+      const rightAssignedElsewhere = !!getDraftAssignedGroupForMeter(rightKey, groupId);
+
+      if (leftChecked !== rightChecked) return leftChecked ? -1 : 1;
+      if (leftAssignedElsewhere !== rightAssignedElsewhere) return leftAssignedElsewhere ? 1 : -1;
+      return String(left.name || '').localeCompare(String(right.name || ''));
+    });
+
+  const duplicateDraftGroupNames = useMemo(() => {
+    const counts = new Map();
+    groupDrafts.forEach(group => {
+      const normalizedName = String(group.name || '').trim().toLowerCase();
+      if (!normalizedName) return;
+      counts.set(normalizedName, (counts.get(normalizedName) || 0) + 1);
+    });
+    return new Set(
+      Array.from(counts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([name]) => name)
+    );
+  }, [groupDrafts]);
+
+  const addDraftGroup = () => {
+    setGroupDrafts(prev => [
+      ...prev,
+      {
+        id: createGroupId(),
+        name: `Group ${prev.length + 1}`,
+        color: GROUP_COLORS[prev.length % GROUP_COLORS.length],
+        meterIds: []
+      }
+    ]);
+  };
+
+  const removeDraftGroup = (groupId) => {
+    setGroupDrafts(prev => prev.filter(group => group.id !== groupId));
+  };
+
+  const updateDraftGroup = (groupId, field, value) => {
+    setGroupDrafts(prev => prev.map(group => (group.id === groupId ? { ...group, [field]: value } : group)));
+  };
+
+  const toggleDraftMeter = (groupId, templateId) => {
+    const targetId = String(templateId);
+    setGroupDrafts(prev => {
+      const assignedElsewhere = prev.find(
+        group => group.id !== groupId && group.meterIds.includes(targetId)
+      );
+
+      if (assignedElsewhere) {
+        return prev;
+      }
+
+      return prev.map(group => {
+        const checked = group.meterIds.includes(targetId);
+        if (group.id === groupId) {
+          return {
+            ...group,
+            meterIds: checked
+              ? group.meterIds.filter(id => id !== targetId)
+              : [...group.meterIds, targetId]
+          };
+        }
+        return group;
+      });
+    });
+  };
+
+  const saveGroupsToBackend = async (groupsToSave) => {
+    const normalized = normalizeOverviewGroups(groupsToSave, subMeterRows);
+    const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groups: normalized })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save energy meter groups');
+    }
+
+    const data = await response.json();
+    const saved = normalizeOverviewGroups(data?.groups || normalized, subMeterRows);
+    localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: saved }));
+    setMeterGroups(saved);
+    setGroupDrafts(saved);
+    window.dispatchEvent(new Event(GROUP_EVENT_NAME));
+    return saved;
+  };
+
+  const handleSaveDraftGroups = async () => {
+    if (duplicateDraftGroupNames.size > 0) {
+      setGroupActionStatus('Use unique group names');
+      setSaveSuccessMessage('Group name already exists');
+      setSaveSuccess(true);
+      setTimeout(() => setGroupActionStatus(null), 3000);
+      setTimeout(() => setSaveSuccess(false), 2200);
+      return;
+    }
+
+    try {
+      await saveGroupsToBackend(groupDrafts);
+      setGroupActionStatus('Group settings saved');
+      setSaveSuccessMessage('Group saved successfully');
+      setSaveSuccess(true);
+      setShowGroupManager(false);
+    } catch (error) {
+      console.error('Failed to save groups from overview:', error);
+      setGroupActionStatus('Save sync issue, kept current draft');
+      setSaveSuccessMessage('Group draft saved');
+      setSaveSuccess(true);
+    } finally {
+      setTimeout(() => setGroupActionStatus(null), 3000);
+      setTimeout(() => setSaveSuccess(false), 2200);
     }
   };
 
-  const miniLcdModes = useMemo(() => [
-    { label: 'DEMAND (LOAD)', val: `${displayMetrics.activePower}`, unit: 'kW' },
-    { label: 'CUMULATIVE ENERGY', val: `${displayMetrics.cumulativekWh.toLocaleString(undefined, {minimumFractionDigits: 1, maximumFractionDigits: 1})}`, unit: 'kWh' },
-    { label: 'GRID POWER FACTOR', val: `${displayMetrics.powerFactor}`, unit: 'cos φ' },
-    { label: 'AVERAGE VOLTAGE', val: '232.4', unit: 'V L-N' },
-    { label: 'TOTAL GRID CURRENT', val: '712.4', unit: 'A' }
-  ], [displayMetrics]);
+  const handleDeleteGroup = async (groupId) => {
+    const nextGroups = meterGroups.filter(group => group.id !== groupId);
 
-  const activeMiniLcd = miniLcdModes[miniLcdIndex];
+    setMeterGroups(nextGroups);
+    setGroupDrafts(nextGroups);
+    localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: nextGroups }));
+    window.dispatchEvent(new Event(GROUP_EVENT_NAME));
+
+    try {
+      await saveGroupsToBackend(nextGroups);
+      setGroupActionStatus('Group deleted');
+      setSaveSuccessMessage('Group deleted successfully');
+      setSaveSuccess(true);
+    } catch (error) {
+      console.error('Failed to delete group from overview:', error);
+      setGroupActionStatus('Group removed from dashboard');
+      setSaveSuccessMessage('Group removed from overview');
+      setSaveSuccess(true);
+    } finally {
+      setTimeout(() => setGroupActionStatus(null), 3000);
+      setTimeout(() => setSaveSuccess(false), 2600);
+    }
+  };
+
+  const handleRemoveMeterFromGroup = async (groupId, templateId) => {
+    const nextGroups = meterGroups.map(group =>
+      group.id === groupId
+        ? { ...group, meterIds: group.meterIds.filter(id => String(id) !== String(templateId)) }
+        : group
+    );
+
+    setMeterGroups(nextGroups);
+    setGroupDrafts(nextGroups);
+    localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: nextGroups }));
+    window.dispatchEvent(new Event(GROUP_EVENT_NAME));
+
+    try {
+      await saveGroupsToBackend(nextGroups);
+      setGroupActionStatus('Meter removed');
+      setSaveSuccessMessage('Meter removed from group successfully');
+      setSaveSuccess(true);
+    } catch (error) {
+      console.error('Failed to remove meter from group:', error);
+      setGroupActionStatus('Meter removed from overview');
+      setSaveSuccessMessage('Meter removed from overview');
+      setSaveSuccess(true);
+    } finally {
+      setTimeout(() => setGroupActionStatus(null), 3000);
+      setTimeout(() => setSaveSuccess(false), 2400);
+    }
+  };
 
   return (
-    <div className="fade-in">
-      {/* HEADER SECTION */}
-      <div className="page-header d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+    <div className="fade-in energy-overview-page">
+      <div className="page-header energy-hero d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
         <div>
-          <div className="d-flex align-items-center flex-wrap gap-3">
-            <h2 className="mb-0 text-white fw-black d-flex align-items-center gap-2 tracking-tight">
-              <Zap className="text-warning animate-pulse" size={28} /> Energy Metering Overview
+          <div className="d-flex align-items-center gap-3 flex-wrap">
+            <h2 className="mb-0 text-white fw-black d-flex align-items-center gap-2">
+              <Zap className="text-warning" size={28} /> Energy Metering Overview
             </h2>
-            <Badge bg="success" className="bg-opacity-10 text-success border border-success border-opacity-25 px-2.5 py-1.5 fs-12 uppercase d-flex align-items-center gap-2 rounded-pill shadow-sm hover-scale-105">
-              <span className="pulse-dot-green glow-green"></span>
-              Live Telemetry Flowing
+            <Badge className="hero-badge">
+              <Sparkles size={14} /> Live grouped energy intelligence
             </Badge>
           </div>
-          <p className="text-secondary fs-7 mt-2 mb-0">Real-time facility grid monitoring, load distribution analysis, and efficiency statistics.</p>
+          <p className="text-secondary fs-7 mt-2 mb-0 overview-subtitle">
+            Professional overview of main feed, custom sub-meter groups, and ungrouped live MFM values in one place.
+          </p>
         </div>
         <PdfButton />
       </div>
 
-      {/* QUICK SYSTEM HEALTH BANNER */}
-      <div className="p-3 mb-4 rounded-4 d-flex align-items-center justify-content-between text-white" 
-           style={{ background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.2)', boxShadow: '0 0 15px rgba(16, 185, 129, 0.05)' }}>
-        <div className="d-flex align-items-center gap-3">
-          <div className="p-2 bg-success bg-opacity-25 rounded-circle text-success animate-pulse d-flex align-items-center justify-content-center" style={{ width: '38px', height: '38px' }}>
-            <Activity size={18} />
-          </div>
-          <div>
-            <div className="d-flex align-items-center gap-2">
-              <strong className="text-success fs-13 uppercase tracking-wider">🟢 SYSTEM STATUS: STABLE & HEALTHY</strong>
+      {groupedCollections.length > 0 && (
+        <Card className="overview-panel border-0 text-white mb-4 overview-summary-band">
+          <Card.Body className="p-4">
+            <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+              <div>
+                <h5 className="mb-1 fw-black d-flex align-items-center gap-2">
+                  <Layers3 className="text-info" size={18} /> Group Load Summary
+                </h5>
+                <p className="mb-0 text-secondary fs-13">Overview par ab user-defined grouped values priority se dikh rahe hain.</p>
+              </div>
+              <Badge className="overview-chip">{groupedCollections.length} active groups</Badge>
             </div>
-            <p className="text-secondary mb-0 fs-13 mt-0.5" style={{ opacity: 0.85 }}>
-              All electrical feeds are running under optimal load. Power efficiency is excellent. No alarms or critical issues detected.
-            </p>
-          </div>
-        </div>
-        <div className="d-flex align-items-center gap-2">
-          <Badge bg="success" className="bg-opacity-10 text-success border border-success border-opacity-25 px-3 py-1.5 fs-12 uppercase fw-bold">
-            ⚡ {subMeterTemplates.length > 0 ? subMeterTemplates.length : 4} Active Meters
-          </Badge>
-        </div>
-      </div>
-
-      {/* METRIC CARD GRID */}
-      <Row className="g-4 mb-4">
-        <Col md={6} xl={3}>
-          <Card 
-            className="scada-card border-0 text-white h-100 position-relative overflow-hidden shadow-lg transition-all hover-scale-102" 
-            style={{ 
-              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-              border: '1px solid rgba(14, 165, 233, 0.25)',
-              borderLeft: '4px solid #0ea5e9',
-              boxShadow: '0 4px 20px rgba(14, 165, 233, 0.06)'
-            }}
-          >
-            <div className="card-ambient-glow" style={{ background: 'radial-gradient(circle, rgba(14,165,233,0.15) 0%, transparent 70%)' }}></div>
-            <Card.Body className="d-flex flex-column justify-content-between p-4 position-relative z-2">
-              <div className="d-flex justify-content-between align-items-start mb-3">
-                <div className="p-3 bg-info bg-opacity-10 text-info rounded-4 border border-info border-opacity-20">
-                  <Zap size={22} className="animate-pulse" />
-                </div>
-                <Badge bg="info" className="bg-opacity-10 text-info border border-info border-opacity-20 px-2 py-1 fs-9 uppercase fw-bold">Real-time</Badge>
-              </div>
-              <div>
-                <h6 className="text-secondary fs-12 uppercase tracking-widest fw-black mb-1">Current Power Usage (Active Load)</h6>
-                <div className="d-flex align-items-baseline mb-2">
-                  <h2 className="display-6 fw-black text-white tracking-tighter mb-0">{displayMetrics.activePower}</h2>
-                  <span className="ms-1 fs-6 text-info fw-bold">kW</span>
-                </div>
-                <div className="mt-2 pt-2 border-top border-white border-opacity-5 text-secondary fs-13">
-                  <span>Live electricity currently being consumed by the entire facility.</span>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col md={6} xl={3}>
-          <Card 
-            className="scada-card border-0 text-white h-100 position-relative overflow-hidden shadow-lg transition-all hover-scale-102" 
-            style={{ 
-              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-              border: '1px solid rgba(16, 185, 129, 0.25)',
-              borderLeft: '4px solid #10b981',
-              boxShadow: '0 4px 20px rgba(16, 185, 129, 0.06)'
-            }}
-          >
-            <div className="card-ambient-glow" style={{ background: 'radial-gradient(circle, rgba(16,185,129,0.15) 0%, transparent 70%)' }}></div>
-            <Card.Body className="d-flex flex-column justify-content-between p-4 position-relative z-2">
-              <div className="d-flex justify-content-between align-items-start mb-3">
-                <div className="p-3 bg-success bg-opacity-10 text-success rounded-4 border border-success border-opacity-20">
-                  <Activity size={22} />
-                </div>
-                <Badge bg="success" className="bg-opacity-10 text-success border border-success border-opacity-20 px-2 py-1 fs-9 uppercase fw-bold">Grid Quality</Badge>
-              </div>
-              <div>
-                <h6 className="text-secondary fs-12 uppercase tracking-widest fw-black mb-1">Power Efficiency (Power Factor)</h6>
-                <div className="d-flex align-items-baseline mb-2">
-                  <h2 className="display-6 fw-black text-white tracking-tighter mb-0">{displayMetrics.powerFactor}</h2>
-                  <span className="ms-1 fs-6 text-success fw-bold">cos φ</span>
-                </div>
-                <div className="mt-2 pt-2 border-top border-white border-opacity-5 text-secondary fs-13">
-                  <span>Electricity usage efficiency (Target: 0.95+ is Excellent).</span>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col md={6} xl={3}>
-          <Card 
-            className="scada-card border-0 text-white h-100 position-relative overflow-hidden shadow-lg transition-all hover-scale-102" 
-            style={{ 
-              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-              border: '1px solid rgba(245, 158, 11, 0.25)',
-              borderLeft: '4px solid #f59e0b',
-              boxShadow: '0 4px 20px rgba(245, 158, 11, 0.06)'
-            }}
-          >
-            <div className="card-ambient-glow" style={{ background: 'radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%)' }}></div>
-            <Card.Body className="d-flex flex-column justify-content-between p-4 position-relative z-2">
-              <div className="d-flex justify-content-between align-items-start mb-3">
-                <div className="p-3 bg-warning bg-opacity-10 text-warning rounded-4 border border-warning border-opacity-20">
-                  <BatteryCharging size={22} />
-                </div>
-                <Badge bg="warning" className="bg-opacity-10 text-warning border border-warning border-opacity-20 px-2 py-1 fs-9 uppercase fw-bold">Accumulated</Badge>
-              </div>
-              <div>
-                <h6 className="text-secondary fs-12 uppercase tracking-widest fw-black mb-1">Today's Total Electricity Used</h6>
-                <div className="d-flex align-items-baseline mb-2">
-                  <h2 className="display-6 fw-black text-white tracking-tighter mb-0">{displayMetrics.todayConsumption.toLocaleString()}</h2>
-                  <span className="ms-1 fs-6 text-warning fw-bold">kWh</span>
-                </div>
-                <div className="mt-2 pt-2 border-top border-white border-opacity-5 text-secondary fs-13">
-                  <span>Total energy consumed since 12:00 AM midnight.</span>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-
-        <Col md={6} xl={3}>
-          <Card 
-            className="scada-card border-0 text-white h-100 position-relative overflow-hidden shadow-lg transition-all hover-scale-102" 
-            style={{ 
-              background: 'linear-gradient(135deg, #0f172a, #1e293b)',
-              border: '1px solid rgba(168, 85, 247, 0.25)',
-              borderLeft: '4px solid #a855f7',
-              boxShadow: '0 4px 20px rgba(168, 85, 247, 0.06)'
-            }}
-          >
-            <div className="card-ambient-glow" style={{ background: 'radial-gradient(circle, rgba(168,85,247,0.15) 0%, transparent 70%)' }}></div>
-            <Card.Body className="d-flex flex-column justify-content-between p-4 position-relative z-2">
-              <div className="d-flex justify-content-between align-items-start mb-3">
-                <div className="p-3 bg-purple bg-opacity-10 text-purple rounded-4 border border-purple border-opacity-20" style={{ color: '#a855f7' }}>
-                  <Award size={22} />
-                </div>
-                <Badge bg="secondary" className="bg-opacity-10 text-muted border border-secondary border-opacity-20 px-2 py-1 fs-9 uppercase fw-bold" style={{ color: '#a855f7' }}>Carbon Index</Badge>
-              </div>
-              <div>
-                <h6 className="text-secondary fs-12 uppercase tracking-widest fw-black mb-1">Environmental Impact (CO₂ Saved)</h6>
-                <div className="d-flex align-items-baseline mb-2">
-                  <h2 className="display-6 fw-black text-white tracking-tighter mb-0">{displayMetrics.co2Offset}</h2>
-                  <span className="ms-1 fs-6 text-purple fw-bold" style={{ color: '#a855f7' }}>Metric Tons</span>
-                </div>
-                <div className="mt-2 pt-2 border-top border-white border-opacity-5 text-secondary fs-13">
-                  <span>Equivalent greenhouse gas emissions reduced today.</span>
-                </div>
-              </div>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* CORE ANALYSIS PANELS & LIVE DIGITAL METER WIDGET */}
-      <Row className="g-4 mb-4">
-        {/* Zone Load & Parameters Column */}
-        <Col lg={8}>
-          <Card className="scada-card border-0 text-white mb-4" style={{ background: '#0f172a' }}>
-            <Card.Body className="p-4">
-              <h5 className="mb-4 fw-black text-white d-flex align-items-center gap-2 uppercase tracking-wide fs-11">
-                <Cpu className="text-info" size={18} /> Zone Wise Load Distribution
-              </h5>
-              
-              <Row className="g-4 align-items-center">
-                {/* Left Column: Glowing Interactive Doughnut Chart */}
-                <Col md={5} className="d-flex flex-column align-items-center justify-content-center border-end border-white border-opacity-5 pe-md-4 mb-4 mb-md-0">
-                  {zoneDistribution.some(z => z.rawLoad > 0) ? (
-                    <div style={{ width: '100%', height: '180px', position: 'relative' }}>
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={zoneDistribution.filter(z => z.rawLoad > 0)}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={50}
-                            outerRadius={75}
-                            paddingAngle={4}
-                            dataKey="rawLoad"
-                          >
-                            {zoneDistribution.filter(z => z.rawLoad > 0).map((entry, index) => {
-                              const colorsMap = {
-                                'Commercial': '#38bdf8',
-                                'Data Center': '#fb923c',
-                                'Water Management': '#4ade80',
-                                'HVAC': '#f87171',
-                                'Lighting': '#c084fc',
-                                'Sub Meter': '#94a3b8'
-                              };
-                              const color = colorsMap[entry.category] || '#94a3b8';
-                              return <Cell key={`cell-${index}`} fill={color} />;
-                            })}
-                          </Pie>
-                          <RechartsTooltip content={({ active, payload }) => {
-                            if (active && payload && payload.length) {
-                              const data = payload[0].payload;
-                              return (
-                                <div className="p-3 rounded-4 bg-dark bg-opacity-95 border border-secondary border-opacity-25 shadow-lg text-white" style={{ backdropFilter: 'blur(8px)', zIndex: 10 }}>
-                                  <strong className="d-block mb-1 fs-13 text-info uppercase tracking-wider">{data.name}</strong>
-                                  <span className="d-block text-secondary fs-13">Category: <span className="text-white fw-bold">{getZoneEmoji(data.category)} {data.category}</span></span>
-                                  <span className="d-block text-secondary fs-13 mt-0.5">Active Load: <span className="text-success fw-black">{data.load}</span></span>
-                                  <span className="d-block text-secondary fs-13">Distribution: <span className="text-warning fw-bold">{data.percentage}%</span></span>
-                                </div>
-                              );
-                            }
-                            return null;
-                          }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="position-absolute top-50 start-50 translate-middle text-center" style={{ pointerEvents: 'none' }}>
-                        <span className="d-block text-secondary fs-12 uppercase tracking-widest fw-black mb-0" style={{ fontSize: '0.55rem' }}>Total Load</span>
-                        <strong className="fs-5 text-white fw-black" style={{ fontSize: '1.2rem' }}>
-                          {zoneDistribution.reduce((sum, z) => sum + (z.rawLoad || 0), 0).toFixed(1)}
-                        </strong>
-                        <span className="d-block text-info fw-bold" style={{ fontSize: '0.65rem' }}>kW</span>
+            <Row className="g-3">
+              {groupedCollections.map(group => (
+                <Col key={group.id} md={6} xl={4}>
+                  <div className="summary-band-card" style={{ borderColor: `${group.color}55` }}>
+                    <div className="d-flex justify-content-between align-items-start mb-2">
+                      <div>
+                        <div className="d-flex align-items-center gap-2 mb-1">
+                          <span className="group-dot" style={{ backgroundColor: group.color }} />
+                          <span className="text-white fw-bold">{group.name}</span>
+                        </div>
+                        <small className="text-secondary">{group.meters.length} MFM meter(s)</small>
+                      </div>
+                      <div className="text-end">
+                        <div className="text-white fw-bold">{formatMetric(group.totalLoad)} kW</div>
+                        <small style={{ color: group.color }}>{group.onlineCount} online</small>
                       </div>
                     </div>
-                  ) : (
-                    <div className="text-center py-4 text-secondary">
-                      <Zap size={24} className="opacity-20 mb-2" />
-                      <small className="d-block">No active load to visualize in chart</small>
-                    </div>
-                  )}
-                  <div className="mt-3 w-100 d-flex flex-wrap gap-2 justify-content-center">
-                    {Object.entries(
-                      zoneDistribution.reduce((acc, curr) => {
-                        acc[curr.category] = (acc[curr.category] || 0) + (curr.rawLoad || 0);
-                        return acc;
-                      }, {})
-                    ).map(([cat, val]) => {
-                      const colorsMap = {
-                        'Commercial': '#38bdf8',
-                        'Data Center': '#fb923c',
-                        'Water Management': '#4ade80',
-                        'HVAC': '#f87171',
-                        'Lighting': '#c084fc',
-                        'Sub Meter': '#94a3b8'
-                      };
-                      const color = colorsMap[cat] || '#94a3b8';
-                      return (
-                        <Badge key={cat} bg="dark" className="border border-secondary border-opacity-10 d-flex align-items-center gap-2 px-2.5 py-1.5 fs-12 text-white shadow-sm" style={{ background: 'rgba(255,255,255,0.03)' }}>
-                          <span className="pulse-dot" style={{ backgroundColor: color, width: '6px', height: '6px', boxShadow: `0 0 6px ${color}`, animation: 'none' }}></span>
-                          {getZoneEmoji(cat)} {cat} ({val.toFixed(1)} kW)
-                        </Badge>
-                      );
-                    })}
                   </div>
                 </Col>
+              ))}
+            </Row>
+          </Card.Body>
+        </Card>
+      )}
 
-                {/* Right Column: Refined Progress Bars List */}
-                <Col md={7}>
-                  {zoneDistribution.map((zone, idx) => {
-                    const colorsMap = {
-                      'Commercial': '#38bdf8',
-                      'Data Center': '#fb923c',
-                      'Water Management': '#4ade80',
-                      'HVAC': '#f87171',
-                      'Lighting': '#c084fc',
-                      'Sub Meter': '#94a3b8'
-                    };
-                    const colorHex = colorsMap[zone.category] || '#94a3b8';
-                    return (
-                      <div key={idx} className="mb-3 p-2.5 bg-dark bg-opacity-30 border border-secondary border-opacity-5 rounded-4 transition-all hover-scale-101 shadow-sm" style={{ background: 'rgba(255,255,255,0.01)' }}>
-                        <div className="d-flex justify-content-between align-items-center mb-1.5">
-                          <span className="fw-bold text-white fs-13 d-flex align-items-center gap-2">
-                            <span className="fs-6">{getZoneEmoji(zone.category)}</span>
-                            {zone.name}
-                          </span>
-                          <span className="fw-black fs-12" style={{ color: colorHex }}>{zone.load} ({zone.percentage}%)</span>
-                        </div>
-                        <div className="scada-progress-bar-wrap" style={{ height: 6, background: 'rgba(0,0,0,0.4)', borderRadius: 4, overflow: 'hidden' }}>
-                          <div style={{ width: `${zone.percentage}%`, height: '100%', backgroundColor: colorHex, borderRadius: 4, transition: 'width 0.5s ease-out' }}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
+      <Row className="g-4 mb-4">
+        {[
+          {
+            label: 'Total Live Load',
+            value: `${formatMetric(headlineMetrics.totalLoad)} kW`,
+            note: 'Main + Sub Meters',
+            icon: <Gauge size={18} />
+          },
+          {
+            label: 'Online Meters',
+            value: `${headlineMetrics.onlineMeters}/${headlineMetrics.totalMeters}`,
+            note: 'Realtime communication health',
+            icon: <Network size={18} />
+          },
+          {
+            label: 'Grouped Feeds',
+            value: `${headlineMetrics.groupedMeters}`,
+            note: `${groupedCollections.length} custom groups active`,
+            icon: <Layers3 size={18} />
+          },
+          {
+            label: 'Ungrouped Feeds',
+            value: `${headlineMetrics.ungroupedMeters}`,
+            note: 'Still visible on overview',
+            icon: <FolderTree size={18} />
+          }
+        ].map((metric, index) => (
+          <Col key={index} md={6} xl={3}>
+            <Card className="overview-stat-card border-0 h-100 text-white">
+              <Card.Body className="p-4">
+                <div className="d-flex justify-content-between align-items-start mb-4">
+                  <span className="metric-label">{metric.label}</span>
+                  <div className="metric-icon-shell">{metric.icon}</div>
+                </div>
+                <div className="metric-value">{metric.value}</div>
+                <div className="metric-note">{metric.note}</div>
+              </Card.Body>
+            </Card>
+          </Col>
+        ))}
+      </Row>
+
+      <Row className="g-4 mb-4">
+        <Col xl={7}>
+          <Card className="overview-panel border-0 h-100 text-white">
+            <Card.Body className="p-4">
+              <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+                <div>
+                  <h5 className="mb-1 fw-black d-flex align-items-center gap-2">
+                    <Cpu className="text-info" size={18} /> Main Feed Command Center
+                  </h5>
+                  <p className="mb-0 text-secondary fs-13">Core incomer status, performance trend, and power quality snapshot.</p>
+                </div>
+                {mainMeterRow ? <StatusBadge status={mainMeterRow.status} /> : <Badge bg="secondary">Not Mapped</Badge>}
+              </div>
+
+              <Row className="g-3">
+                <Col md={6}>
+                  <div className="highlight-tile primary">
+                    <span className="tile-label">Main Meter</span>
+                    <h3 className="tile-title">{mainMeterRow?.name || 'Main Meter Not Configured'}</h3>
+                    <div className="tile-foot">
+                      <span>{mainMeterRow ? `Load ${formatMetric(mainMeterRow.load)} kW` : 'Connect a main meter template'}</span>
+                    </div>
+                  </div>
+                </Col>
+                <Col md={6}>
+                  <div className="highlight-tile accent">
+                    <span className="tile-label">Lifetime Energy</span>
+                    <h3 className="tile-title">{formatMetric(headlineMetrics.totalConsumption)} kWh</h3>
+                    <div className="tile-foot">
+                      <span>Captured from mapped meter telemetry</span>
+                    </div>
+                  </div>
                 </Col>
               </Row>
-            </Card.Body>
-          </Card>
 
-          <Card 
-            className="scada-card border-0 text-white shadow-lg" 
-            style={{ 
-              background: 'linear-gradient(145deg, #0c1222, #0f172a, #131d30)',
-              border: '1px solid rgba(14, 165, 233, 0.12)'
-            }}
-          >
-            <Card.Body className="p-4">
-              <div className="d-flex justify-content-between align-items-center mb-4">
-                <h5 className="mb-0 fw-black text-white d-flex align-items-center gap-2 uppercase tracking-wide fs-11">
-                  <Activity className="text-info" size={18} /> Grid Parameters
-                </h5>
-                <Badge bg="none" className="px-2 py-1 fs-11 uppercase fw-bold" style={{ backgroundColor: 'rgba(14, 165, 233, 0.08)', color: '#38bdf8', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
-                  All Nominal
-                </Badge>
-              </div>
-              <Row className="g-3">
+              <Row className="g-3 mt-1">
                 {[
-                  { label: 'System Frequency', value: `${metrics.frequency}`, unit: 'Hz', status: 'Stable', color: '#0ea5e9', bgColor: 'rgba(14, 165, 233, 0.06)' },
-                  { label: 'Voltage Unbalance', value: `${metrics.voltageBalance}`, unit: '%', status: 'Normal', color: '#10b981', bgColor: 'rgba(16, 185, 129, 0.06)' },
-                  { label: 'Voltage THD (R)', value: '1.42', unit: '%', status: 'Optimal', color: '#f59e0b', bgColor: 'rgba(245, 158, 11, 0.06)' },
-                  { label: 'Current THD (R)', value: '3.18', unit: '%', status: 'Normal', color: '#a855f7', bgColor: 'rgba(168, 85, 247, 0.06)' }
-                ].map((param, idx) => (
-                  <Col md={6} key={idx}>
-                    <div 
-                      className="grid-param-cell d-flex justify-content-between align-items-center p-3 rounded-4"
-                      style={{
-                        background: param.bgColor,
-                        border: `1px solid ${param.color}20`,
-                        borderLeft: `3px solid ${param.color}`,
-                        height: '100%'
-                      }}
-                    >
-                      <div>
-                        <small className="d-block fs-12 mb-1 fw-semibold uppercase tracking-wider" style={{ color: '#64748b' }}>
-                          {param.label}
-                        </small>
-                        <div className="d-flex align-items-baseline gap-1">
-                          <span className="fw-black fs-4 text-white">{param.value}</span>
-                          <span className="fs-13 fw-bold" style={{ color: param.color }}>{param.unit}</span>
-                        </div>
-                      </div>
-                      <span 
-                        className="px-2 py-1 fs-11 uppercase fw-bold rounded-pill"
-                        style={{
-                          backgroundColor: `${param.color}18`,
-                          color: param.color,
-                          border: `1px solid ${param.color}30`,
-                          fontSize: '0.6rem'
-                        }}
-                      >
-                        {param.status}
-                      </span>
+                  { label: 'Voltage', value: `${formatMetric(mainMeterRow?.voltage)} V`, hint: 'R-phase live' },
+                  { label: 'Current', value: `${formatMetric(mainMeterRow?.current)} A`, hint: 'R-phase live' },
+                  { label: 'Power Factor', value: formatMetric(mainMeterRow?.pf, 2), hint: 'Efficiency marker' },
+                  { label: 'Sub Meter Load', value: `${formatMetric(subMeterRows.reduce((sum, row) => sum + row.load, 0))} kW`, hint: 'Aggregated feeders' }
+                ].map((item, index) => (
+                  <Col key={index} sm={6}>
+                    <div className="compact-metric-card">
+                      <span className="compact-label">{item.label}</span>
+                      <strong className="compact-value">{item.value}</strong>
+                      <small className="compact-hint">{item.hint}</small>
                     </div>
                   </Col>
                 ))}
@@ -794,367 +764,817 @@ const EnergyMeteringOverview = () => {
           </Card>
         </Col>
 
-        {/* Live System Diagnostics & Insights Widget */}
-        <Col lg={4}>
-          <Card 
-            className="scada-card border-0 text-white h-100 d-flex flex-column justify-content-between p-4" 
-            style={{ 
-              background: '#090d16', 
-              border: '1px solid rgba(14, 165, 233, 0.15)', 
-              boxShadow: '0 10px 30px rgba(0,0,0,0.6)', 
-              cursor: 'default' 
-            }}
-          >
-            <div>
-              <div className="w-100 d-flex justify-content-between align-items-center mb-3">
-                <span className="text-info fw-bold fs-12 uppercase tracking-wider">Live Diagnostics</span>
-                <Badge bg="success" className="bg-opacity-15 text-success border border-success border-opacity-25 px-2.5 py-0.5 fs-12 uppercase fw-bold">ALL HEALTHY</Badge>
-              </div>
-
-              {/* INDUSTRIAL PHYSICAL DIGITAL METER */}
-              <div className="d-flex justify-content-center my-3">
-                <div className="mini-meter-poly">
-                  <div className="mini-blue-plate">
-                    <div className="d-flex justify-content-between align-items-center mb-2 px-1">
-                      <span className="text-white fw-bold mini-brand-name font-monospace">⚡ ACUREX-5000</span>
-                      <div className="d-flex align-items-center gap-1">
-                        <span className="text-secondary" style={{ fontSize: '0.55rem' }}>CAL</span>
-                        <div className={`mini-led-bulb ${calBlink ? 'active' : ''}`}></div>
-                      </div>
-                    </div>
-                    
-                    {/* LCD Screen Container */}
-                    <div className="mini-lcd-screen">
-                      <div className="mini-lcd-glow">
-                        <div className="mini-lcd-mode uppercase">{activeMiniLcd.label}</div>
-                        <div className="mini-lcd-val font-monospace">{activeMiniLcd.val}</div>
-                        <div className="mini-lcd-unit font-monospace">{activeMiniLcd.unit}</div>
-                      </div>
-                    </div>
-                    
-                    {/* Imp Label */}
-                    <div className="text-center my-2" style={{ fontSize: '0.55rem', color: 'rgba(255,255,255,0.4)', letterSpacing: '0.5px' }}>
-                      3200 imp/kWh | CLASS 1.0S | MULTI-FUNCTION DIGITAL METER
-                    </div>
-                    
-                    {/* Interactive Tactile Push Buttons */}
-                    <div className="d-flex justify-content-between gap-1 mt-2.5 pt-2 border-top border-white border-opacity-10">
-                      {miniLcdModes.map((mode, idx) => (
-                        <button 
-                          key={idx}
-                          onClick={() => {
-                            setAutoCycle(false);
-                            setMiniLcdIndex(idx);
-                          }}
-                          className={`btn btn-sm border-0 font-monospace text-uppercase py-1 px-1 fs-9 fw-bold transition-all ${miniLcdIndex === idx ? 'bg-info text-dark shadow-sm' : 'bg-dark bg-opacity-40 text-secondary'}`}
-                          style={{ 
-                            fontSize: '0.52rem', 
-                            borderRadius: '4px',
-                            flex: 1,
-                            boxShadow: miniLcdIndex === idx ? '0 0 6px rgba(14,165,233,0.4)' : 'none',
-                            transition: 'all 0.1s ease'
-                          }}
-                        >
-                          {idx === 0 ? 'LOAD' : idx === 1 ? 'KWH' : idx === 2 ? 'PF' : idx === 3 ? 'VOLT' : 'CURR'}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+        <Col xl={5}>
+          <Card className="overview-panel border-0 h-100 text-white">
+            <Card.Body className="p-4">
+              <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+                <div>
+                  <h5 className="mb-1 fw-black d-flex align-items-center gap-2">
+                    <Activity className="text-warning" size={18} /> Load Composition
+                  </h5>
+                  <p className="mb-0 text-secondary fs-13">Category-wise breakdown of visible sub-meter demand.</p>
                 </div>
+                <Badge className="overview-chip">{zoneBreakdown.length} categories</Badge>
               </div>
 
-              <div className="rounded-4 overflow-hidden mb-3" style={{ border: '1px solid rgba(255,255,255,0.04)', background: 'rgba(15, 23, 42, 0.5)' }}>
-                {[
-                  { label: 'Grid Feed', val: 'Connected', color: '#22c55e', dot: true },
-                  { label: 'Phase Voltage', val: '232.4 V', sub: 'Balanced', color: '#38bdf8' },
-                  { label: 'Frequency', val: `${metrics.frequency} Hz`, sub: 'Stable', color: '#f59e0b' },
-                  { label: 'Power Quality', val: 'Optimal', color: '#a855f7', badge: true }
-                ].map((item, i) => (
-                  <div key={i} className="d-flex justify-content-between align-items-center px-3 py-2.5 diag-row" style={{ borderBottom: i < 3 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
-                    <div className="d-flex align-items-center gap-2">
-                      <div style={{ width: 3, height: 18, borderRadius: 2, backgroundColor: item.color, opacity: 0.7 }}></div>
-                      <span className="fs-13" style={{ color: '#64748b' }}>{item.label}</span>
+              <div className="d-flex flex-column gap-3">
+                {zoneBreakdown.length === 0 ? (
+                  <div className="empty-panel">No sub meters available yet.</div>
+                ) : (
+                  zoneBreakdown.map(zone => (
+                    <div key={zone.name} className="zone-row">
+                      <div className="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                          <div className="text-white fw-bold">{zone.name}</div>
+                          <small className="text-secondary">{zone.meters} feed(s)</small>
+                        </div>
+                        <div className="text-end">
+                          <div className="text-white fw-bold">{formatMetric(zone.load)} kW</div>
+                          <small style={{ color: zone.color }}>{zone.percentage}% share</small>
+                        </div>
+                      </div>
+                      <div className="overview-progress">
+                        <div
+                          className="overview-progress-bar"
+                          style={{ width: `${zone.percentage}%`, backgroundColor: zone.color }}
+                        />
+                      </div>
                     </div>
-                    <div className="d-flex align-items-center gap-1.5">
-                      {item.dot && <span className="pulse-dot-green glow-green" style={{ width: 5, height: 5 }}></span>}
-                      <span className="fw-bold fs-13" style={{ color: item.color }}>{item.val}</span>
-                      {item.sub && <span className="fs-12" style={{ color: '#475569' }}>({item.sub})</span>}
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            </div>
-
-            <div 
-              className="p-3.5 rounded-4 transition-all hover-scale-102 shadow-sm"
-              style={{
-                background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.1), rgba(14, 165, 233, 0.02))',
-                border: '1px solid rgba(14, 165, 233, 0.25)',
-                borderLeft: '4px solid #0ea5e9',
-                backdropFilter: 'blur(4px)',
-              }}
-            >
-              <h6 className="fs-12 uppercase tracking-wider fw-black mb-2 text-info d-flex align-items-center gap-1.5">
-                <Zap size={14} className="text-info animate-pulse" /> Quick Insight
-              </h6>
-              <p className="mb-0 fs-13 text-secondary mt-1" style={{ lineHeight: '1.5', color: '#94a3b8' }}>
-                Your average power efficiency (Power Factor) is currently <strong className="text-white fs-14" style={{ textShadow: '0 0 6px rgba(14, 165, 233, 0.4)' }}>{displayMetrics.powerFactor}</strong>, which is extremely healthy! This helps avoid any low-power-factor billing penalties from the utility company.
-              </p>
-            </div>
+            </Card.Body>
           </Card>
         </Col>
       </Row>
 
-      {/* FEED METERS STATUS TABLE */}
-      <Card 
-        className="scada-card border-0 text-white mt-4 shadow-lg" 
-        style={{ 
-          background: 'linear-gradient(180deg, #0c1222, #0f172a)',
-          border: '1px solid rgba(14, 165, 233, 0.08)'
-        }}
-      >
+      <Card className="overview-panel border-0 text-white mb-4">
         <Card.Body className="p-4">
-          <div className="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-3">
-            <div className="d-flex align-items-center gap-3">
-              <h5 className="fw-black text-white d-flex align-items-center gap-2 uppercase tracking-wide fs-11 mb-0">
-                <Cpu className="text-info" size={18} /> Meter Status Registry
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+            <div>
+              <h5 className="mb-1 fw-black d-flex align-items-center gap-2">
+                <Layers3 className="text-success" size={18} /> Custom Meter Groups
               </h5>
-              <Badge bg="none" className="fs-11 uppercase fw-bold" style={{ backgroundColor: 'rgba(14, 165, 233, 0.08)', color: '#38bdf8', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
-                {tableRows.length} Total
-              </Badge>
+              <p className="mb-0 text-secondary fs-13">User-defined groups from Settings are summarized here with live meter values.</p>
             </div>
-            <div className="d-flex align-items-center gap-2">
-              <span className="fs-12 uppercase fw-bold" style={{ color: '#475569' }}>Group by Category</span>
-              <Form.Check 
-                type="switch"
-                id="group-by-category-switch"
-                checked={groupByCategory}
-                onChange={() => setGroupByCategory(!groupByCategory)}
-                className="scada-switch"
-              />
+            <div className="d-flex align-items-center gap-2 flex-wrap">
+              {groupActionStatus && <Badge className="overview-chip">{groupActionStatus}</Badge>}
+              <button
+                onClick={() => navigate('/energy-metering/sub', { state: { openGroupSettings: true } })}
+                className="btn btn-outline-info rounded-pill px-3 py-2 d-flex align-items-center gap-2 overview-action-btn"
+              >
+                <Plus size={15} /> Add Group
+              </button>
+              <Badge className="overview-chip">{groupedCollections.length} active groups</Badge>
             </div>
           </div>
-          
+
+          {groupedCollections.length === 0 ? (
+            <div className="empty-panel">
+              No custom groups saved yet. Create them in Settings to organize sub meters by area, tenant, or function.
+            </div>
+          ) : (
+            <Row className="g-4">
+              {groupedCollections.map(group => (
+                <Col key={group.id} lg={6}>
+                  <div className="group-card" style={{ borderColor: `${group.color}55` }}>
+                    <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                      <div>
+                        <div className="d-flex align-items-center gap-2 mb-2">
+                          <span className="group-dot" style={{ backgroundColor: group.color }} />
+                          <h6 className="mb-0 text-white fw-black">{group.name}</h6>
+                        </div>
+                        <small className="text-secondary">{group.meters.length} meter(s) linked</small>
+                      </div>
+                      <div className="text-end">
+                        <div className="text-white fw-bold">{formatMetric(group.totalLoad)} kW</div>
+                        <small style={{ color: group.color }}>{group.onlineCount} online</small>
+                      </div>
+                    </div>
+                    <div className="d-flex justify-content-end gap-2 mb-3">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleEditGroup(group.id);
+                        }}
+                        className="btn btn-outline-info rounded-pill px-3 py-1 d-flex align-items-center gap-2 overview-action-btn"
+                      >
+                        <Settings2 size={14} /> Edit Group
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteGroup(group.id);
+                        }}
+                        className="btn btn-outline-danger rounded-pill px-3 py-1 d-flex align-items-center gap-2 overview-delete-btn"
+                      >
+                        <Trash2 size={14} /> Delete
+                      </button>
+                    </div>
+
+                    <div className="d-flex flex-column gap-2">
+                      {group.meters.map(meter => (
+                        <div key={meter.id} className="group-meter-row" onClick={() => navigate(meter.path)}>
+                          <div>
+                            <div className="text-white fw-bold">{meter.name}</div>
+                            <small className="text-secondary">{meter.id}</small>
+                          </div>
+                          <div className="text-end d-flex flex-column align-items-end gap-2">
+                            <div className="text-white fw-bold">{formatMetric(meter.load)} kW</div>
+                            <small className={meter.isOnline ? 'text-success' : 'text-danger'}>
+                              {meter.isOnline ? 'Online' : 'Offline'}
+                            </small>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveMeterFromGroup(group.id, meter.templateId);
+                              }}
+                              className="btn btn-sm btn-outline-warning rounded-pill px-2 py-1 overview-remove-meter-btn"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          )}
+        </Card.Body>
+      </Card>
+
+      <Card className="overview-panel border-0 text-white mb-4">
+        <Card.Body className="p-4">
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+            <div>
+              <h5 className="mb-1 fw-black d-flex align-items-center gap-2">
+                <FolderTree className="text-warning" size={18} /> Ungrouped Live Feeds
+              </h5>
+              <p className="mb-0 text-secondary fs-13">Meters without a custom group still stay visible here with their latest values.</p>
+            </div>
+            <Badge className="overview-chip warning">{ungroupedMeters.length} visible</Badge>
+          </div>
+
+          {ungroupedMeters.length === 0 ? (
+            <div className="empty-panel">All available sub meters are already organized into groups.</div>
+          ) : (
+            <Row className="g-3">
+              {ungroupedMeters.map(meter => (
+                <Col key={meter.id} md={6} xl={4}>
+                  <div className="ungrouped-card" onClick={() => navigate(meter.path)}>
+                    <div className="d-flex justify-content-between align-items-start gap-3 mb-3">
+                      <div>
+                        <div className="text-white fw-bold">{meter.name}</div>
+                        <small className="text-secondary">{meter.category}</small>
+                      </div>
+                      <StatusBadge status={meter.status} />
+                    </div>
+                    <div className="ungrouped-grid">
+                      <div>
+                        <span>Load</span>
+                        <strong>{formatMetric(meter.load)} kW</strong>
+                      </div>
+                      <div>
+                        <span>Voltage</span>
+                        <strong>{formatMetric(meter.voltage)} V</strong>
+                      </div>
+                      <div>
+                        <span>Current</span>
+                        <strong>{formatMetric(meter.current)} A</strong>
+                      </div>
+                      <div>
+                        <span>PF</span>
+                        <strong>{formatMetric(meter.pf, 2)}</strong>
+                      </div>
+                    </div>
+                  </div>
+                </Col>
+              ))}
+            </Row>
+          )}
+        </Card.Body>
+      </Card>
+
+      <Card className="overview-panel border-0 text-white">
+        <Card.Body className="p-4">
+          <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+            <div>
+              <h5 className="mb-1 fw-black d-flex align-items-center gap-2">
+                <Cpu className="text-info" size={18} /> Meter Status Registry
+              </h5>
+              <p className="mb-0 text-secondary fs-13">Single registry for main feed, grouped feeds, and ungrouped sub meters.</p>
+            </div>
+            {spotlightFeed && (
+              <Badge className="overview-chip">
+                Spotlight: {spotlightFeed.name}
+              </Badge>
+            )}
+          </div>
+
           <div className="table-responsive">
-            <Table hover borderless className="align-middle scada-table text-white mb-0">
+            <Table hover borderless className="align-middle overview-table text-white mb-0">
               <thead>
-                <tr style={{ background: 'rgba(14, 165, 233, 0.04)', borderBottom: '1px solid rgba(14, 165, 233, 0.12)' }}>
-                  <th className="py-3 fs-12 text-uppercase tracking-wider" style={{ color: '#38bdf8' }}>Meter ID</th>
-                  <th className="py-3 fs-12 text-uppercase tracking-wider" style={{ color: '#38bdf8' }}>Meter Location / Label</th>
-                  <th className="py-3 text-center fs-12 text-uppercase tracking-wider" style={{ color: '#38bdf8' }}>Active Load</th>
-                  <th className="py-3 text-center fs-12 text-uppercase tracking-wider" style={{ color: '#38bdf8' }}>Voltage L-N</th>
-                  <th className="py-3 text-center fs-12 text-uppercase tracking-wider" style={{ color: '#38bdf8' }}>Current</th>
-                  <th className="py-3 text-center fs-12 text-uppercase tracking-wider" style={{ color: '#38bdf8' }}>Power Factor</th>
-                  <th className="py-3 text-end fs-12 text-uppercase tracking-wider" style={{ color: '#38bdf8' }}>Comm Status</th>
+                <tr>
+                  <th>Meter ID</th>
+                  <th>Feed Name</th>
+                  <th>Category / Group</th>
+                  <th className="text-center">Load</th>
+                  <th className="text-center">Voltage</th>
+                  <th className="text-center">Current</th>
+                  <th className="text-center">Power Factor</th>
+                  <th className="text-end">Status</th>
                 </tr>
               </thead>
               <tbody>
-                {/* 1. Always render the Main Incomer at the top */}
-                {tableRows.filter(r => r.isMain).map((row, idx) => (
-                  <tr 
-                    key={`main-${idx}`} 
-                    className="border-bottom border-secondary border-opacity-5"
-                    style={{ cursor: 'default', opacity: row.isMapped ? 1 : 0.45 }}
-                  >
-                    <td className={`py-3 font-monospace fs-13 ${row.isMapped ? 'text-info' : 'text-secondary'}`}>{row.id}</td>
-                    <td className={`py-3 fw-bold ${row.isMapped ? 'text-white' : 'text-secondary'}`}>
-                      {row.name} <Badge bg={row.isMapped ? 'primary' : 'secondary'} className="ms-2 fs-12 uppercase">{row.isMapped ? 'Incomer' : 'Not Configured'}</Badge>
-                    </td>
-                    <td className={`py-3 text-center fw-semibold ${row.isMapped ? 'text-white' : 'text-secondary'}`}>{row.load}</td>
-                    <td className="py-3 text-center text-secondary">{row.voltage}</td>
-                    <td className="py-3 text-center text-secondary">{row.current}</td>
-                    <td className="py-3 text-center text-secondary font-monospace">{row.pf}</td>
-                    <td className="py-3 text-end"><StatusBadge status={row.status} /></td>
-                  </tr>
-                ))}
-
-                {/* 2. Grouped or Flat list for Sub Meters */}
-                {!groupByCategory ? (
-                  tableRows.filter(r => !r.isMain).map((row, idx) => (
-                    <tr 
-                      key={`sub-${idx}`} 
-                      className="border-bottom border-secondary border-opacity-5" 
-                      onClick={() => navigate(row.path)}
-                      style={{ cursor: 'pointer', opacity: row.isMapped ? 1 : 0.45 }}
-                    >
-                      <td className={`py-3 font-monospace fs-13 ${row.isMapped ? 'text-info' : 'text-secondary'}`}>{row.id}</td>
-                      <td className={`py-3 fw-bold ${row.isMapped ? 'text-white' : 'text-secondary'}`}>{row.name}</td>
-                      <td className={`py-3 text-center fw-semibold ${row.isMapped ? 'text-white' : 'text-secondary'}`}>{row.load}</td>
-                      <td className="py-3 text-center text-secondary">{row.voltage}</td>
-                      <td className="py-3 text-center text-secondary">{row.current}</td>
-                      <td className="py-3 text-center text-secondary font-monospace">{row.pf}</td>
-                      <td className="py-3 text-end"><StatusBadge status={row.status} /></td>
-                    </tr>
-                  ))
-                ) : (
-                  Object.entries(groupedSubMeters).map(([categoryName, rows], groupIdx) => (
-                    <React.Fragment key={`group-${groupIdx}`}>
-                      {/* Group Header Row */}
-                      {(() => {
-                        let headerTitle = categoryName;
-                        if (categoryName === 'Commercial') headerTitle = '🏢 Commercial & Office Feeds';
-                        else if (categoryName === 'Data Center') headerTitle = '🖥️ Servers & UPS Rooms';
-                        else if (categoryName === 'Water Management') headerTitle = '💧 Water Systems & Pump Feeds';
-                        else if (categoryName === 'HVAC') headerTitle = '❄️ HVAC & Air Conditioning Load';
-                        else if (categoryName === 'Lighting') headerTitle = '💡 Outdoor & Common Lighting';
-                        else if (categoryName === 'Sub Meter') headerTitle = '⚡ General Feeds & Sub-Meters';
-                        else if (categoryName === 'Other Feeds') headerTitle = '⚡ General Feeds & Sub-Meters';
-                        
-                        const colorsMap = {
-                          'Commercial': '#38bdf8',
-                          'Data Center': '#fb923c',
-                          'Water Management': '#4ade80',
-                          'HVAC': '#f87171',
-                          'Lighting': '#c084fc',
-                          'Sub Meter': '#94a3b8'
-                        };
-                        const categoryColor = colorsMap[categoryName] || '#94a3b8';
-                        
-                        return (
-                          <tr className="bg-dark bg-opacity-40 border-bottom border-secondary border-opacity-10">
-                            <td 
-                              colSpan={7} 
-                              className="py-2.5 px-3 fw-black uppercase tracking-widest fs-12" 
-                              style={{ 
-                                borderLeft: `4px solid ${categoryColor}`,
-                                backgroundColor: `rgba(255, 255, 255, 0.02)`,
-                                color: categoryColor,
-                                letterSpacing: '1.5px' 
-                              }}
-                            >
-                              {headerTitle} ({rows.length} {rows.length === 1 ? 'Feed' : 'Feeds'})
-                            </td>
-                          </tr>
-                        );
-                      })()}
-                      {rows.map((row, idx) => (
-                        <tr 
-                          key={`grouped-sub-${groupIdx}-${idx}`} 
-                          className="border-bottom border-secondary border-opacity-5" 
-                          onClick={() => navigate(row.path)}
-                          style={{ cursor: 'pointer', opacity: row.isMapped ? 1 : 0.45 }}
+                {meterRows.map(row => {
+                  const linkedGroup = groupLookup.get(String(row.templateId));
+                  return (
+                    <tr key={row.id} onClick={() => navigate(row.path)}>
+                      <td className="font-monospace text-info">{row.id}</td>
+                      <td>
+                        <div className="fw-bold text-white">{row.name}</div>
+                        {row.isMain && <small className="text-secondary">Primary incomer</small>}
+                      </td>
+                      <td>
+                        <Badge
+                          bg="none"
+                          className="registry-badge"
+                          style={{
+                            color: linkedGroup?.color || CATEGORY_COLORS[row.category] || '#94a3b8',
+                            borderColor: `${linkedGroup?.color || CATEGORY_COLORS[row.category] || '#94a3b8'}40`
+                          }}
                         >
-                          <td className={`py-3 font-monospace fs-13 ps-4 ${row.isMapped ? 'text-info' : 'text-secondary'}`}>└─ {row.id}</td>
-                          <td className={`py-3 fw-bold ${row.isMapped ? 'text-white' : 'text-secondary'}`}>{row.name}</td>
-                          <td className={`py-3 text-center fw-semibold ${row.isMapped ? 'text-white' : 'text-secondary'}`}>{row.load}</td>
-                          <td className="py-3 text-center text-secondary">{row.voltage}</td>
-                          <td className="py-3 text-center text-secondary">{row.current}</td>
-                          <td className="py-3 text-center text-secondary font-monospace">{row.pf}</td>
-                          <td className="py-3 text-end"><StatusBadge status={row.status} /></td>
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))
-                )}
+                          {row.isMain ? 'Main Feed' : linkedGroup?.name || row.category || 'Ungrouped'}
+                        </Badge>
+                      </td>
+                      <td className="text-center">{formatMetric(row.load)} kW</td>
+                      <td className="text-center">{formatMetric(row.voltage)} V</td>
+                      <td className="text-center">{formatMetric(row.current)} A</td>
+                      <td className="text-center">{formatMetric(row.pf, 2)}</td>
+                      <td className="text-end"><StatusBadge status={row.status} /></td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </Table>
           </div>
         </Card.Body>
       </Card>
 
-      <style dangerouslySetInnerHTML={{ __html: `
-        /* === CORE CARD SYSTEM === */
-        .scada-card { background: #0f172a; border-radius: 20px; transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 24px -4px rgba(0,0,0,0.5); position: relative; }
-        .scada-card:hover { transform: translateY(-3px); box-shadow: 0 12px 40px -8px rgba(0,0,0,0.6); }
-        .card-ambient-glow { position: absolute; inset: 0; pointer-events: none; z-index: 1; opacity: 0.6; transition: opacity 0.3s; }
-        .scada-card:hover .card-ambient-glow { opacity: 1; }
+      <Modal
+        show={showGroupManager}
+        onHide={() => setShowGroupManager(false)}
+        size="xl"
+        centered
+        dialogClassName="overview-group-modal"
+        contentClassName="border-0 text-white"
+      >
+        <Modal.Header closeButton closeVariant="white" className="border-bottom border-secondary border-opacity-25 py-3" style={{ background: 'rgba(15, 23, 42, 0.55)' }}>
+          <Modal.Title className="fw-bold d-flex align-items-center gap-2">
+            <Settings2 className="text-info" size={18} /> Manage Saved Group Settings
+          </Modal.Title>
+        </Modal.Header>
+        <Modal.Body className="p-4" style={{ background: 'rgba(15, 23, 42, 0.96)' }}>
+          <div className="d-flex justify-content-between align-items-start flex-wrap gap-3 mb-4">
+            <div>
+              <h6 className="text-info fw-bold mb-2">Edit or delete overview groups from here</h6>
+              <p className="text-secondary mb-0" style={{ fontSize: '0.88rem' }}>
+                Yahin se group name, color aur meter mapping update ho jayegi. Save karte hi Neon aur overview dono update ho jayenge.
+              </p>
+            </div>
+            <div className="d-flex gap-2 flex-wrap">
+              <button onClick={addDraftGroup} className="btn btn-outline-info rounded-pill px-3 py-2 d-flex align-items-center gap-2">
+                <Plus size={15} /> Add Group
+              </button>
+              <button onClick={handleSaveDraftGroups} className="btn btn-info rounded-pill px-4 py-2 fw-bold d-flex align-items-center gap-2">
+                <Settings2 size={15} /> Save Settings
+              </button>
+            </div>
+          </div>
 
-        /* === TYPOGRAPHY === */
+          <Row className="g-4">
+            <Col lg={4}>
+              <div className="grouping-panel h-100">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                  <span className="grouping-panel-title">Available Single Meters</span>
+                  <Badge bg="dark" className="border border-info border-opacity-25 text-info">{subMeterRows.length}</Badge>
+                </div>
+                <div className="d-flex flex-column gap-2">
+                  {subMeterRows.map(meter => {
+                    const assignedGroup = groupDrafts.find(group => group.meterIds.includes(String(meter.templateId)));
+                    return (
+                      <div key={meter.id} className="group-meter-pill">
+                        <div>
+                          <div className="text-white fw-bold fs-13">{meter.name}</div>
+                          <small className="text-secondary">{meter.category}</small>
+                        </div>
+                        <Badge
+                          bg="none"
+                          className="border"
+                          style={{
+                            color: assignedGroup?.color || '#94a3b8',
+                            borderColor: `${assignedGroup?.color || '#94a3b8'}55`,
+                            background: assignedGroup ? `${assignedGroup.color}15` : 'rgba(148,163,184,0.08)'
+                          }}
+                        >
+                          {assignedGroup?.name || 'Single'}
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </Col>
+
+            <Col lg={8}>
+              <div className="d-flex flex-column gap-3">
+                {groupDrafts.length === 0 ? (
+                  <div className="grouping-panel text-center py-5">
+                    <h6 className="text-white mb-2">No groups created yet</h6>
+                    <p className="text-secondary mb-0">Add a group if you want combined values in overview. Otherwise meters stay single by default.</p>
+                  </div>
+                ) : (
+                  groupDrafts.map((group, index) => (
+                    <div key={group.id} className="grouping-panel">
+                      {(() => {
+                        const normalizedName = String(group.name || '').trim().toLowerCase();
+                        const hasDuplicateName = normalizedName && duplicateDraftGroupNames.has(normalizedName);
+                        return (
+                      <div className="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-3">
+                        <div className="d-flex align-items-center gap-3 flex-grow-1">
+                          <div className="grouping-strip" style={{ background: group.color }} />
+                          <div className="d-flex gap-2 flex-wrap flex-grow-1">
+                            <Form.Control
+                              value={group.name}
+                              onChange={(e) => updateDraftGroup(group.id, 'name', e.target.value)}
+                              className={`grouping-input ${hasDuplicateName ? 'is-invalid' : ''}`}
+                              placeholder={`Group ${index + 1}`}
+                            />
+                            <Form.Control
+                              type="color"
+                              value={group.color}
+                              onChange={(e) => updateDraftGroup(group.id, 'color', e.target.value)}
+                              className="grouping-color-input"
+                            />
+                            {hasDuplicateName && (
+                              <div className="w-100">
+                                <small className="text-danger">This group name is already used. Choose a different name.</small>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <button onClick={() => removeDraftGroup(group.id)} className="btn btn-outline-danger rounded-pill px-3 py-2 d-flex align-items-center gap-2">
+                          <Trash2 size={14} /> Remove
+                        </button>
+                      </div>
+                        );
+                      })()}
+
+                      <div className="d-flex flex-wrap gap-2">
+                        {getDraftMeterOptions(group.id).map(meter => {
+                          const meterKey = String(meter.templateId);
+                          const checked = group.meterIds.includes(meterKey);
+                          const assignedElsewhere = getDraftAssignedGroupForMeter(meterKey, group.id);
+                          const disabled = !checked && !!assignedElsewhere;
+                          return (
+                            <label
+                              key={`${group.id}-${meter.templateId}`}
+                              className={`grouping-chip ${checked ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
+                              style={{
+                                borderColor: checked ? `${group.color}55` : disabled ? 'rgba(239,68,68,0.28)' : 'rgba(148,163,184,0.12)',
+                                background: checked ? `${group.color}15` : disabled ? 'rgba(51, 65, 85, 0.55)' : 'rgba(15,23,42,0.72)',
+                                opacity: disabled ? 0.5 : 1,
+                                pointerEvents: disabled ? 'none' : 'auto'
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                disabled={disabled}
+                                onChange={() => toggleDraftMeter(group.id, meter.templateId)}
+                              />
+                              <span className="text-white fw-bold fs-13">{meter.name}</span>
+                              <small className={disabled ? 'text-danger' : 'text-secondary'}>
+                                {disabled ? `Locked in ${assignedElsewhere.name}` : meter.category}
+                              </small>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </Col>
+          </Row>
+        </Modal.Body>
+        <Modal.Footer className="border-top border-secondary border-opacity-25 py-3" style={{ background: 'rgba(15, 23, 42, 0.8)' }}>
+          <Button variant="outline-secondary" className="text-white border-secondary border-opacity-25" onClick={() => setShowGroupManager(false)}>
+            Close
+          </Button>
+          <Button variant="info" className="fw-bold px-4" onClick={handleSaveDraftGroups} disabled={duplicateDraftGroupNames.size > 0}>
+            Save to Neon
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      <Modal
+        show={saveSuccess}
+        onHide={() => setSaveSuccess(false)}
+        centered
+        dialogClassName="success-modal"
+        contentClassName="border-0 text-white"
+      >
+        <Modal.Body className="p-4 text-center" style={{ background: 'linear-gradient(180deg, rgba(8,47,73,0.96), rgba(15,23,42,0.98))' }}>
+            <div className="success-pop-wrap">
+            <div className="success-pop-icon">
+              <CheckCircle2 size={38} />
+            </div>
+            <h4 className="text-white fw-black mb-2">{saveSuccessMessage}</h4>
+            <p className="text-info mb-0">Overview updated.</p>
+          </div>
+        </Modal.Body>
+      </Modal>
+
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+        .energy-overview-page {
+          --panel-bg: linear-gradient(180deg, rgba(12,18,34,0.98), rgba(15,23,42,0.96));
+          --panel-border: rgba(148,163,184,0.12);
+        }
+        .energy-hero {
+          padding: 20px 22px;
+          border-radius: 24px;
+          background:
+            radial-gradient(circle at top left, rgba(56,189,248,0.10), transparent 30%),
+            radial-gradient(circle at top right, rgba(59,130,246,0.08), transparent 20%),
+            linear-gradient(135deg, rgba(15,23,42,0.98), rgba(12,19,35,0.96));
+          border: 1px solid rgba(148,163,184,0.12);
+          box-shadow: 0 22px 50px rgba(2,6,23,0.28);
+        }
+        .hero-badge,
+        .overview-chip {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          padding: 10px 14px;
+          border-radius: 999px;
+          border: 1px solid rgba(56,189,248,0.2);
+          background: rgba(56,189,248,0.08);
+          color: #7dd3fc;
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.8px;
+          text-transform: uppercase;
+        }
+        .overview-chip.warning {
+          background: rgba(250,204,21,0.1);
+          border-color: rgba(250,204,21,0.22);
+          color: #fde68a;
+        }
+        .overview-subtitle { max-width: 760px; }
+        .overview-stat-card,
+        .overview-panel {
+          background: linear-gradient(180deg, rgba(14,20,35,0.98), rgba(15,23,42,0.96));
+          border: 1px solid var(--panel-border);
+          border-radius: 24px;
+          box-shadow: 0 18px 40px rgba(2,6,23,0.24);
+        }
+        .overview-summary-band {
+          background:
+            linear-gradient(135deg, rgba(8,47,73,0.18), transparent 40%),
+            linear-gradient(180deg, rgba(14,20,35,0.98), rgba(15,23,42,0.96));
+        }
+        .overview-stat-card { min-height: 190px; }
+        .metric-label {
+          color: #94a3b8;
+          font-size: 0.74rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        .metric-icon-shell {
+          width: 42px;
+          height: 42px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 14px;
+          background: rgba(255,255,255,0.04);
+          color: #f8fafc;
+        }
+        .metric-value {
+          font-size: 2rem;
+          font-weight: 900;
+          letter-spacing: -0.03em;
+          color: #f8fafc;
+          margin-bottom: 6px;
+        }
+        .metric-note { color: #64748b; font-size: 0.84rem; }
+        .highlight-tile {
+          min-height: 180px;
+          border-radius: 22px;
+          padding: 22px;
+          display: flex;
+          flex-direction: column;
+          justify-content: space-between;
+        }
+        .highlight-tile.primary {
+          background:
+            radial-gradient(circle at top left, rgba(56,189,248,0.24), transparent 40%),
+            linear-gradient(135deg, rgba(8,47,73,0.9), rgba(12,18,34,0.95));
+        }
+        .highlight-tile.accent {
+          background:
+            radial-gradient(circle at top right, rgba(250,204,21,0.22), transparent 35%),
+            linear-gradient(135deg, rgba(51,65,85,0.8), rgba(12,18,34,0.95));
+        }
+        .tile-label {
+          color: rgba(255,255,255,0.72);
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          font-size: 0.75rem;
+          font-weight: 800;
+        }
+        .tile-title {
+          margin: 0;
+          color: #fff;
+          font-weight: 900;
+          line-height: 1.12;
+          font-size: 1.6rem;
+          max-width: 90%;
+        }
+        .tile-foot { color: rgba(255,255,255,0.72); font-size: 0.82rem; }
+        .compact-metric-card {
+          height: 100%;
+          padding: 16px 18px;
+          border-radius: 18px;
+          border: 1px solid rgba(148,163,184,0.1);
+          background: rgba(15,23,42,0.72);
+        }
+        .compact-label {
+          display: block;
+          color: #94a3b8;
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          margin-bottom: 8px;
+          font-weight: 800;
+        }
+        .compact-value {
+          display: block;
+          color: #f8fafc;
+          font-size: 1.1rem;
+          margin-bottom: 4px;
+        }
+        .compact-hint { color: #64748b; }
+        .zone-row {
+          padding: 16px 18px;
+          border-radius: 18px;
+          background: rgba(15,23,42,0.72);
+          border: 1px solid rgba(148,163,184,0.1);
+        }
+        .overview-progress {
+          height: 10px;
+          background: rgba(255,255,255,0.05);
+          border-radius: 999px;
+          overflow: hidden;
+        }
+        .overview-progress-bar {
+          height: 100%;
+          border-radius: inherit;
+          transition: width 0.35s ease;
+        }
+        .group-card,
+        .ungrouped-card {
+          height: 100%;
+          border-radius: 22px;
+          padding: 20px;
+          border: 1px solid rgba(148,163,184,0.12);
+          background: rgba(15,23,42,0.72);
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+        .group-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 999px;
+          box-shadow: 0 0 16px currentColor;
+        }
+        .group-meter-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: rgba(2,6,23,0.28);
+          border: 1px solid rgba(148,163,184,0.08);
+          cursor: pointer;
+          transition: transform 0.18s ease, border-color 0.18s ease;
+        }
+        .group-meter-row:hover,
+        .ungrouped-card:hover,
+        .overview-table tbody tr:hover {
+          transform: translateY(-2px);
+          border-color: rgba(56,189,248,0.22);
+        }
+        .ungrouped-card { cursor: pointer; transition: transform 0.18s ease, border-color 0.18s ease; }
+        .ungrouped-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 14px;
+        }
+        .ungrouped-grid span {
+          display: block;
+          color: #94a3b8;
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+          margin-bottom: 6px;
+        }
+        .ungrouped-grid strong { color: #fff; font-size: 1rem; }
+        .overview-table {
+          border-collapse: separate;
+          border-spacing: 0;
+          background: rgba(8, 13, 24, 0.92);
+          border: 1px solid rgba(56, 189, 248, 0.10);
+          border-radius: 18px;
+          overflow: hidden;
+        }
+        .overview-table thead {
+          background: linear-gradient(180deg, rgba(16, 25, 44, 0.98), rgba(11, 18, 32, 0.96));
+        }
+        .overview-table thead th {
+          color: #7dd3fc;
+          font-size: 0.72rem;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+          padding: 18px 16px;
+          border-bottom: 1px solid rgba(56,189,248,0.14);
+          background: transparent;
+        }
+        .overview-table tbody tr {
+          cursor: pointer;
+          transition: transform 0.18s ease, background 0.18s ease;
+          background: rgba(10, 17, 30, 0.96);
+        }
+        .overview-table tbody td {
+          color: #dbe7f5;
+          padding-top: 16px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid rgba(148,163,184,0.06);
+          background: transparent;
+        }
+        .overview-table tbody tr:nth-child(even) {
+          background: rgba(13, 20, 35, 0.98);
+        }
+        .overview-table tbody tr:hover {
+          background: rgba(22, 34, 58, 0.98) !important;
+        }
+        .registry-badge {
+          border: 1px solid rgba(148,163,184,0.2);
+          background: rgba(15,23,42,0.95);
+          font-size: 0.72rem;
+          font-weight: 800;
+          padding: 8px 10px;
+        }
+        .summary-band-card {
+          height: 100%;
+          border-radius: 18px;
+          padding: 16px 18px;
+          border: 1px solid rgba(148,163,184,0.12);
+          background: rgba(15,23,42,0.66);
+        }
+        .overview-action-btn,
+        .overview-delete-btn {
+          border-color: rgba(56,189,248,0.25);
+          color: #7dd3fc;
+          background: rgba(56,189,248,0.08);
+        }
+        .overview-delete-btn {
+          border-color: rgba(239,68,68,0.25);
+          color: #fca5a5;
+          background: rgba(239,68,68,0.06);
+        }
+        .overview-remove-meter-btn {
+          border-color: rgba(245,158,11,0.28);
+          color: #fcd34d;
+          background: rgba(245,158,11,0.08);
+          font-size: 0.68rem;
+          font-weight: 700;
+        }
+        .grouping-panel {
+          background: linear-gradient(180deg, rgba(15,23,42,0.78), rgba(15,23,42,0.62));
+          border: 1px solid rgba(148,163,184,0.12);
+          border-radius: 18px;
+          padding: 18px;
+          box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .grouping-panel-title {
+          color: #cbd5e1;
+          font-size: 0.72rem;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 1px;
+        }
+        .group-meter-pill {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          border-radius: 14px;
+          padding: 12px 14px;
+          background: rgba(15,23,42,0.72);
+          border: 1px solid rgba(148,163,184,0.1);
+        }
+        .grouping-strip {
+          width: 12px;
+          height: 48px;
+          border-radius: 999px;
+          box-shadow: 0 0 18px rgba(255,255,255,0.12);
+        }
+        .grouping-input {
+          min-width: 240px;
+          background: rgba(15,23,42,0.92) !important;
+          color: #fff !important;
+          border: 1px solid rgba(148,163,184,0.18) !important;
+        }
+        .grouping-color-input {
+          width: 54px;
+          min-height: 42px;
+          background: transparent !important;
+          border: 1px solid rgba(148,163,184,0.18) !important;
+          border-radius: 12px;
+          padding: 4px;
+        }
+        .grouping-chip {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          min-width: 220px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          border: 1px solid rgba(148,163,184,0.12);
+          cursor: pointer;
+          transition: transform 0.18s ease, border-color 0.18s ease;
+        }
+        .grouping-chip:hover { transform: translateY(-2px); }
+        .grouping-chip input { margin-bottom: 6px; }
+        .grouping-chip.active { box-shadow: 0 12px 22px rgba(2,6,23,0.22); }
+        .grouping-chip.disabled {
+          cursor: not-allowed;
+        }
+        .grouping-chip.disabled:hover {
+          transform: none;
+        }
+        .overview-group-modal .modal-content,
+        .success-modal .modal-content {
+          background: transparent !important;
+          backdrop-filter: blur(18px);
+          -webkit-backdrop-filter: blur(18px);
+          border-radius: 24px;
+          overflow: hidden;
+          box-shadow: 0 20px 50px rgba(0,0,0,0.45);
+        }
+        .success-pop-wrap {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 14px;
+          padding: 12px 4px;
+        }
+        .success-pop-icon {
+          width: 78px;
+          height: 78px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 999px;
+          color: #86efac;
+          background: radial-gradient(circle, rgba(34,197,94,0.28), rgba(34,197,94,0.08));
+          box-shadow: 0 0 30px rgba(34,197,94,0.22);
+        }
+        .empty-panel {
+          padding: 24px;
+          border-radius: 18px;
+          border: 1px dashed rgba(148,163,184,0.18);
+          color: #94a3b8;
+          background: rgba(15,23,42,0.5);
+        }
         .fw-black { font-weight: 900 !important; }
-        .fs-12 { font-size: 0.65rem !important; }
-        .fs-13 { font-size: 0.8rem !important; }
-        .fs-7 { font-size: 1.1rem !important; }
-        .tracking-widest { letter-spacing: 2px !important; }
-
-        /* === INTERACTIVE SCALES === */
-        .hover-scale-101 { transition: transform 0.2s ease; }
-        .hover-scale-101:hover { transform: scale(1.01); }
-        .hover-scale-102 { transition: transform 0.2s ease; }
-        .hover-scale-102:hover { transform: scale(1.02); }
-        .hover-scale-105 { transition: transform 0.2s ease; }
-        .hover-scale-105:hover { transform: scale(1.05); }
-
-        /* === GRID PARAMETER CELLS === */
-        .grid-param-cell { transition: all 0.25s ease; cursor: default; }
-        .grid-param-cell:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
-
-        /* === TABLE === */
-        .scada-table tbody tr { transition: all 0.2s ease; cursor: pointer; }
-        .scada-table tbody tr:hover { background: rgba(14, 165, 233, 0.04) !important; }
-
-        /* === DIAGNOSTICS ROW === */
-        .diag-row { transition: background 0.15s ease; }
-        .diag-row:hover { background: rgba(255,255,255,0.02); }
-
-        /* === PULSE ANIMATIONS === */
-        .pulse-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; animation: pulseGlow 2s infinite; }
-        .animate-pulse { animation: pulseAnim 2s infinite; }
-        .scada-progress { background-color: #030712 !important; border-radius: 8px; border: 1px solid rgba(255,255,255,0.02); }
-
-        /* === LIVE GREEN PULSE === */
-        .pulse-dot-green {
-          width: 7px; height: 7px; border-radius: 50%; background-color: #22c55e;
-          display: inline-block; box-shadow: 0 0 8px #22c55e;
-          animation: pulseGlowGreen 1.8s infinite ease-in-out;
+        .fs-13 { font-size: 0.82rem !important; }
+        .fs-7 { font-size: 1rem !important; }
+        @media (max-width: 767px) {
+          .metric-value { font-size: 1.7rem; }
+          .tile-title { font-size: 1.3rem; max-width: 100%; }
+          .ungrouped-grid { grid-template-columns: 1fr; }
         }
-        .glow-green { box-shadow: 0 0 12px rgba(34, 197, 94, 0.4); }
-        @keyframes pulseGlowGreen {
-          0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-          70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-          100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-        }
-
-        /* === MINI METER VISUAL === */
-        .mini-meter-poly {
-          background: rgba(15, 23, 42, 0.65); border: 4px solid rgba(255, 255, 255, 0.12);
-          border-radius: 16px; padding: 8px; width: 100%; max-width: 250px;
-          box-shadow: 0 12px 30px rgba(0,0,0,0.6), inset 0 2px 8px rgba(255,255,255,0.05);
-        }
-        .mini-blue-plate {
-          background: linear-gradient(135deg, #1e293b, #0f172a);
-          border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 12px;
-        }
-        .mini-brand-name { font-size: 0.75rem !important; letter-spacing: 1.5px !important; }
-        .mini-lcd-screen {
-          background: #022c22; border-radius: 6px; padding: 4px;
-          box-shadow: inset 0 2px 6px rgba(0,0,0,0.9); border: 1px solid rgba(255,255,255,0.05);
-        }
-        .mini-lcd-glow {
-          background: #064e3b; height: 38px; border-radius: 4px;
-          display: flex; align-items: center; justify-content: space-between; padding: 0 8px;
-          box-shadow: inset 0 0 10px rgba(0,0,0,0.8), 0 0 5px rgba(34,197,94,0.15);
-          position: relative; border: 1px solid #065f46;
-        }
-        .mini-lcd-mode {
-          position: absolute; top: 2px; left: 8px; font-size: 0.5rem;
-          color: #4ade80; font-weight: 800; opacity: 0.8; letter-spacing: 0.5px;
-        }
-        .mini-lcd-val {
-          font-size: 1.2rem; font-weight: 900; color: #4ade80; margin-top: 6px;
-          text-shadow: 0 0 5px rgba(74,222,128,0.5);
-        }
-        .mini-lcd-unit {
-          font-size: 0.65rem; font-weight: 900; color: #4ade80;
-          align-self: flex-end; margin-bottom: 2px; text-shadow: 0 0 5px rgba(74,222,128,0.5);
-        }
-        .mini-led-bulb {
-          width: 7px; height: 7px; border-radius: 50%; background: #7f1d1d;
-          transition: background-color 0.1s ease;
-        }
-        .mini-led-bulb.active {
-          background: #ef4444; box-shadow: 0 0 6px #ef4444, 0 0 12px #ef4444;
-        }
-
-        /* === KEYFRAMES === */
-        @keyframes pulseGlow {
-          0%, 100% { opacity: 0.6; }
-          50% { opacity: 1; filter: brightness(1.2); }
-        }
-        @keyframes pulseAnim {
-          0%, 100% { transform: scale(1); }
-          50% { transform: scale(1.04); }
-        }
-      `}} />
+      `
+        }}
+      />
     </div>
   );
 };
