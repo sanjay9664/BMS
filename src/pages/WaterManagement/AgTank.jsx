@@ -454,10 +454,6 @@ const AgTank = () => {
           let updated = false;
 
           const agTemplates = templates.filter(t => t.module === 'AG Tank');
-          const genericAgTemplates = agTemplates.filter(t =>
-            (!t.mapping?.agTankRange?.domStart && !t.mapping?.agTankRange?.flushStart) ||
-            t.mapping?.agTankRange?.domStart === 'AG TANK' || t.mapping?.agTankRange?.flushStart === 'AG TANK'
-          );
 
           const next = prev.map((tank, index) => {
             const tankName = `${tank.type === 'DOMESTIC' ? 'TOWER-D' : 'TOWER-F'}-${tank.localId}`;
@@ -466,10 +462,6 @@ const AgTank = () => {
               (tank.type === 'DOMESTIC' && t.mapping?.agTankRange?.domStart === tankName) ||
               (tank.type === 'FLUSHING' && t.mapping?.agTankRange?.flushStart === tankName)
             );
-
-            if (!template && genericAgTemplates.length > index) {
-              template = genericAgTemplates[index];
-            }
 
             let newTank = { ...tank };
 
@@ -619,6 +611,15 @@ const AgTank = () => {
                     newTank.status = 'Stopped';
                   }
                 }
+              }
+            } else {
+              // Explicitly unmapped if no template is found
+              if (newTank.isMapped || newTank.isOnline) {
+                newTank.isMapped = false;
+                newTank.isOnline = false;
+                newTank.level = 0;
+                newTank.status = 'Stopped';
+                updated = true;
               }
             }
             return newTank;

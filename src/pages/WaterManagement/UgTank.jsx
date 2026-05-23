@@ -136,13 +136,7 @@ const UgTank = () => {
         let changed = false;
         const next = prev.map((tank, index) => {
           const ugTemplates = templates.filter(t => t.module === 'UG Tank');
-          const genericUgTemplates = ugTemplates.filter(t =>
-            !t.mapping?.ugTankRange?.name || t.mapping?.ugTankRange?.name === "" || t.mapping?.ugTankRange?.name === "UG TANK"
-          );
           let template = ugTemplates.find(t => t.mapping?.ugTankRange?.name === tank.name);
-          if (!template && genericUgTemplates.length > index) {
-            template = genericUgTemplates[index];
-          }
           if (template && template.mapping) {
             let deviceId = template.mapping.deviceId || template.mapping.ugTankLevelConfig?.device || template.mapping.ugLevelConfig?.device;
             if (!deviceId) {
@@ -171,9 +165,9 @@ const UgTank = () => {
               return { ...tank, isOnline, isMapped };
             }
           } else {
-            if (tank.isMapped !== false) {
+            if (tank.isMapped !== false || tank.isOnline !== false) {
               changed = true;
-              return { ...tank, isMapped: false };
+              return { ...tank, isMapped: false, isOnline: false };
             }
           }
           return tank;
@@ -208,16 +202,8 @@ const UgTank = () => {
             t.module === 'UG Tank' || t.module === 'UG Pump'
           );
 
-          const genericUgTemplates = ugTemplates.filter(t =>
-            !t.mapping?.ugTankRange?.name || t.mapping?.ugTankRange?.name === "" || t.mapping?.ugTankRange?.name === "UG TANK"
-          );
-
           const next = prev.map((tank, index) => {
             let template = ugTemplates.find(t => t.mapping?.ugTankRange?.name === tank.name);
-
-            if (!template && genericUgTemplates.length > index) {
-              template = genericUgTemplates[index];
-            }
 
             let config = null;
 
@@ -252,6 +238,7 @@ const UgTank = () => {
               isMapped = !!deviceId;
             } else {
               isMapped = false;
+              isOnline = false;
             }
 
             let nextTank = { ...tank };
@@ -261,7 +248,12 @@ const UgTank = () => {
               updated = true;
             }
 
-            if (config && config.field && config.module) {
+            if (!isMapped) {
+              if (nextTank.level !== 0) {
+                nextTank.level = 0;
+                updated = true;
+              }
+            } else if (config && config.field && config.module) {
               const stat = stats.find(s => String(s.moduleId) === String(config.module) || String(s.meta?.module_id) === String(config.module));
               if (stat && stat.meta && stat.meta[config.field] !== undefined) {
                 const newLevel = Math.round(Number(stat.meta[config.field]));
