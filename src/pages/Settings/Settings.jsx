@@ -11,7 +11,6 @@ import {
   FolderTree
 } from 'lucide-react';
 
-const GROUP_STORAGE_KEY = 'scada_energy_meter_groups';
 const GROUP_EVENT_NAME = 'energy-meter-groups-updated';
 const GROUP_COLORS = ['#38bdf8', '#22c55e', '#f59e0b', '#f97316', '#a78bfa', '#f43f5e'];
 
@@ -34,6 +33,17 @@ const createDefaultModules = () => ({
 
 const normalizeGroups = (groups, availableMeters) => {
   const validIds = new Set(availableMeters.map(m => String(m.id)));
+  const meterLookup = new Map(
+    availableMeters.map(meter => [
+      String(meter.id),
+      {
+        id: String(meter.id),
+        label: meter.label,
+        type: meter.type || 'Sub Meter',
+        category: meter.type || 'Sub Meter'
+      }
+    ])
+  );
   return (Array.isArray(groups) ? groups : [])
     .map((group, index) => ({
       id: group?.id || `group-${Date.now()}-${index}`,
@@ -41,22 +51,24 @@ const normalizeGroups = (groups, availableMeters) => {
       color: group?.color || GROUP_COLORS[index % GROUP_COLORS.length],
       meterIds: Array.from(
         new Set((Array.isArray(group?.meterIds) ? group.meterIds : []).map(id => String(id)))
-      ).filter(id => validIds.has(id))
+      ).filter(id => validIds.has(id)),
+      meterDetails: Array.from(
+        new Set((Array.isArray(group?.meterIds) ? group.meterIds : []).map(id => String(id)))
+      )
+        .filter(id => validIds.has(id))
+        .map(id => meterLookup.get(id))
+        .filter(Boolean)
     }))
     .filter(group => group.name);
 };
 
-const loadSavedGroups = (availableMeters) => {
-  try {
-    const raw = localStorage.getItem(GROUP_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return normalizeGroups(parsed, availableMeters);
-    if (Array.isArray(parsed?.groups)) return normalizeGroups(parsed.groups, availableMeters);
-  } catch (error) {
-    console.error('Failed to parse energy meter groups:', error);
+const fetchSavedGroupsFromBackend = async (availableMeters) => {
+  const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`);
+  if (!response.ok) {
+    throw new Error('Failed to fetch saved meter groups');
   }
-  return [];
+  const data = await response.json();
+  return normalizeGroups(Array.isArray(data?.groups) ? data.groups : [], availableMeters);
 };
 
 const Settings = () => {
@@ -68,7 +80,7 @@ const Settings = () => {
   const [subMeters, setSubMeters] = useState([]);
   const [meterGroups, setMeterGroups] = useState([]);
 
-  const hydrateSubMeters = () => {
+  const hydrateSubMeters = async () => {
     try {
       const raw = localStorage.getItem('scada_templates');
       if (!raw) {
@@ -85,7 +97,8 @@ const Settings = () => {
           type: template.category || template.mapping?.subMeterCategory || 'Sub Meter'
         }));
       setSubMeters(nextSubMeters);
-      setMeterGroups(current => normalizeGroups(current.length ? current : loadSavedGroups(nextSubMeters), nextSubMeters));
+      const savedGroups = await fetchSavedGroupsFromBackend(nextSubMeters);
+      setMeterGroups(normalizeGroups(savedGroups, nextSubMeters));
     } catch (error) {
       console.error('Failed to load sub meter templates:', error);
       setSubMeters([]);
@@ -132,7 +145,7 @@ const Settings = () => {
   }, []);
 
   useEffect(() => {
-    const syncSettingsState = () => {
+    const syncSettingsState = async () => {
       try {
         const raw = localStorage.getItem('scada_templates');
         const parsed = raw ? JSON.parse(raw) : [];
@@ -144,7 +157,8 @@ const Settings = () => {
             type: template.category || template.mapping?.subMeterCategory || 'Sub Meter'
           }));
         setSubMeters(nextSubMeters);
-        setMeterGroups(loadSavedGroups(nextSubMeters));
+        const savedGroups = await fetchSavedGroupsFromBackend(nextSubMeters);
+        setMeterGroups(normalizeGroups(savedGroups, nextSubMeters));
       } catch (error) {
         console.error('Failed to sync settings state:', error);
       }
@@ -227,12 +241,33 @@ const Settings = () => {
     }
   };
 
-  const saveMeterGroups = () => {
+  const persistMeterGroups = async (groups) => {
+    const normalized = normalizeGroups(groups, subMeters);
+    const response = await fetch(`${window.process?.env?.REACT_APP_BACKEND_URL || ''}/api/templates/energy-meter-groups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ groups: normalized })
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to save meter groups');
+    }
+
+    const data = await response.json();
+    return normalizeGroups(Array.isArray(data?.groups) ? data.groups : normalized, subMeters);
+  };
+
+  const saveMeterGroups = async () => {
     const normalized = normalizeGroups(meterGroups, subMeters);
-    localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify({ groups: normalized }));
-    setMeterGroups(normalized);
-    window.dispatchEvent(new Event(GROUP_EVENT_NAME));
-    setGroupSaveStatus('Meter groups saved');
+    try {
+      const savedGroups = await persistMeterGroups(normalized);
+      setMeterGroups(savedGroups);
+      window.dispatchEvent(new Event(GROUP_EVENT_NAME));
+      setGroupSaveStatus('Meter groups saved to database');
+    } catch (error) {
+      console.error('Failed to save meter groups to backend:', error);
+      setGroupSaveStatus('Database save failed');
+    }
     setTimeout(() => setGroupSaveStatus(null), 3000);
   };
 
@@ -242,11 +277,16 @@ const Settings = () => {
     setTimeout(() => setSaveStatus(null), 3000);
   };
 
-  const resetMeterGroups = () => {
-    localStorage.removeItem(GROUP_STORAGE_KEY);
-    setMeterGroups([]);
-    window.dispatchEvent(new Event(GROUP_EVENT_NAME));
-    setGroupSaveStatus('Meter groups reset');
+  const resetMeterGroups = async () => {
+    try {
+      await persistMeterGroups([]);
+      setMeterGroups([]);
+      window.dispatchEvent(new Event(GROUP_EVENT_NAME));
+      setGroupSaveStatus('Meter groups reset');
+    } catch (error) {
+      console.error('Failed to reset meter groups in backend:', error);
+      setGroupSaveStatus('Database reset failed');
+    }
     setTimeout(() => setGroupSaveStatus(null), 3000);
   };
 

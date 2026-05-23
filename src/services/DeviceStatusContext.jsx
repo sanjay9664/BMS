@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { getSochiotGatewayStatus, getSochiotDeviceStatus, getSochiotDeviceDetails } from './authService';
 
 const DeviceStatusContext = createContext();
@@ -6,6 +6,8 @@ const DeviceStatusContext = createContext();
 export const DeviceStatusProvider = ({ children }) => {
   const [deviceStatuses, setDeviceStatuses] = useState({});
   const [gatewayStatuses, setGatewayStatuses] = useState({});
+  const lastSeenOnlineRef = useRef({});
+  const lastSeenGatewayOnlineRef = useRef({});
 
   const checkDeviceStatus = useCallback(async (deviceId) => {
     if (!deviceId) return false;
@@ -26,6 +28,7 @@ export const DeviceStatusProvider = ({ children }) => {
             res.active === true
           );
           if (isOnline) {
+            lastSeenOnlineRef.current[deviceId] = Date.now();
             setDeviceStatuses(prev => ({
               ...prev,
               [deviceId]: true
@@ -51,18 +54,26 @@ export const DeviceStatusProvider = ({ children }) => {
         res.online === true ||
         res.active === true
       );
+      if (isOnline) {
+        lastSeenOnlineRef.current[deviceId] = Date.now();
+      }
+      
+      // Latch/Damp status: keep it online if it was seen online in the last 90 seconds
+      const finalStatus = isOnline || (lastSeenOnlineRef.current[deviceId] && (Date.now() - lastSeenOnlineRef.current[deviceId] < 90000));
+      
       setDeviceStatuses(prev => ({
         ...prev,
-        [deviceId]: !!isOnline
+        [deviceId]: !!finalStatus
       }));
-      return !!isOnline;
+      return !!finalStatus;
     } catch (e) {
       console.error(`Error checking device status for ${deviceId}:`, e);
+      const finalStatus = lastSeenOnlineRef.current[deviceId] && (Date.now() - lastSeenOnlineRef.current[deviceId] < 90000);
       setDeviceStatuses(prev => ({
         ...prev,
-        [deviceId]: false
+        [deviceId]: !!finalStatus
       }));
-      return false;
+      return !!finalStatus;
     }
   }, []);
 
@@ -89,18 +100,26 @@ export const DeviceStatusProvider = ({ children }) => {
         res.online === true ||
         res.active === true
       );
+      if (isOnline) {
+        lastSeenGatewayOnlineRef.current[clusterId] = Date.now();
+      }
+      
+      // Latch/Damp status: keep it online if it was seen online in the last 90 seconds
+      const finalStatus = isOnline || (lastSeenGatewayOnlineRef.current[clusterId] && (Date.now() - lastSeenGatewayOnlineRef.current[clusterId] < 90000));
+      
       setGatewayStatuses(prev => ({
         ...prev,
-        [clusterId]: !!isOnline
+        [clusterId]: !!finalStatus
       }));
-      return !!isOnline;
+      return !!finalStatus;
     } catch (e) {
       console.error(`Error checking gateway status for ${clusterId}:`, e);
+      const finalStatus = lastSeenGatewayOnlineRef.current[clusterId] && (Date.now() - lastSeenGatewayOnlineRef.current[clusterId] < 90000);
       setGatewayStatuses(prev => ({
         ...prev,
-        [clusterId]: false
+        [clusterId]: !!finalStatus
       }));
-      return false;
+      return !!finalStatus;
     }
   }, []);
 
@@ -114,20 +133,22 @@ export const DeviceStatusProvider = ({ children }) => {
       const deviceIds = new Set();
       const gatewayUuids = new Set();
 
-      templates.forEach(t => {
-        if (t.mapping) {
-          // Check if mapping has global deviceId/gatewayUuid
-          if (t.mapping.deviceId) deviceIds.add(t.mapping.deviceId);
-          if (t.mapping.gatewayUuid) gatewayUuids.add(t.mapping.gatewayUuid);
+      if (Array.isArray(templates)) {
+        templates.forEach(t => {
+          if (t.mapping) {
+            // Check if mapping has global deviceId/gatewayUuid
+            if (t.mapping.deviceId) deviceIds.add(t.mapping.deviceId);
+            if (t.mapping.gatewayUuid) gatewayUuids.add(t.mapping.gatewayUuid);
 
-          // Fallback check: look through any section mappings for device fields
-          Object.values(t.mapping).forEach(sec => {
-            if (sec && typeof sec === 'object') {
-              if (sec.device) deviceIds.add(sec.device);
-            }
-          });
-        }
-      });
+            // Fallback check: look through any section mappings for device fields
+            Object.values(t.mapping).forEach(sec => {
+              if (sec && typeof sec === 'object') {
+                if (sec.device) deviceIds.add(sec.device);
+              }
+            });
+          }
+        });
+      }
 
       // Poll devices
       await Promise.all(Array.from(deviceIds).map(id => checkDeviceStatus(id)));
@@ -147,8 +168,8 @@ export const DeviceStatusProvider = ({ children }) => {
 
   // Helper function to resolve overall status
   const getOverallStatus = useCallback((deviceId, gatewayUuid) => {
-    const isDevOnline = deviceId ? deviceStatuses[deviceId] : null;
-    const isGwyOnline = gatewayUuid ? gatewayStatuses[gatewayUuid] : null;
+    const isDevOnline = deviceId ? (deviceStatuses[deviceId] ?? null) : null;
+    const isGwyOnline = gatewayUuid ? (gatewayStatuses[gatewayUuid] ?? null) : null;
 
     // Resilient fallback: If device is explicitly online, bypass gateway check
     if (isDevOnline === true) return true;
