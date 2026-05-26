@@ -8,7 +8,7 @@ const EnergyPDFReport = () => {
     dateRange: 'today',
     meter: 'all'
   });
-  
+
   const [generating, setGenerating] = useState(false);
   const [reportData, setReportData] = useState([
     { id: 'REP-EM-1025', date: '2026-05-19', meter: 'Main Grid Incomer', consumption: '11,480 kWh', peakDemand: '620 kW', avgPf: '0.97', cost: '₹1,03,320' },
@@ -61,16 +61,16 @@ const EnergyPDFReport = () => {
             <Col md={4}>
               <Form.Group>
                 <Form.Label className="text-secondary fw-bold fs-12 uppercase tracking-wider mb-2">Select Target Meter</Form.Label>
-                <Form.Select 
-                  className="scada-input" 
-                  value={filter.meter} 
-                  onChange={(e) => setFilter({...filter, meter: e.target.value})}
+                <Form.Select
+                  className="scada-input"
+                  value={filter.meter}
+                  onChange={(e) => setFilter({ ...filter, meter: e.target.value })}
                 >
                   <option value="all">Main Incomer Feed Grid</option>
                   <option value="wing-a">Sub-Meter: Commercial Wing A</option>
                   <option value="server">Sub-Meter: Server & UPS Rooms</option>
                   <option value="utility">Sub-Meter: Utility Motors Room</option>
-                  <option value="hvac">Sub-Meter: HVAC Chiller Main</option>
+                  <option value="VRV">Sub-Meter: VRV Chiller Main</option>
                 </Form.Select>
               </Form.Group>
             </Col>
@@ -78,10 +78,10 @@ const EnergyPDFReport = () => {
             <Col md={4}>
               <Form.Group>
                 <Form.Label className="text-secondary fw-bold fs-12 uppercase tracking-wider mb-2">Reporting Interval</Form.Label>
-                <Form.Select 
-                  className="scada-input" 
-                  value={filter.dateRange} 
-                  onChange={(e) => setFilter({...filter, dateRange: e.target.value})}
+                <Form.Select
+                  className="scada-input"
+                  value={filter.dateRange}
+                  onChange={(e) => setFilter({ ...filter, dateRange: e.target.value })}
                 >
                   <option value="today">Today (Real-time logs)</option>
                   <option value="yesterday">Yesterday</option>
@@ -93,9 +93,9 @@ const EnergyPDFReport = () => {
             </Col>
 
             <Col md={4} className="d-grid">
-              <Button 
-                onClick={handleGenerate} 
-                disabled={generating} 
+              <Button
+                onClick={handleGenerate}
+                disabled={generating}
                 className="btn btn-info rounded-pill py-2.5 fw-black fs-11 tracking-wider uppercase shadow-lg d-flex align-items-center justify-content-center gap-2"
               >
                 {generating ? <RefreshCw className="animate-spin" size={16} /> : <Zap size={16} />}
@@ -153,7 +153,8 @@ const EnergyPDFReport = () => {
         </Card.Body>
       </Card>
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .scada-card { background: #0f172a; border-radius: 20px; transition: all 0.3s ease; box-shadow: 0 4px 20px -2px rgba(0,0,0,0.4); }
         .scada-card:hover { transform: translateY(-2px); box-shadow: 0 10px 30px -4px rgba(0,0,0,0.5); }
         

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { 
-  Droplets, Activity, Zap, Bell, Battery, ShieldAlert, 
+import {
+  Droplets, Activity, Zap, Bell, Battery, ShieldAlert,
   Settings, ClipboardList, PenTool, History, LayoutDashboard,
-  ChevronRight, Gauge, Database, Lock, User
+  ChevronRight, Gauge, Database, Lock, User, Wind
 } from 'lucide-react';
 import { Accordion } from 'react-bootstrap';
 import logo from "../assets/logo.png";
@@ -29,7 +29,7 @@ const Sidebar = ({ collapsed }) => {
         const response = await fetch('/api/super-admin/config');
         if (response.ok) {
           const config = await response.json();
-          
+
           // Map backend keys to sidebar labels
           const moduleMap = {
             showDashboard: 'Dashboard',
@@ -45,7 +45,8 @@ const Sidebar = ({ collapsed }) => {
             showMaintenance: 'Maintenance',
             showServiceHistory: 'Service History',
             showDailyDPR: 'Daily DPR',
-            showEnergyMetering: 'Energy Metering'
+            showEnergyMetering: 'Energy Metering',
+            showVRV: 'VRV'
           };
 
           const sidebarModules = {};
@@ -55,7 +56,7 @@ const Sidebar = ({ collapsed }) => {
 
           setModulesConfig(sidebarModules);
           setSubmodulesConfig(config.submoduleVisibility || {});
-          
+
           // Also update localStorage so it's ready for next reload
           localStorage.setItem('scada_modules_config', JSON.stringify(sidebarModules));
           localStorage.setItem('scada_submodules_config', JSON.stringify(config.submoduleVisibility || {}));
@@ -73,7 +74,7 @@ const Sidebar = ({ collapsed }) => {
       if (savedModules) setModulesConfig(JSON.parse(savedModules));
       if (savedSubmodules) setSubmodulesConfig(JSON.parse(savedSubmodules));
     };
-    
+
     window.addEventListener('storage-update', updateConfig);
     return () => window.removeEventListener('storage-update', updateConfig);
   }, []);
@@ -81,19 +82,19 @@ const Sidebar = ({ collapsed }) => {
   const handleExitImpersonation = () => {
     const originalUser = localStorage.getItem('impersonator_backup_user');
     const originalRole = localStorage.getItem('impersonator_backup_role');
-    
+
     if (originalUser && originalRole) {
       localStorage.setItem('userData', originalUser);
       localStorage.setItem('userRole', originalRole);
-      
+
       // Cleanup backups
       localStorage.removeItem('impersonator_backup_user');
       localStorage.removeItem('impersonator_backup_role');
-      
+
       // Clear simulation configs
       localStorage.removeItem('scada_modules_config');
       localStorage.removeItem('scada_submodules_config');
-      
+
       // Navigate back to the appropriate management page
       if (originalRole === 'SUPER_ADMIN') {
         window.location.href = '/super-admin';
@@ -242,25 +243,36 @@ const Sidebar = ({ collapsed }) => {
         { title: "Sub Meters", path: "/energy-metering/sub" },
         { title: "PDF Report", path: "/energy-metering/report" }
       ].filter((subItem) => submodulesConfig.showEnergyMetering?.[subItem.title] ?? true)
+    },
+    {
+      title: "VRV",
+      icon: <Wind size={20} />,
+      disabled: modulesConfig ? !modulesConfig["VRV"] : false,
+      subItems: [
+        { title: "Overview", path: "/VRV/overview" },
+        { title: "Control Panel", path: "/VRV/control" },
+        { title: "Schedule", path: "/VRV/schedule" },
+        { title: "Human Sensor", path: "/VRV/human-sensor" }
+      ].filter((subItem) => submodulesConfig.showVRV?.[subItem.title] ?? true)
     }
   ];
 
   return (
     <div className={`scada-sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-brand d-flex align-items-center justify-content-center py-4 border-bottom border-secondary border-opacity-25">
-       <img 
-        src={logo} 
-        alt="Company Logo" 
-        style={{ width: 165, height: 55, objectFit: "contain" }} 
-        className="me-2"
-      />
+        <img
+          src={logo}
+          alt="Company Logo"
+          style={{ width: 165, height: 55, objectFit: "contain" }}
+          className="me-2"
+        />
       </div>
-      
+
       <div className="sidebar-nav py-3" style={{ height: 'calc(100vh - 100px)', overflowY: 'auto' }}>
-        
+
         {/* Verification Mode Banner */}
         {isImpersonating && (
-          <div 
+          <div
             onClick={handleExitImpersonation}
             className="sidebar-link text-warning fw-bold border-warning mb-2"
             style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)', cursor: 'pointer', borderLeft: '3px solid #f59e0b' }}
@@ -288,27 +300,27 @@ const Sidebar = ({ collapsed }) => {
 
           {(isAdmin || isSuperAdmin) && (
             <Accordion className="sidebar-accordion">
-                <Accordion.Item eventKey="admin-config" className="bg-transparent border-0">
-                  <Accordion.Header className={`sidebar-link ${collapsed ? 'collapsed-header' : ''}`}>
-                    <div className="d-flex align-items-center w-100 position-relative">
-                      <span className="sidebar-icon"><Settings size={20} /></span>
-                      {!collapsed && <span className="sidebar-text ms-3 flex-grow-1">Advanced Settings</span>}
-                    </div>
-                  </Accordion.Header>
-                  {!collapsed && (
-                    <Accordion.Body className="p-0 ps-4">
-                      {(!modulesConfig || modulesConfig["Setting Templates"] !== false) && (
-                        <NavLink to="/config/templates" className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}>
-                          Setting Templates
-                        </NavLink>
-                      )}
-                      <NavLink to="/settings" className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}>
-                        Global Settings
+              <Accordion.Item eventKey="admin-config" className="bg-transparent border-0">
+                <Accordion.Header className={`sidebar-link ${collapsed ? 'collapsed-header' : ''}`}>
+                  <div className="d-flex align-items-center w-100 position-relative">
+                    <span className="sidebar-icon"><Settings size={20} /></span>
+                    {!collapsed && <span className="sidebar-text ms-3 flex-grow-1">Advanced Settings</span>}
+                  </div>
+                </Accordion.Header>
+                {!collapsed && (
+                  <Accordion.Body className="p-0 ps-4">
+                    {(!modulesConfig || modulesConfig["Setting Templates"] !== false) && (
+                      <NavLink to="/config/templates" className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}>
+                        Setting Templates
                       </NavLink>
-                    </Accordion.Body>
-                  )}
-                </Accordion.Item>
-              </Accordion>
+                    )}
+                    <NavLink to="/settings" className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}>
+                      Global Settings
+                    </NavLink>
+                  </Accordion.Body>
+                )}
+              </Accordion.Item>
+            </Accordion>
           )}
         </div>
 
@@ -316,7 +328,7 @@ const Sidebar = ({ collapsed }) => {
         {menuItems.filter(item => {
           const isAllowedByRole = !item.adminOnly || isAdmin || isSuperAdmin;
           const isEnabledByConfig = !modulesConfig || modulesConfig[item.title] === true;
-          
+
           return isAllowedByRole && isEnabledByConfig;
         }).map((item, index) => {
           const effectiveDisabled = item.disabled;
@@ -335,8 +347,8 @@ const Sidebar = ({ collapsed }) => {
                     {item.subItems.map((sub, subIdx) => {
                       if (sub.disabled) {
                         return (
-                          <span 
-                            key={subIdx} 
+                          <span
+                            key={subIdx}
                             className="sidebar-sub-link sidebar-disabled-item pe-none d-flex align-items-center justify-content-between"
                             style={{ opacity: 0.5, cursor: 'not-allowed', paddingRight: '24px' }}
                           >
@@ -346,9 +358,9 @@ const Sidebar = ({ collapsed }) => {
                         );
                       }
                       return (
-                        <NavLink 
-                          key={subIdx} 
-                          to={sub.path} 
+                        <NavLink
+                          key={subIdx}
+                          to={sub.path}
                           className={({ isActive }) => `sidebar-sub-link ${isActive ? 'active' : ''}`}
                         >
                           {sub.title}
@@ -361,28 +373,29 @@ const Sidebar = ({ collapsed }) => {
             </Accordion>
           ) : (
             <div key={index} className={effectiveDisabled ? 'sidebar-disabled-item' : ''}>
-               {effectiveDisabled ? (
-                 <div className="sidebar-link pe-none opacity-50 d-flex align-items-center">
-                    <span className="sidebar-icon">{item.icon}</span>
-                    {!collapsed && <span className="sidebar-text ms-3 flex-grow-1">{item.title}</span>}
-                    {!collapsed && <Lock size={12} className="text-secondary opacity-50" />}
-                 </div>
-               ) : (
-                <NavLink 
-                  to={item.path} 
+              {effectiveDisabled ? (
+                <div className="sidebar-link pe-none opacity-50 d-flex align-items-center">
+                  <span className="sidebar-icon">{item.icon}</span>
+                  {!collapsed && <span className="sidebar-text ms-3 flex-grow-1">{item.title}</span>}
+                  {!collapsed && <Lock size={12} className="text-secondary opacity-50" />}
+                </div>
+              ) : (
+                <NavLink
+                  to={item.path}
                   className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                 >
                   <span className="sidebar-icon">{item.icon}</span>
                   {!collapsed && <span className="sidebar-text ms-3">{item.title}</span>}
                 </NavLink>
-               )}
+              )}
             </div>
           );
         })}
 
       </div>
 
-      <style dangerouslySetInnerHTML={{ __html: `
+      <style dangerouslySetInnerHTML={{
+        __html: `
         .sidebar-link {
           display: flex;
           align-items: center;
