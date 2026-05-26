@@ -178,7 +178,7 @@ const ConfigTemplates = () => {
   const [elecCurrentConfig, setElecCurrentConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', r: '', y: '', b: '', enabled: true });
   const [elecSystemConfig, setElecSystemConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', pf: '', freq: '', load: '', enabled: true });
   const [elecConsumptionConfig, setElecConsumptionConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', kva: '', kwh: '', kvah: '', enabled: true });
-  
+
   const [dgEngineConfig, setDgEngineConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', coolant: '', oilPress: '', speed: '', runtime: '', battery: '', freq: '', enabled: true });
   const [dgPowerConfig, setDgPowerConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vL1L2: '', iL1: '', iL2: '', iL3: '', loadKW: '', appKVA: '', pf: '', kwh: '', enabled: true });
   const [dgFuelConfig, setDgFuelConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', level: '', enabled: true });
@@ -264,7 +264,7 @@ const ConfigTemplates = () => {
     { name: 'COMMERCIAL WING A INCOMER', id: 'SM-WING-A-01' },
     { name: 'DATA CENTER MAIN UPS INPUT', id: 'SM-SERVER-02' },
     { name: 'WATER PLANT & UTILITY MOTORS ROOM', id: 'SM-UTILITY-03' },
-    { name: 'HVAC CHILLER MAIN FEEDER', id: 'SM-HVAC-04' },
+    { name: 'VRV CHILLER MAIN FEEDER', id: 'SM-VRV-04' },
     { name: 'OUTDOOR STREET & PARKING LIGHTS', id: 'SM-LIGHT-05' }
   ];
 
@@ -798,7 +798,7 @@ const ConfigTemplates = () => {
 
         const findMatchingField = (moduleObj, paramKey) => {
           if (!moduleObj || !moduleObj.fields || moduleObj.fields.length === 0) return null;
-          
+
           const PARAM_LABELS = {
             ebKvah: 'EB KVAH (KVAH)',
             ebKwh: 'EB KWH (KWH)',
@@ -1015,7 +1015,7 @@ const ConfigTemplates = () => {
         if (selectedModule) {
           const findMatchingFieldSub = (moduleObj, paramKey) => {
             if (!moduleObj || !moduleObj.fields || moduleObj.fields.length === 0) return null;
-            
+
             const PARAM_LABELS = {
               ry: 'VOLTAGE RY',
               yb: 'VOLTAGE YB',
@@ -1108,7 +1108,7 @@ const ConfigTemplates = () => {
       const devInfo = deviceDetails[activeDgDevice];
       if (devInfo && devInfo.modules) {
         const isNewDg = lastAutofilledDg.current !== activeDgDevice;
-        
+
         // Map across all fields of all modules
         const dgAllFields = [];
         Object.values(devInfo.modules).forEach(m => {
@@ -1121,7 +1121,7 @@ const ConfigTemplates = () => {
 
         const findMatchingFieldDg = (moduleObj, paramKey) => {
           if (!moduleObj || !moduleObj.fields || moduleObj.fields.length === 0) return null;
-          
+
           const PARAM_LABELS = {
             speed: 'SPEED (RPM)',
             coolant: 'COOLANT TEMP',
@@ -1212,7 +1212,7 @@ const ConfigTemplates = () => {
       }
     }
   }, [
-    deviceDetails, 
+    deviceDetails,
     emChangeConfig.device, emWarningConfig.device, emReadConfig.device, emVoltageConfig.device,
     elecVoltageConfig.device, elecVoltageConfig.module,
     dgPowerConfig.device, dgEngineConfig.device, dgFuelConfig.device, dgFaultConfig.device
@@ -1259,7 +1259,7 @@ const ConfigTemplates = () => {
     }
     if (nameLower.includes('balance') || keyLower.includes('balance') || nameLower.includes('prepaid') || keyLower.includes('prepaid')) return 'BALANCE (Rs)';
     if (nameLower.includes('pf') || nameLower.includes('power factor') || keyLower.includes('pf')) return 'POWER FACTOR (PF)';
-    
+
     // Voltages
     if (nameLower.includes('voltage') || nameLower.includes('volt') || keyLower.startsWith('v')) {
       if (nameLower.match(/\br(-phase)?\b/) || keyLower.match(/\b(v_?r|u1|r)\b/)) return 'VOLTAGE R-PHASE (V)';
@@ -1277,7 +1277,7 @@ const ConfigTemplates = () => {
     if (nameLower.includes('active power') || nameLower.includes('total kw') || nameLower.includes('load kw') || keyLower.includes('kw')) return 'TOTAL KW (KW)';
     if (nameLower.includes('apparent power') || nameLower.includes('total kva') || nameLower.includes('load kva') || keyLower.includes('kva')) return 'TOTAL KVA (KVA)';
     if (nameLower.includes('fixed charge') || keyLower.includes('fixed')) return 'FIXED CHARGE (Rs)';
-    
+
     return null;
   };
 
@@ -1325,7 +1325,7 @@ const ConfigTemplates = () => {
 
   const handleConfigChange = async (config, setter, key, value) => {
     console.log(`Config Change: ${key} = ${value}`);
-    
+
     if (key === 'device' && value) {
       let foundDevice = null;
       Object.values(locationDetails).forEach(loc => {
@@ -1488,44 +1488,44 @@ const ConfigTemplates = () => {
         if (value) {
           fetchDeviceDetails(value).then(modules => {
             if (modules && [setDgEngineConfig, setDgPowerConfig, setDgFuelConfig, setDgFaultConfig].includes(setter) && !isEMConfig) {
-               const allFields = [];
-               Object.values(modules).forEach(m => {
-                  (m.fields || []).forEach(f => {
-                     allFields.push({ ...f, id: `${m.id}::${f.id}` });
-                  });
-               });
-               
-               const findField = (suggestionKey) => {
-                  return allFields.find(f => f.label.includes(suggestionKey))?.id || '';
-               };
+              const allFields = [];
+              Object.values(modules).forEach(m => {
+                (m.fields || []).forEach(f => {
+                  allFields.push({ ...f, id: `${m.id}::${f.id}` });
+                });
+              });
 
-               setDgFaultConfig(prev => ({
-                  ...prev,
-                  emergencyStop: prev.emergencyStop || findField('EMERGENCY STOP'),
-                  emergencyStop_alarm: prev.emergencyStop_alarm || '0',
-                  emergencyStop_healthy: prev.emergencyStop_healthy || '1',
-                  masterTrip: prev.masterTrip || findField('MASTER TRIP'),
-                  masterTrip_alarm: prev.masterTrip_alarm || '0',
-                  masterTrip_healthy: prev.masterTrip_healthy || '1',
-                  overVoltage: prev.overVoltage || findField('OVER VOLTAGE'),
-                  overVoltage_alarm: prev.overVoltage_alarm || '0',
-                  overVoltage_healthy: prev.overVoltage_healthy || '1',
-                  underVoltage: prev.underVoltage || findField('UNDER VOLTAGE'),
-                  underVoltage_alarm: prev.underVoltage_alarm || '0',
-                  underVoltage_healthy: prev.underVoltage_healthy || '1',
-                  overFrequency: prev.overFrequency || findField('OVER FREQUENCY'),
-                  overFrequency_alarm: prev.overFrequency_alarm || '0',
-                  overFrequency_healthy: prev.overFrequency_healthy || '1',
-                  underFrequency: prev.underFrequency || findField('UNDER FREQUENCY'),
-                  underFrequency_alarm: prev.underFrequency_alarm || '0',
-                  underFrequency_healthy: prev.underFrequency_healthy || '1',
-                  lowOilLevel: prev.lowOilLevel || findField('LOW OIL LEVEL'),
-                  lowOilLevel_alarm: prev.lowOilLevel_alarm || '0',
-                  lowOilLevel_healthy: prev.lowOilLevel_healthy || '1',
-                  overTemp: prev.overTemp || findField('OVER TEMP'),
-                  overTemp_alarm: prev.overTemp_alarm || '0',
-                  overTemp_healthy: prev.overTemp_healthy || '1'
-               }));
+              const findField = (suggestionKey) => {
+                return allFields.find(f => f.label.includes(suggestionKey))?.id || '';
+              };
+
+              setDgFaultConfig(prev => ({
+                ...prev,
+                emergencyStop: prev.emergencyStop || findField('EMERGENCY STOP'),
+                emergencyStop_alarm: prev.emergencyStop_alarm || '0',
+                emergencyStop_healthy: prev.emergencyStop_healthy || '1',
+                masterTrip: prev.masterTrip || findField('MASTER TRIP'),
+                masterTrip_alarm: prev.masterTrip_alarm || '0',
+                masterTrip_healthy: prev.masterTrip_healthy || '1',
+                overVoltage: prev.overVoltage || findField('OVER VOLTAGE'),
+                overVoltage_alarm: prev.overVoltage_alarm || '0',
+                overVoltage_healthy: prev.overVoltage_healthy || '1',
+                underVoltage: prev.underVoltage || findField('UNDER VOLTAGE'),
+                underVoltage_alarm: prev.underVoltage_alarm || '0',
+                underVoltage_healthy: prev.underVoltage_healthy || '1',
+                overFrequency: prev.overFrequency || findField('OVER FREQUENCY'),
+                overFrequency_alarm: prev.overFrequency_alarm || '0',
+                overFrequency_healthy: prev.overFrequency_healthy || '1',
+                underFrequency: prev.underFrequency || findField('UNDER FREQUENCY'),
+                underFrequency_alarm: prev.underFrequency_alarm || '0',
+                underFrequency_healthy: prev.underFrequency_healthy || '1',
+                lowOilLevel: prev.lowOilLevel || findField('LOW OIL LEVEL'),
+                lowOilLevel_alarm: prev.lowOilLevel_alarm || '0',
+                lowOilLevel_healthy: prev.lowOilLevel_healthy || '1',
+                overTemp: prev.overTemp || findField('OVER TEMP'),
+                overTemp_alarm: prev.overTemp_alarm || '0',
+                overTemp_healthy: prev.overTemp_healthy || '1'
+              }));
             }
           });
         }
@@ -1823,10 +1823,10 @@ const ConfigTemplates = () => {
 
     const selectedModuleId = rowState?.module;
     const isDGConfig = rowState?.speed !== undefined || rowState?.vL1L2 !== undefined || rowState?.level !== undefined || rowState?.emergencyStop !== undefined;
-    const isEnergyMeteringConfig = 
-      rowState?.vR !== undefined || 
-      rowState?.iR !== undefined || 
-      rowState?.activePower !== undefined || 
+    const isEnergyMeteringConfig =
+      rowState?.vR !== undefined ||
+      rowState?.iR !== undefined ||
+      rowState?.activePower !== undefined ||
       rowState?.cumulativekWh !== undefined ||
       rowState?.ebKwh !== undefined ||
       rowState?.lowBalanceCut !== undefined ||
@@ -1834,13 +1834,13 @@ const ConfigTemplates = () => {
 
     if (key === 'field') {
       if (selectedModuleId === 'ALL' || isDGConfig || isEnergyMeteringConfig) {
-         const allFields = [];
-         Object.values(devInfo.modules).forEach(m => {
-            (m.fields || []).forEach(f => {
-               allFields.push({ label: `[${m.name}] ${f.label}`, id: `${m.id}::${f.id}` });
-            });
-         });
-         return allFields;
+        const allFields = [];
+        Object.values(devInfo.modules).forEach(m => {
+          (m.fields || []).forEach(f => {
+            allFields.push({ label: `[${m.name}] ${f.label}`, id: `${m.id}::${f.id}` });
+          });
+        });
+        return allFields;
       }
       const moduleData = devInfo.modules[selectedModuleId];
       return (moduleData?.fields || []).map(f => ({ label: f.label, id: f.id }));
@@ -1853,22 +1853,22 @@ const ConfigTemplates = () => {
     if (!allFields || allFields.length === 0) return [];
     const searchStr = (fieldLabel || '').toLowerCase();
     const fk = (fieldKey || '').toLowerCase();
-    
-    const isPhaseParam = searchStr.includes('phase') || 
-                         searchStr.includes('l1') || 
-                         searchStr.includes('l2') || 
-                         searchStr.includes('l3') ||
-                         ['vr', 'vy', 'vb', 'ir', 'iy', 'ib', 'ry', 'yb', 'br', 'r', 'y', 'b', 'vl1l2', 'il1', 'il2', 'il3'].includes(fk) ||
-                         fk.includes('loadset') || 
-                         fk.includes('load_set') ||
-                         searchStr.includes('current r') || searchStr.includes('current y') || searchStr.includes('current b') ||
-                         searchStr.includes('voltage r') || searchStr.includes('voltage y') || searchStr.includes('voltage b') ||
-                         searchStr.includes('amps') || searchStr.includes('volts');
+
+    const isPhaseParam = searchStr.includes('phase') ||
+      searchStr.includes('l1') ||
+      searchStr.includes('l2') ||
+      searchStr.includes('l3') ||
+      ['vr', 'vy', 'vb', 'ir', 'iy', 'ib', 'ry', 'yb', 'br', 'r', 'y', 'b', 'vl1l2', 'il1', 'il2', 'il3'].includes(fk) ||
+      fk.includes('loadset') ||
+      fk.includes('load_set') ||
+      searchStr.includes('current r') || searchStr.includes('current y') || searchStr.includes('current b') ||
+      searchStr.includes('voltage r') || searchStr.includes('voltage y') || searchStr.includes('voltage b') ||
+      searchStr.includes('amps') || searchStr.includes('volts');
 
     const isR = isPhaseParam && (searchStr.match(/\br\b/i) || searchStr.includes('r-phase') || searchStr.includes('r_phase') || fk.match(/\br\b/i) || fk === 'l1' || fk.includes('l1') || fk.includes('vr') || fk.includes('ir'));
     const isY = isPhaseParam && (searchStr.match(/\by\b/i) || searchStr.includes('y-phase') || searchStr.includes('y_phase') || fk.match(/\by\b/i) || fk === 'l2' || fk.includes('l2') || fk.includes('vy') || fk.includes('iy'));
     const isB = isPhaseParam && (searchStr.match(/\bb\b/i) || searchStr.includes('b-phase') || searchStr.includes('b_phase') || fk.match(/\bb\b/i) || fk === 'l3' || fk.includes('l3') || fk.includes('vb') || fk.includes('ib'));
-    
+
     const isCurrent = searchStr.includes('current') || searchStr.includes('amp') || fk.includes('current') || fk.startsWith('i');
     const isVoltage = searchStr.includes('voltage') || searchStr.includes('volt') || fk.includes('voltage') || fk.startsWith('v');
     const isKwh = searchStr.includes('kwh');
@@ -1887,7 +1887,7 @@ const ConfigTemplates = () => {
     const scoredFields = allFields.map(f => {
       const lbl = f.label.toLowerCase();
       let score = 0;
-      
+
       // Keyword matching
       if (isCurrent && (lbl.includes('current') || lbl.includes(' amp') || lbl.includes(' a '))) score += 15;
       if (isVoltage && (lbl.includes('voltage') || lbl.includes('volt') || lbl.includes(' v '))) score += 15;
@@ -1901,19 +1901,19 @@ const ConfigTemplates = () => {
       if (isTariff && lbl.includes('tariff')) score += 15;
       if (isLoad && (lbl.includes('load') || lbl.includes('limit') || lbl.includes('set'))) score += 15;
       if (isStatus && lbl.includes('status')) score += 15;
-      
+
       // Source matching (EB vs DG)
       if (isDg && lbl.includes('dg')) score += 15;
       if (!isDg && lbl.includes('dg')) score -= 20;
       if (isDg && !lbl.includes('dg') && lbl.includes('eb')) score -= 20;
       if (isEb && lbl.includes('eb')) score += 10;
       if (isEb && !lbl.includes('eb') && lbl.includes('dg')) score -= 20;
-      
+
       // Phase matching
       if (isR && (lbl.match(/\b(r|l1)\b/i) || lbl.match(/-r\b/i) || lbl.includes('r-phase') || lbl.includes('r_phase') || lbl.includes('vr') || lbl.includes('ir'))) score += 15;
       if (isY && (lbl.match(/\b(y|l2)\b/i) || lbl.match(/-y\b/i) || lbl.includes('y-phase') || lbl.includes('y_phase') || lbl.includes('vy') || lbl.includes('iy'))) score += 15;
       if (isB && (lbl.match(/\b(b|l3)\b/i) || lbl.match(/-b\b/i) || lbl.includes('b-phase') || lbl.includes('b_phase') || lbl.includes('vb') || lbl.includes('ib'))) score += 15;
-      
+
       // Token matches
       const words = searchStr.replace(/[()]/g, '').split(/\s+/);
       words.forEach(w => {
@@ -1943,7 +1943,7 @@ const ConfigTemplates = () => {
       if (key.includes('Water Level') && key !== 'agLevelConfig' && key !== 'ugTankLevelConfig' && key !== 'Water Level' && key !== 'agLevel' && key !== 'waterLevel') {
         newKey = key.replace('Water Level', '').trim();
       }
-      
+
       let value = obj[key];
       if (value && typeof value === 'object' && !Array.isArray(value)) {
         value = cleanCorruptedMapping(value);
@@ -1952,13 +1952,13 @@ const ConfigTemplates = () => {
         if (value.includes('STARTWater Level')) value = value.replace('STARTWater Level', 'START COMMAND');
         else if (value.includes('STOPWater Level')) value = value.replace('STOPWater Level', 'STOP COMMAND');
         else if (value.includes('Water Level')) {
-           // For other titles, determine if it should be COMMAND or MODE
-           const upper = value.toUpperCase();
-           const replacement = (upper.includes('START') || upper.includes('STOP') || upper.includes('OPEN') || upper.includes('CLOSE') || upper.includes('COMMAND')) ? 'COMMAND' : 'MODE';
-           value = value.replace('Water Level', replacement);
+          // For other titles, determine if it should be COMMAND or MODE
+          const upper = value.toUpperCase();
+          const replacement = (upper.includes('START') || upper.includes('STOP') || upper.includes('OPEN') || upper.includes('CLOSE') || upper.includes('COMMAND')) ? 'COMMAND' : 'MODE';
+          value = value.replace('Water Level', replacement);
         }
       }
-      
+
       cleaned[newKey] = value;
     });
     return cleaned;
@@ -2726,7 +2726,7 @@ const ConfigTemplates = () => {
               </Button>
               <Button variant="info" className="fw-bold px-4 rounded-3 shadow-glow" onClick={() => {
                 setEditingTemplateId(null);
-                
+
                 // Reset AG Configs
                 setAgLowerConfig(createDefaultConfig(true));
                 setAgUpperConfig(createDefaultConfig(true));
@@ -2785,7 +2785,7 @@ const ConfigTemplates = () => {
                 });
                 setEnergyMeteringTarget('');
                 setTemplateName('');
-                
+
                 setViewMode('FORM');
               }}>
                 <Zap size={18} className="me-2" /> ADD NEW MAPPING
@@ -3152,7 +3152,7 @@ const ConfigTemplates = () => {
                                 </div>
                                 <div>
                                   <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">
-                                    { section.title } {
+                                    {section.title} {
                                       (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
                                         ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE)</span>
                                         : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>
@@ -4043,20 +4043,20 @@ const ConfigTemplates = () => {
                           Energy Meter Parameters Mapping <span className="opacity-40">({selectedModule.toUpperCase()})</span>
                         </h6>
                       </div>
-                      
+
                       {/* Energy Meter Target & Category Selector */}
                       <div className="d-flex align-items-center gap-3">
                         <div className="d-flex align-items-center gap-2" style={{ minWidth: '220px' }}>
                           <span className="text-secondary fs-12 uppercase fw-black opacity-60 text-nowrap">Target Unit:</span>
-                          <Form.Select 
-                            className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner" 
-                            style={{ height: '35px' }} 
-                            value={energyMeteringTarget} 
+                          <Form.Select
+                            className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner"
+                            style={{ height: '35px' }}
+                            value={energyMeteringTarget}
                             onChange={(e) => {
                               setEnergyMeteringTarget(e.target.value);
                               setTemplateName('');
-                              const existing = savedTemplates.find(t => 
-                                t.module === selectedModule && 
+                              const existing = savedTemplates.find(t =>
+                                t.module === selectedModule &&
                                 t.mapping.energyMeteringTarget === e.target.value
                               );
                               if (existing) {
@@ -4116,11 +4116,11 @@ const ConfigTemplates = () => {
                         {selectedModule === 'Sub Meters' && (
                           <div className="d-flex align-items-center gap-2" style={{ minWidth: '220px' }}>
                             <span className="text-secondary fs-12 uppercase fw-black opacity-60 text-nowrap">Group / Category:</span>
-                            <Form.Control 
+                            <Form.Control
                               type="text"
-                              className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner text-white" 
-                              style={{ height: '35px', background: 'rgba(255, 255, 255, 0.05)' }} 
-                              placeholder="e.g. HVAC, Commercial, etc."
+                              className="premium-input px-3 py-1 fs-11 fw-bold border-info border-opacity-20 shadow-inner text-white"
+                              style={{ height: '35px', background: 'rgba(255, 255, 255, 0.05)' }}
+                              placeholder="e.g. VRV, Commercial, etc."
                               value={subMeterCategory}
                               onChange={(e) => setSubMeterCategory(e.target.value)}
                               list="submeter-categories"
@@ -4129,24 +4129,24 @@ const ConfigTemplates = () => {
                               <option value="Commercial" />
                               <option value="Data Center" />
                               <option value="Water Management" />
-                              <option value="HVAC" />
+                              <option value="VRV" />
                               <option value="Lighting" />
                             </datalist>
                           </div>
                         )}
                       </div>
                     </div>
-                    
+
                     {energyMeteringTarget ? (
                       <div className="p-4 bg-dark bg-opacity-20">
                         <Row className="g-4">
                           {[
-                            { 
-                              title: 'CHANGE Parameters', 
-                              state: emChangeConfig, 
-                              setter: setEmChangeConfig, 
-                              icon: <Activity size={18} />, 
-                              color: 'info', 
+                            {
+                              title: 'CHANGE Parameters',
+                              state: emChangeConfig,
+                              setter: setEmChangeConfig,
+                              icon: <Activity size={18} />,
+                              color: 'info',
                               fields: [
                                 { label: 'EB KVAH (KVAH)', key: 'ebKvah' },
                                 { label: 'EB KWH (KWH)', key: 'ebKwh' },
@@ -4161,28 +4161,28 @@ const ConfigTemplates = () => {
                                 { label: 'POWER FACTOR (PF)', key: 'pf' },
                                 { label: 'TOTAL KVA (KVA)', key: 'totalKva' },
                                 { label: 'DG KWH (KWH)', key: 'dgKwh' }
-                              ] 
+                              ]
                             },
-                            { 
-                              title: 'WARNING Parameters', 
-                              state: emWarningConfig, 
-                              setter: setEmWarningConfig, 
-                              icon: <AlertTriangle size={18} />, 
-                              color: 'warning', 
+                            {
+                              title: 'WARNING Parameters',
+                              state: emWarningConfig,
+                              setter: setEmWarningConfig,
+                              icon: <AlertTriangle size={18} />,
+                              color: 'warning',
                               fields: [
                                 { label: 'LOW BALANCE CUT', key: 'lowBalanceCut' },
                                 { label: 'OVERLOAD TRIP', key: 'overloadTrip' },
                                 { label: 'OVERLOAD LIMIT REACHED', key: 'overloadLimitReached' },
                                 { label: 'CONNECTED STATUS', key: 'connectedStatus' },
                                 { label: 'FORCE OFF', key: 'forceOff' }
-                              ] 
+                              ]
                             },
-                            { 
-                              title: 'READ Parameters', 
-                              state: emReadConfig, 
-                              setter: setEmReadConfig, 
-                              icon: <Layers size={18} />, 
-                              color: 'success', 
+                            {
+                              title: 'READ Parameters',
+                              state: emReadConfig,
+                              setter: setEmReadConfig,
+                              icon: <Layers size={18} />,
+                              color: 'success',
                               fields: [
                                 { label: 'METER SRNO', key: 'meterSrno' },
                                 { label: 'NO OF OVERLOAD CHECK', key: 'noOfOverloadCheck' },
@@ -4195,7 +4195,7 @@ const ConfigTemplates = () => {
                                 { label: 'DG R LOAD SET (KW)', key: 'dgRLoadSet' },
                                 { label: 'DG Y LOAD SET (KW)', key: 'dgYLoadSet' },
                                 { label: 'DG B LOAD SET (KW)', key: 'dgBLoadSet' }
-                              ] 
+                              ]
                             }
                           ].map((section, idx) => (
                             <Col md={12} key={idx} className="mb-4">
@@ -4243,7 +4243,7 @@ const ConfigTemplates = () => {
                                             ))}
                                           </Form.Select>
                                         </Col>
-                                        
+
                                         <Col md={12}>
                                           <hr className={`border-${section.color} opacity-20 my-3`} />
                                           <Form.Label className={`fs-10 text-${section.color} fw-black uppercase tracking-widest opacity-70 mb-3 d-block`}>Parameters Register Mapping</Form.Label>
@@ -4465,7 +4465,7 @@ const ConfigTemplates = () => {
                                         </Form.Select>
                                       </Col>
                                       <Col md={12} className="d-none">
-                                        <Form.Select value="ALL" onChange={() => {}} />
+                                        <Form.Select value="ALL" onChange={() => { }} />
                                       </Col>
                                       <Col md={12}>
                                         <div className="d-flex flex-column gap-2 mt-2">
@@ -4958,7 +4958,7 @@ const ConfigTemplates = () => {
                               <div className="p-2 rounded bg-dark bg-opacity-40 border border-white border-opacity-5">
                                 <div className="d-flex justify-content-between align-items-center mb-1 border-bottom border-white border-opacity-5 pb-1">
                                   <span className="fs-12 text-info fw-black uppercase">
-                                    { section.title } {
+                                    {section.title} {
                                       (section.title.toUpperCase().includes('COMMAND') || section.title.toUpperCase().includes('CMD') || section.title.includes('Limits'))
                                         ? <span className="ms-2 text-info opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(WRITE)</span>
                                         : <span className="ms-2 text-warning opacity-75" style={{ fontSize: '8px', letterSpacing: '0.5px' }}>(READ ONLY)</span>

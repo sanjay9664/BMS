@@ -23,6 +23,12 @@ import EnergyMainMeter from '../pages/EnergyMetering/MainMeter';
 import EnergySubMeters from '../pages/EnergyMetering/SubMeters';
 import EnergyPDFReport from '../pages/EnergyMetering/PDFReport';
 
+// VRV
+import VRVOverview from '../pages/VRV/Overview';
+import VRVControlPanel from '../pages/VRV/ControlPanel';
+import VRVSchedule from '../pages/VRV/Schedule';
+import VRVHumanSensor from '../pages/VRV/HumanSensor';
+
 // Fallback for other routes until customized
 const PlaceholderPage = ({ title }) => (
   <div className="fade-in">
@@ -36,7 +42,7 @@ const PlaceholderPage = ({ title }) => (
         <button className="btn btn-info btn-sm">System Check</button>
       </div>
     </div>
-    
+
     <div className="scada-card p-5 text-center mt-4">
       <div className="text-muted opacity-50 mb-3">
         <div className="display-4 font-monospace">DATA_STREAM_ACTIVE</div>
@@ -68,7 +74,7 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/" element={<Navigate to={userRole === 'SUPER_ADMIN' ? "/super-admin" : "/dashboard"} replace />} />
       <Route path="/dashboard" element={<Dashboard />} />
-      
+
       {/* Water Management */}
       <Route path="/water-management/overview" element={<WaterOverview />} />
       <Route path="/water-management/ag-pump" element={<AgTank />} />
@@ -115,9 +121,9 @@ const AppRoutes = () => {
       <Route path="/settings" element={<Settings />} />
 
       {/* Super Admin Routes */}
-      <Route 
-        path="/super-admin" 
-        element={userRole === 'SUPER_ADMIN' ? <SuperAdminConfig /> : <Navigate to="/dashboard" replace />} 
+      <Route
+        path="/super-admin"
+        element={userRole === 'SUPER_ADMIN' ? <SuperAdminConfig /> : <Navigate to="/dashboard" replace />}
       />
 
       {/* Admin Routes */}
@@ -133,6 +139,12 @@ const AppRoutes = () => {
       <Route path="/energy-metering/main" element={<EnergyMainMeter />} />
       <Route path="/energy-metering/sub" element={<EnergySubMeters />} />
       <Route path="/energy-metering/report" element={<EnergyPDFReport />} />
+
+      {/* VRV*/}
+      <Route path="/VRV/overview" element={<VRVOverview />} />
+      <Route path="/VRV/control" element={<VRVControlPanel />} />
+      <Route path="/VRV/schedule" element={<VRVSchedule />} />
+      <Route path="/VRV/human-sensor" element={<VRVHumanSensor />} />
 
       {/* Catch-all */}
       <Route path="*" element={<PlaceholderPage title="Module Under Calibration" />} />
