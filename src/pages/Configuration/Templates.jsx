@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Row, Col, Card, Form, Button, Badge, Modal } from 'react-bootstrap';
-import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle, MapPin, AlertTriangle } from 'lucide-react';
+import { Save, Settings, Database, Activity, Zap, Droplets, LayoutGrid, CheckCircle2, ChevronRight, Layers, History, Eye, Info, X, Home, ArrowDownCircle, ArrowUpCircle, MapPin, AlertTriangle, Wind, Thermometer } from 'lucide-react';
 import { loginToSochiot, getSochiotUserMe, getSochiotLocationData, getSochiotDeviceDetails, getSochiotZoneData } from '../../services/authService';
 
 const ConfigTemplates = () => {
@@ -21,6 +21,7 @@ const ConfigTemplates = () => {
   useEffect(() => {
     localStorage.setItem('global_hierarchy_selection', JSON.stringify(globalLocation));
   }, [globalLocation]);
+
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewTemplate, setPreviewTemplate] = useState(null);
   const [showRuleEngineModal, setShowRuleEngineModal] = useState(false);
@@ -204,6 +205,7 @@ const ConfigTemplates = () => {
   });
   const [energyMeteringTarget, setEnergyMeteringTarget] = useState('');
   const [subMeterCategory, setSubMeterCategory] = useState('');
+  const [vrvConfig, setVrvConfig] = useState({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vrvZone: '', temperature: '', humidity: '', co2: '', tvoc: '', aqi: '', targetTemp: '', enabled: true });
 
   const [selectedUgPumpNo, setSelectedUgPumpNo] = useState(1);
   const [pressureTarget, setPressureTarget] = useState('');
@@ -1831,13 +1833,15 @@ const ConfigTemplates = () => {
       rowState?.ebKwh !== undefined ||
       rowState?.lowBalanceCut !== undefined ||
       rowState?.meterSrno !== undefined;
+    const isVRVConfig = rowState?.temperature !== undefined || rowState?.humidity !== undefined || rowState?.co2 !== undefined || rowState?.tvoc !== undefined || rowState?.aqi !== undefined;
 
     if (key === 'field') {
-      if (selectedModuleId === 'ALL' || isDGConfig || isEnergyMeteringConfig) {
+      if (selectedModuleId === 'ALL' || isDGConfig || isEnergyMeteringConfig || isVRVConfig) {
         const allFields = [];
         Object.values(devInfo.modules).forEach(m => {
           (m.fields || []).forEach(f => {
-            allFields.push({ label: `[${m.name}] ${f.label}`, id: `${m.id}::${f.id}` });
+            const labelStr = m.name.toLowerCase() === 'sensor' ? f.label : `[${m.name}] ${f.label}`;
+            allFields.push({ label: labelStr, id: `${m.id}::${f.id}` });
           });
         });
         return allFields;
@@ -2023,7 +2027,8 @@ const ConfigTemplates = () => {
     'Maintenance': ['Scheduled', 'Pending Tasks'],
     'Service History': ['Records'],
     'Daily DPR': ['Data Aggregation', 'Daily Logs'],
-    'Energy Metering': ['Overview', 'Main Meter', 'Sub Meters']
+    'Energy Metering': ['Overview', 'Main Meter', 'Sub Meters'],
+    'VRV': ['Overview', 'Control Panel', 'Schedule', 'Human Sensor', 'Temp & Humidity']
   };
 
   const locations = dynamicOptions.locations;
@@ -2191,6 +2196,55 @@ const ConfigTemplates = () => {
     }
   };
 
+  // Auto-fill Building, Device ID and parameter fields for VRV Mapping
+  useEffect(() => {
+    if (globalLocation.subZone && selectedCategory === 'VRV' && selectedModule === 'Temp & Humidity') {
+      let updatedVrv = { ...vrvConfig };
+      let changed = false;
+
+      const bOpts = getFieldList('building', { ...globalLocation, ...updatedVrv });
+      if (bOpts.length > 0 && !updatedVrv.building) {
+        updatedVrv.building = bOpts[0].id;
+        changed = true;
+      }
+      
+      const currentBuilding = updatedVrv.building;
+      if (currentBuilding) {
+        const dOpts = getFieldList('device', { ...globalLocation, ...updatedVrv, building: currentBuilding });
+        if (dOpts.length > 0 && !updatedVrv.device) {
+          updatedVrv.device = dOpts[0].id;
+          changed = true;
+        }
+      }
+
+      if (updatedVrv.device) {
+        const fieldOpts = getFieldList('field', { ...globalLocation, ...updatedVrv, building: updatedVrv.building });
+        const fieldsToAutoFill = [
+          { key: 'temperature', search: 'temperature' },
+          { key: 'humidity', search: 'humidity' },
+          { key: 'co2', search: 'co2' },
+          { key: 'tvoc', search: 'tvoc' },
+          { key: 'aqi', search: 'aqi' },
+          { key: 'targetTemp', search: 'target temp' }
+        ];
+
+        fieldsToAutoFill.forEach(({ key, search }) => {
+          if (!updatedVrv[key]) {
+            const match = fieldOpts.find(opt => opt.label.toLowerCase().includes(search));
+            if (match) {
+              updatedVrv[key] = match.id;
+              changed = true;
+            }
+          }
+        });
+      }
+
+      if (changed) {
+        setVrvConfig(updatedVrv);
+      }
+    }
+  }, [globalLocation, vrvConfig, selectedCategory, selectedModule]);
+
   const handleSave = async () => {
     let mapping = {};
     if (selectedModule === 'AG Tank') {
@@ -2231,6 +2285,8 @@ const ConfigTemplates = () => {
         emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
         emChangeConfig, emWarningConfig, emReadConfig, emLimitsConfig, energyMeteringTarget, subMeterCategory
       };
+    } else if (selectedCategory === 'VRV') {
+      mapping = { vrvConfig };
     } else {
       // Fallback
       mapping = {
@@ -2270,7 +2326,7 @@ const ConfigTemplates = () => {
     });
 
     const hasValidConfig = Object.values(cleanedMapping).some(val =>
-      val && typeof val === 'object' && (val.field || val.ry || val.r || val.pf || val.kva || val.domStart || val.name || val.pumpNo || val.vR || val.iR || val.activePower || val.cumulativekWh || val.energyMeteringTarget)
+      val && typeof val === 'object' && (val.field || val.ry || val.r || val.pf || val.kva || val.domStart || val.name || val.pumpNo || val.vR || val.iR || val.activePower || val.cumulativekWh || val.energyMeteringTarget || val.temperature || val.humidity || val.co2 || val.tvoc || val.aqi)
     );
 
     if (!hasValidConfig) {
@@ -2413,6 +2469,8 @@ const ConfigTemplates = () => {
       totalKva: { low: '', normalMin: '', normalMax: '', high: '' }
     });
     setEnergyMeteringTarget('');
+    setSubMeterCategory('');
+    setVrvConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', temperature: '', humidity: '', co2: '', tvoc: '', aqi: '', targetTemp: '', enabled: true });
     setUgTankLevelConfig(createDefaultConfig());
     setUgTankRange({ name: '', id: '' });
     setTemplateName('');
@@ -2522,6 +2580,7 @@ const ConfigTemplates = () => {
       });
       setEnergyMeteringTarget(template.mapping.energyMeteringTarget || '');
       setSubMeterCategory(template.mapping.subMeterCategory || '');
+      setVrvConfig(template.mapping.vrvConfig || { organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', vrvZone: '', temperature: '', humidity: '', co2: '', tvoc: '', aqi: '', targetTemp: '', enabled: true });
       setUgConfig(template.mapping.ugConfig || {
         integration: { 'LEVEL MONITORING': true, 'PUMP STATUS': true, 'AUTO LOGIC': true, 'MANUAL CONTROL': true, 'START COMMAND': true, 'STOP COMMAND': true, 'PRESSURE SENSOR': true },
         electrical: { 'PHASE VOLTAGE': true, 'PHASE CURRENT': true, 'POWER FACTOR': true, 'FREQUENCY': true, 'KW LOAD': true, 'KVAH UNIT': true },
@@ -2785,6 +2844,7 @@ const ConfigTemplates = () => {
                 });
                 setEnergyMeteringTarget('');
                 setTemplateName('');
+                setVrvConfig({ organization: '', client: '', zone: '', subZone: '', building: '', device: '', module: '', temperature: '', humidity: '', co2: '', tvoc: '', aqi: '', targetTemp: '', enabled: true });
 
                 setViewMode('FORM');
               }}>
@@ -4402,6 +4462,117 @@ const ConfigTemplates = () => {
                         <p className="text-secondary fs-9">Please select an Energy Meter from the Target Unit dropdown to begin mapping configuration registers.</p>
                       </Card>
                     )}
+                  </div>
+                </div>
+              ) : selectedCategory === 'VRV' && selectedModule === 'Temp & Humidity' ? (
+                <div className="config-form-container scale-in">
+                  <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
+                    <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center gap-2">
+                      <Wind className="text-info shadow-glow-blue" size={18} />
+                      <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">VRV Environment Mapping</h6>
+                    </div>
+                    <div className="p-4 bg-dark bg-opacity-20">
+                      <Row className="g-4">
+                        {[
+                          { title: 'Environment Metrics', state: vrvConfig, setter: setVrvConfig, icon: <Thermometer size={18} />, color: 'info', fields: [{ label: 'TEMPERATURE (C)', key: 'temperature' }, { label: 'HUMIDITY (%)', key: 'humidity' }, { label: 'CO2 (PPM)', key: 'co2' }, { label: 'TVOC (PPM)', key: 'tvoc' }, { label: 'AQI', key: 'aqi' }, { label: 'TARGET TEMP (C)', key: 'targetTemp' }] }
+                        ].map((section, idx) => (
+                          <Col md={12} key={idx}>
+                            <div className={`p-4 rounded-4 bg-dark bg-opacity-40 border border-${section.color} border-opacity-10 premium-figma-card h-100 position-relative overflow-hidden transition-all hover-glow-${section.color}`}>
+                              <div className={`card-inner-glow bg-${section.color} opacity-5`}></div>
+                              <div className="mb-4 d-flex align-items-center justify-content-between">
+                                <div className="d-flex align-items-center gap-3">
+                                  <div className={`icon-box-premium ${section.color} p-2 shadow-glow-${section.color}`}>
+                                    {section.icon}
+                                  </div>
+                                  <div>
+                                    <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
+                                    <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>VRV Mapping</small>
+                                  </div>
+                                </div>
+                                <Form.Check type="switch" className={`scada-switch ${section.color}`} checked={section.state.enabled} onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })} />
+                              </div>
+                              <div className={`transition-all ${!section.state.enabled ? 'opacity-25 grayscale' : ''}`}>
+                                <Row className="g-3 position-relative z-1">
+                                  {!isHierarchyUnlocked ? (
+                                    <Col md={12}>
+                                      <div className={`p-3 rounded bg-dark bg-opacity-40 border border-${section.color} border-opacity-20 text-center shadow-glow-${section.color}-box`}>
+                                        <small className={`text-${section.color} fw-black uppercase tracking-widest fs-12`}>
+                                          <Info size={14} className="me-2" /> Select hierarchy level to unlock
+                                        </small>
+                                      </div>
+                                    </Col>
+                                  ) : (
+                                    <>
+                                      <Col md={4}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
+                                        <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.building || globalLocation.building} onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}>
+                                          <option value="">SELECT OPTION</option>
+                                          {getFieldList('building', { ...globalLocation, ...section.state }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={4}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
+                                        <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.device} onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}>
+                                          <option value="">SELECT DEVICE</option>
+                                          {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
+                                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                          ))}
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={4}>
+                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">TARGET VRV ZONE</Form.Label>
+                                        <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.vrvZone || ''} onChange={(e) => handleConfigChange(section.state, section.setter, 'vrvZone', e.target.value)}>
+                                          <option value="">SELECT ZONE</option>
+                                          <option value="Common">Common</option>
+                                          <option value="Lobby">Lobby</option>
+                                          <option value="Office">Office</option>
+                                          <option value="Conference">Conference</option>
+                                          <option value="Warehouse">Warehouse</option>
+                                          <option value="Laboratory">Laboratory</option>
+                                        </Form.Select>
+                                      </Col>
+                                      <Col md={12}>
+                                        <hr className={`border-${section.color} opacity-20 my-3`} />
+                                        <Form.Label className={`fs-10 text-${section.color} fw-black uppercase tracking-widest opacity-70 mb-3 d-block`}>Parameters Register Mapping</Form.Label>
+                                        <Row className="g-3">
+                                          {section.fields.map((f, fIdx) => {
+                                            const rawFields = getFieldList('field', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building });
+                                            const sortedOptions = getFilteredFieldList(section.title, f.key, f.label, rawFields);
+                                            return (
+                                              <Col md={4} key={fIdx}>
+                                                <div className="premium-field-wrapper p-2 rounded bg-dark bg-opacity-20 border border-white border-opacity-5">
+                                                  <Form.Label className="fs-10 text-secondary fw-black uppercase tracking-widest opacity-50 mb-1 d-block">{f.label}</Form.Label>
+                                                  <Form.Select
+                                                    className={`premium-input p-2 fs-10 fw-bold border-${section.color} border-opacity-10 shadow-inner`}
+                                                    style={{ height: '35px', lineHeight: '1.2' }}
+                                                    value={section.state[f.key] || ''}
+                                                    onChange={(e) => handleConfigChange(section.state, section.setter, f.key, e.target.value)}
+                                                  >
+                                                    <option value="">SELECT PARAMETER</option>
+                                                    {section.state[f.key] && !sortedOptions.some(opt => String(opt.id) === String(section.state[f.key])) && (
+                                                      <option value={section.state[f.key]}>{section.state[f.key]}</option>
+                                                    )}
+                                                    {sortedOptions.map(opt => (
+                                                      <option key={opt.id} value={opt.id}>{opt.label}</option>
+                                                    ))}
+                                                  </Form.Select>
+                                                </div>
+                                              </Col>
+                                            );
+                                          })}
+                                        </Row>
+                                      </Col>
+                                    </>
+                                  )}
+                                </Row>
+                              </div>
+                            </div>
+                          </Col>
+                        ))}
+                      </Row>
+                    </div>
                   </div>
                 </div>
               ) : selectedModule && selectedModule.startsWith('DG Set') ? (

@@ -252,7 +252,8 @@ const Sidebar = ({ collapsed }) => {
         { title: "Overview", path: "/VRV/overview" },
         { title: "Control Panel", path: "/VRV/control" },
         { title: "Schedule", path: "/VRV/schedule" },
-        { title: "Human Sensor", path: "/VRV/human-sensor" }
+        { title: "Human Sensor", path: "/VRV/human-sensor" },
+        { title: "Temp & Humidity", path: "/VRV/temp-humidity" }
       ].filter((subItem) => submodulesConfig.showVRV?.[subItem.title] ?? true)
     }
   ];

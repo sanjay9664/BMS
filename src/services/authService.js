@@ -1,5 +1,17 @@
 const EXTERNAL_API_URL = '/sochiot-auth';
 
+const fetchWithTimeout = async (url, options = {}, timeout = 5000) => {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (error) {
+    clearTimeout(id);
+    throw error;
+  }
+};
 export const loginToSochiot = async (email, password) => {
   try {
     const response = await fetch(`${EXTERNAL_API_URL}/login`, {
@@ -95,11 +107,11 @@ export const getSochiotDeviceDetails = async (deviceId) => {
   if (!token) return null;
 
   try {
-    const response = await fetch(`${CONFIG_API_URL}/device/${deviceId}`, {
+    const response = await fetchWithTimeout(`${CONFIG_API_URL}/device/${deviceId}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
-    });
+    }, 5000);
     
     if (!response.ok) throw new Error('Failed to fetch device details');
     return await response.json();
@@ -113,11 +125,11 @@ export const getSochiotGatewayStatus = async (clusterId) => {
   if (!token) return null;
 
   try {
-    const response = await fetch(`${CONFIG_API_URL}/gateway/status/uuid/${clusterId}`, {
+    const response = await fetchWithTimeout(`${CONFIG_API_URL}/gateway/status/uuid/${clusterId}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
-    });
+    }, 5000);
 
     if (!response.ok) throw new Error('Failed to fetch gateway status');
     return await response.json();
@@ -132,11 +144,11 @@ export const getSochiotDeviceStatus = async (deviceId) => {
   if (!token) return null;
 
   try {
-    const response = await fetch(`${CONFIG_API_URL}/device/status/uuid/${deviceId}`, {
+    const response = await fetchWithTimeout(`${CONFIG_API_URL}/device/status/uuid/${deviceId}`, {
       headers: {
         'Authorization': `Bearer ${token}`
       }
-    });
+    }, 5000);
 
     if (!response.ok) throw new Error('Failed to fetch device status');
     return await response.json();

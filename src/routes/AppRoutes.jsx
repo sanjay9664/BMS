@@ -28,6 +28,7 @@ import VRVOverview from '../pages/VRV/Overview';
 import VRVControlPanel from '../pages/VRV/ControlPanel';
 import VRVSchedule from '../pages/VRV/Schedule';
 import VRVHumanSensor from '../pages/VRV/HumanSensor';
+import VRVTempHumidity from '../pages/VRV/TempHumidity';
 
 // Fallback for other routes until customized
 const PlaceholderPage = ({ title }) => (
@@ -145,6 +146,7 @@ const AppRoutes = () => {
       <Route path="/VRV/control" element={<VRVControlPanel />} />
       <Route path="/VRV/schedule" element={<VRVSchedule />} />
       <Route path="/VRV/human-sensor" element={<VRVHumanSensor />} />
+      <Route path="/VRV/temp-humidity" element={<VRVTempHumidity />} />
 
       {/* Catch-all */}
       <Route path="*" element={<PlaceholderPage title="Module Under Calibration" />} />

@@ -15,7 +15,9 @@ import {
   CheckCircle2,
   Battery,
   Plug,
-  Flashlight
+  Flashlight,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
@@ -147,6 +149,9 @@ const EnergyMeteringOverview = () => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState('Your setting is successfully saved');
   const [groupActionStatus, setGroupActionStatus] = useState(null);
+  const [selectedMainMeterId, setSelectedMainMeterId] = useState('');
+  const [selectedSubMeterId, setSelectedSubMeterId] = useState('');
+  const [showGroups, setShowGroups] = useState(false);
 
   const refreshTemplates = () => {
     try {
@@ -411,6 +416,22 @@ const EnergyMeteringOverview = () => {
   }, [meterRows]);
 
   const subMeterRows = meterRows.filter(row => !row.isMain);
+
+  const inspectionMainMeter = useMemo(() => {
+    if (!selectedMainMeterId) {
+      const mainMeters = meterRows.filter(m => m.isMain);
+      return mainMeters[0] || meterRows[0] || null;
+    }
+    return meterRows.find(m => m.id === selectedMainMeterId) || null;
+  }, [selectedMainMeterId, meterRows]);
+
+  const inspectionSubMeter = useMemo(() => {
+    if (!selectedSubMeterId) {
+      const subMeters = meterRows.filter(m => !m.isMain);
+      return subMeters[0] || meterRows[1] || meterRows[0] || null;
+    }
+    return meterRows.find(m => m.id === selectedSubMeterId) || null;
+  }, [selectedSubMeterId, meterRows]);
 
   const groupLookup = useMemo(() => {
     const map = new Map();
@@ -694,13 +715,225 @@ const EnergyMeteringOverview = () => {
       </div>
 
       <Row className="g-4 mb-5">
+        {/* Main Meter Compact Tile */}
+        <Col md={6} xl={4}>
+          <Card 
+            className="overview-stat-card border-0 h-100 text-white position-relative overflow-hidden" 
+            style={{ 
+              cursor: 'pointer', 
+              transition: 'transform 0.2s, boxShadow 0.2s',
+              background: 'linear-gradient(145deg, #1e293b 0%, #0f172a 100%)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+              borderRadius: '16px'
+            }}
+            onClick={(e) => {
+               if(e.target.tagName !== 'SELECT' && inspectionMainMeter) {
+                   navigate(inspectionMainMeter.path);
+               }
+            }}
+          >
+            {/* Subtle glow effect */}
+            <div className="position-absolute top-0 start-0 w-100 h-100 pointer-events-none" style={{ background: 'radial-gradient(circle at top right, rgba(56, 189, 248, 0.05) 0%, transparent 60%)' }}></div>
+            
+            <Card.Body className="p-3 d-flex flex-column position-relative z-1">
+              <div className="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-secondary border-opacity-25">
+                <div className="d-flex align-items-center gap-2">
+                  <div className="p-1 px-2 rounded bg-info bg-opacity-10 text-info d-flex align-items-center justify-content-center shadow-sm">
+                    <Zap size={14} />
+                  </div>
+                  <Form.Select 
+                    className="bg-dark text-white shadow-none fw-bold p-1 px-2"
+                    style={{ width: 'auto', minWidth: '140px', maxWidth: '180px', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)', fontSize: '0.8rem', letterSpacing: '0.5px', borderRadius: '6px' }}
+                    value={selectedMainMeterId}
+                    onChange={(e) => setSelectedMainMeterId(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="" style={{backgroundColor: '#0f172a', color: '#fff'}}>-- Select Main Meter --</option>
+                    {meterRows.filter(m => m.isMain).map(m => (
+                      <option key={m.id} value={m.id} style={{backgroundColor: '#0f172a', color: '#fff'}}>{m.name}</option>
+                    ))}
+                  </Form.Select>
+                </div>
+                {inspectionMainMeter && (
+                  <div className="mb-0" style={{ transform: 'scale(0.8)', transformOrigin: 'right center' }}>
+                    <StatusBadge status={inspectionMainMeter.status} />
+                  </div>
+                )}
+              </div>
+
+              {inspectionMainMeter ? (
+                <>
+                  <div className="d-flex align-items-center gap-2 mb-2 flex-grow-1">
+                     <div className="p-2 rounded-circle bg-warning bg-opacity-10 border border-warning border-opacity-25 shadow-sm">
+                        <Activity size={20} className="text-warning" />
+                     </div>
+                     <div>
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.6rem', letterSpacing: '0.5px'}}>TOTAL ACTIVE LOAD</div>
+                       <div className="fw-black text-white d-flex align-items-baseline gap-1" style={{fontSize: '1.5rem', lineHeight: '1'}}>
+                         {formatMetric(inspectionMainMeter.loadKw)} <span className="text-warning fw-bold" style={{fontSize:'0.75rem'}}>kW</span>
+                       </div>
+                     </div>
+                  </div>
+
+                  <div className="d-flex gap-2 mb-2">
+                    <div className="bg-dark bg-opacity-50 rounded p-1 px-2 flex-fill text-center border border-secondary border-opacity-25 shadow-sm transition-all hover-highlight">
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.55rem', letterSpacing: '0.5px'}}>KVA</div>
+                       <div className="fw-bold text-info" style={{fontSize: '0.85rem'}}>{formatMetric(inspectionMainMeter.loadKva)}</div>
+                    </div>
+                    <div className="bg-dark bg-opacity-50 rounded p-1 px-2 flex-fill text-center border border-secondary border-opacity-25 shadow-sm transition-all hover-highlight">
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.55rem', letterSpacing: '0.5px'}}>KWH</div>
+                       <div className="fw-bold text-success" style={{fontSize: '0.85rem'}}>{formatMetric(inspectionMainMeter.kwh)}</div>
+                    </div>
+                    <div className="bg-dark bg-opacity-50 rounded p-1 px-2 flex-fill text-center border border-secondary border-opacity-25 shadow-sm transition-all hover-highlight">
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.55rem', letterSpacing: '0.5px'}}>KVAH</div>
+                       <div className="fw-bold text-primary" style={{fontSize: '0.85rem'}}>{formatMetric(inspectionMainMeter.kvah)}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1 pt-2 border-top border-secondary border-opacity-25">
+                    <div className="d-flex justify-content-between align-items-center text-secondary mb-1 fw-bold" style={{fontSize: '0.6rem', letterSpacing: '0.5px'}}>
+                      <span style={{width: '30px'}}>PH</span>
+                      <span className="text-center" style={{width: '60px'}}>VOLT(V)</span>
+                      <span className="text-end" style={{width: '60px'}}>CURR(A)</span>
+                    </div>
+                    {[
+                      { label: 'R', color: 'danger', v: inspectionMainMeter.vR, i: inspectionMainMeter.iR },
+                      { label: 'Y', color: 'warning', v: inspectionMainMeter.vY, i: inspectionMainMeter.iY },
+                      { label: 'B', color: 'info', v: inspectionMainMeter.vB, i: inspectionMainMeter.iB },
+                    ].map((phase, idx) => (
+                      <div key={idx} className="d-flex justify-content-between align-items-center mb-1 bg-dark bg-opacity-25 rounded p-1 px-2 border border-secondary border-opacity-10 transition-all hover-highlight">
+                        <span className={`fw-bold text-white bg-${phase.color} rounded-circle d-flex align-items-center justify-content-center shadow-sm`} style={{width: '18px', height: '18px', fontSize: '0.6rem'}}>
+                          {phase.label}
+                        </span>
+                        <span className="font-monospace text-center fw-bold text-light" style={{width: '60px', fontSize: '0.75rem'}}>{formatMetric(phase.v)}</span>
+                        <span className="font-monospace text-end fw-bold text-light" style={{width: '60px', fontSize: '0.75rem'}}>{formatMetric(phase.i)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1 text-secondary" style={{fontSize: '0.75rem'}}>
+                  <Activity size={24} className="mb-2 opacity-25" />
+                  No Main Meter Selected
+                </div>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+
+        {/* Sub Meter Compact Tile */}
+        <Col md={6} xl={4}>
+          <Card 
+            className="overview-stat-card border-0 h-100 text-white position-relative overflow-hidden" 
+            style={{ 
+              cursor: 'pointer', 
+              transition: 'transform 0.2s, boxShadow 0.2s',
+              background: 'linear-gradient(145deg, #1e293b 0%, #0f172a 100%)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
+              borderRadius: '16px'
+            }}
+            onClick={(e) => {
+               if(e.target.tagName !== 'SELECT' && inspectionSubMeter) {
+                   navigate(inspectionSubMeter.path);
+               }
+            }}
+          >
+            {/* Subtle glow effect */}
+            <div className="position-absolute top-0 start-0 w-100 h-100 pointer-events-none" style={{ background: 'radial-gradient(circle at bottom left, rgba(34, 197, 94, 0.05) 0%, transparent 60%)' }}></div>
+
+            <Card.Body className="p-3 d-flex flex-column position-relative z-1">
+              <div className="d-flex justify-content-between align-items-center mb-2 pb-2 border-bottom border-secondary border-opacity-25">
+                <div className="d-flex align-items-center gap-2">
+                  <div className="p-1 px-2 rounded bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center shadow-sm">
+                    <Plug size={14} />
+                  </div>
+                  <Form.Select 
+                    className="bg-dark text-white shadow-none fw-bold p-1 px-2"
+                    style={{ width: 'auto', minWidth: '140px', maxWidth: '180px', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)', fontSize: '0.8rem', letterSpacing: '0.5px', borderRadius: '6px' }}
+                    value={selectedSubMeterId}
+                    onChange={(e) => setSelectedSubMeterId(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="" style={{backgroundColor: '#0f172a', color: '#fff'}}>-- Select Sub Meter --</option>
+                    {meterRows.filter(m => !m.isMain).map(m => (
+                      <option key={m.id} value={m.id} style={{backgroundColor: '#0f172a', color: '#fff'}}>{m.name}</option>
+                    ))}
+                  </Form.Select>
+                </div>
+                {inspectionSubMeter && (
+                  <div className="mb-0" style={{ transform: 'scale(0.8)', transformOrigin: 'right center' }}>
+                    <StatusBadge status={inspectionSubMeter.status} />
+                  </div>
+                )}
+              </div>
+
+              {inspectionSubMeter ? (
+                <>
+                  <div className="d-flex align-items-center gap-2 mb-2 flex-grow-1">
+                     <div className="p-2 rounded-circle bg-warning bg-opacity-10 border border-warning border-opacity-25 shadow-sm">
+                        <Activity size={20} className="text-warning" />
+                     </div>
+                     <div>
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.6rem', letterSpacing: '0.5px'}}>TOTAL ACTIVE LOAD</div>
+                       <div className="fw-black text-white d-flex align-items-baseline gap-1" style={{fontSize: '1.5rem', lineHeight: '1'}}>
+                         {formatMetric(inspectionSubMeter.loadKw)} <span className="text-warning fw-bold" style={{fontSize:'0.75rem'}}>kW</span>
+                       </div>
+                     </div>
+                  </div>
+
+                  <div className="d-flex gap-2 mb-2">
+                    <div className="bg-dark bg-opacity-50 rounded p-1 px-2 flex-fill text-center border border-secondary border-opacity-25 shadow-sm transition-all hover-highlight">
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.55rem', letterSpacing: '0.5px'}}>KVA</div>
+                       <div className="fw-bold text-info" style={{fontSize: '0.85rem'}}>{formatMetric(inspectionSubMeter.loadKva)}</div>
+                    </div>
+                    <div className="bg-dark bg-opacity-50 rounded p-1 px-2 flex-fill text-center border border-secondary border-opacity-25 shadow-sm transition-all hover-highlight">
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.55rem', letterSpacing: '0.5px'}}>KWH</div>
+                       <div className="fw-bold text-success" style={{fontSize: '0.85rem'}}>{formatMetric(inspectionSubMeter.kwh)}</div>
+                    </div>
+                    <div className="bg-dark bg-opacity-50 rounded p-1 px-2 flex-fill text-center border border-secondary border-opacity-25 shadow-sm transition-all hover-highlight">
+                       <div className="text-secondary fw-bold mb-0" style={{fontSize: '0.55rem', letterSpacing: '0.5px'}}>KVAH</div>
+                       <div className="fw-bold text-primary" style={{fontSize: '0.85rem'}}>{formatMetric(inspectionSubMeter.kvah)}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-1 pt-2 border-top border-secondary border-opacity-25">
+                    <div className="d-flex justify-content-between align-items-center text-secondary mb-1 fw-bold" style={{fontSize: '0.6rem', letterSpacing: '0.5px'}}>
+                      <span style={{width: '30px'}}>PH</span>
+                      <span className="text-center" style={{width: '60px'}}>VOLT(V)</span>
+                      <span className="text-end" style={{width: '60px'}}>CURR(A)</span>
+                    </div>
+                    {[
+                      { label: 'R', color: 'danger', v: inspectionSubMeter.vR, i: inspectionSubMeter.iR },
+                      { label: 'Y', color: 'warning', v: inspectionSubMeter.vY, i: inspectionSubMeter.iY },
+                      { label: 'B', color: 'info', v: inspectionSubMeter.vB, i: inspectionSubMeter.iB },
+                    ].map((phase, idx) => (
+                      <div key={idx} className="d-flex justify-content-between align-items-center mb-1 bg-dark bg-opacity-25 rounded p-1 px-2 border border-secondary border-opacity-10 transition-all hover-highlight">
+                        <span className={`fw-bold text-white bg-${phase.color} rounded-circle d-flex align-items-center justify-content-center shadow-sm`} style={{width: '18px', height: '18px', fontSize: '0.6rem'}}>
+                          {phase.label}
+                        </span>
+                        <span className="font-monospace text-center fw-bold text-light" style={{width: '60px', fontSize: '0.75rem'}}>{formatMetric(phase.v)}</span>
+                        <span className="font-monospace text-end fw-bold text-light" style={{width: '60px', fontSize: '0.75rem'}}>{formatMetric(phase.i)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1 text-secondary" style={{fontSize: '0.75rem'}}>
+                  <Activity size={24} className="mb-2 opacity-25" />
+                  No Sub Meter Selected
+                </div>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+
         {[
           { label: 'Total Live Load', value: `${formatMetric(headlineMetrics.totalLoad)} kW`, note: 'Main/Sub Aggregated', icon: <Gauge size={18} /> },
           { label: 'Online Meters', value: `${headlineMetrics.onlineMeters}/${headlineMetrics.totalMeters}`, note: 'Realtime communication health', icon: <Network size={18} /> },
           { label: 'Ranked Groups', value: `${headlineMetrics.groupedMeters}`, note: `${groupedCollections.length} custom groups active`, icon: <Layers3 size={18} /> },
           { label: 'Ungrouped Feeds', value: `${headlineMetrics.ungroupedMeters}`, note: 'Standalone MFM panels', icon: <FolderTree size={18} /> }
         ].map((metric, index) => (
-          <Col key={index} md={6} xl={3}>
+          <Col key={index} md={6} xl={4}>
             <Card className="overview-stat-card border-0 h-100 text-white">
               <Card.Body className="p-4">
                 <div className="d-flex justify-content-between align-items-start mb-4">
@@ -715,163 +948,103 @@ const EnergyMeteringOverview = () => {
         ))}
       </Row>
 
-      {/* 1. Main Meter Detailed View */}
-      <h4 className="text-info fw-black mb-3 d-flex align-items-center gap-2">
-        <Cpu size={24} /> Main Meter (Primary Incomer)
-      </h4>
-      <Card className="overview-panel border-0 text-white mb-5 mx-0">
-        <Card.Body className="p-0">
-          {mainMeterRow ? (
-            <div 
-              className="main-meter-container p-4"
-              onClick={() => navigate('/energy-metering/main')}
-              style={{ cursor: 'pointer', transition: 'background 0.2s', borderRadius: '16px' }}
-              onMouseOver={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
-              onMouseOut={(e) => e.currentTarget.style.background = 'transparent'}
-            >
-              <div className="d-flex justify-content-between align-items-center border-bottom border-secondary border-opacity-25 pb-3 mb-4">
-                <div>
-                  <h4 className="fw-black m-0 text-white d-flex align-items-center gap-2">
-                    {mainMeterRow.name}
-                    <Badge bg="info" className="ms-2" style={{ fontSize: '0.65rem' }}>Click to View Details</Badge>
-                  </h4>
-                  <p className="text-secondary m-0 mt-1 fs-13">ID: {mainMeterRow.id} | Values mapped from Main Incomer Template</p>
-                </div>
-                <StatusBadge status={mainMeterRow.status} />
-              </div>
-              
-              <Row className="g-4">
-                {/* Core Parameters */}
-                <Col xl={6}>
-                  <h6 className="text-secondary fw-bold mb-3 text-uppercase fs-12 letter-spacing-1">Core Parameters</h6>
-                  <div className="d-grid gap-3" style={{ gridTemplateColumns: '1fr 1fr' }}>
-                    <ParameterCard label="Total KW" value={formatMetric(mainMeterRow.loadKw)} unit="kW" icon={<Zap size={18} />} colorClass="warning" />
-                    <ParameterCard label="Total KVA" value={formatMetric(mainMeterRow.loadKva)} unit="kVA" icon={<Activity size={18} />} colorClass="info" />
-                    <ParameterCard label="KWH (Consumed)" value={formatMetric(mainMeterRow.kwh)} unit="kWh" icon={<Battery size={18} />} colorClass="success" />
-                    <ParameterCard label="KVAH" value={formatMetric(mainMeterRow.kvah)} unit="kVAh" icon={<Plug size={18} />} colorClass="secondary" />
-                  </div>
-                </Col>
-
-                {/* Phase Parameters */}
-                <Col xl={6}>
-                  <h6 className="text-secondary fw-bold mb-3 text-uppercase fs-12 letter-spacing-1">Phase Values (All Voltage & Current)</h6>
-                  <div className="phase-grid">
-                    <div className="phase-row header">
-                      <span>Phase</span>
-                      <span>Voltage (V)</span>
-                      <span>Current (A)</span>
-                    </div>
-                    <div className="phase-row r-phase">
-                      <span className="fw-bold text-danger">R-Phase</span>
-                      <span className="font-monospace">{formatMetric(mainMeterRow.vR)}</span>
-                      <span className="font-monospace">{formatMetric(mainMeterRow.iR)}</span>
-                    </div>
-                    <div className="phase-row y-phase">
-                      <span className="fw-bold text-warning">Y-Phase</span>
-                      <span className="font-monospace">{formatMetric(mainMeterRow.vY)}</span>
-                      <span className="font-monospace">{formatMetric(mainMeterRow.iY)}</span>
-                    </div>
-                    <div className="phase-row b-phase">
-                      <span className="fw-bold text-info">B-Phase</span>
-                      <span className="font-monospace">{formatMetric(mainMeterRow.vB)}</span>
-                      <span className="font-monospace">{formatMetric(mainMeterRow.iB)}</span>
-                    </div>
-                  </div>
-                </Col>
-              </Row>
-            </div>
-          ) : (
-            <div className="empty-panel m-4 text-center">
-              No Main Meter configured. Please set up a main incomer template.
-            </div>
-          )}
-        </Card.Body>
-      </Card>
 
       {/* 2. Group Comparison (Sorted by Highest Load) */}
       <div className="d-flex justify-content-between align-items-center mb-3">
         <h4 className="text-warning fw-black m-0 d-flex align-items-center gap-2">
           <Layers3 size={24} /> Sub-Meter Groups (Ranked by Load)
         </h4>
-        <button onClick={() => navigate('/energy-metering/sub', { state: { openGroupSettings: true } })} className="btn btn-outline-warning rounded-pill px-3 py-1 fw-bold fs-13 d-flex align-items-center gap-2">
-          <Settings2 size={14} /> Manage Groups
-        </button>
+        <div className="d-flex gap-2">
+          <button 
+            onClick={() => setShowGroups(!showGroups)} 
+            className={`btn ${showGroups ? 'btn-warning text-dark' : 'btn-outline-warning'} rounded-pill px-3 py-1 fw-bold fs-13 d-flex align-items-center gap-2`}
+          >
+            {showGroups ? <EyeOff size={14} /> : <Eye size={14} />} 
+            {showGroups ? 'Hide Groups' : 'Show Groups'}
+          </button>
+          <button onClick={() => navigate('/energy-metering/sub', { state: { openGroupSettings: true } })} className="btn btn-outline-warning rounded-pill px-3 py-1 fw-bold fs-13 d-flex align-items-center gap-2">
+            <Settings2 size={14} /> Manage Groups
+          </button>
+        </div>
       </div>
       
-      {groupedCollections.length === 0 ? (
-        <div className="empty-panel mb-5 text-center">
-          No groups created. Go to settings to combine multiple sub-meters into functional areas.
-        </div>
-      ) : (
-        <Row className="g-4 mb-5">
-          {groupedCollections.map((group, index) => (
-            <Col key={group.id} lg={6}>
-              <div className="group-card" style={{ borderColor: `${group.color}55` }}>
-                <div className="group-rank-badge">#{index + 1} Load</div>
-                <div className="d-flex justify-content-between align-items-start gap-3 mb-3 mt-2">
-                  <div>
-                    <div className="d-flex align-items-center gap-2 mb-2">
-                      <span className="group-dot" style={{ backgroundColor: group.color }} />
-                      <h6 className="mb-0 text-white fw-black">{group.name}</h6>
+      {showGroups && (
+        groupedCollections.length === 0 ? (
+          <div className="empty-panel mb-5 text-center">
+            No groups created. Go to settings to combine multiple sub-meters into functional areas.
+          </div>
+        ) : (
+          <Row className="g-3 mb-5">
+            {groupedCollections.map((group, index) => (
+              <Col key={group.id} lg={4} xl={3}>
+                <div className="group-card p-3" style={{ borderColor: `${group.color}55` }}>
+                  <div className="group-rank-badge" style={{ fontSize: '0.65rem', padding: '2px 8px' }}>#{index + 1} Load</div>
+                  <div className="d-flex justify-content-between align-items-start gap-2 mb-2 mt-2">
+                    <div>
+                      <div className="d-flex align-items-center gap-2 mb-1">
+                        <span className="group-dot" style={{ backgroundColor: group.color, width: '8px', height: '8px' }} />
+                        <h6 className="mb-0 text-white fw-bold fs-14">{group.name}</h6>
+                      </div>
+                      <small className="text-secondary fs-12">{group.meters.length} meter(s) linked</small>
                     </div>
-                    <small className="text-secondary">{group.meters.length} meter(s) linked</small>
+                    <div className="text-end">
+                      <div className="text-white fw-bold fs-6">{formatMetric(group.totalLoadKw)} kW</div>
+                      <small style={{ color: group.color, fontSize: '0.7rem' }}>{group.onlineCount} online</small>
+                    </div>
                   </div>
-                  <div className="text-end">
-                    <div className="text-white fw-bold fs-5">{formatMetric(group.totalLoadKw)} kW</div>
-                    <small style={{ color: group.color }}>{group.onlineCount} online</small>
+                  
+                  <div className="d-flex justify-content-between gap-2 mb-3">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEditGroup(group.id);
+                      }}
+                      className="btn btn-outline-info rounded-pill px-2 py-1 d-flex align-items-center gap-1 overview-action-btn fs-12 flex-grow-1 justify-content-center"
+                    >
+                      <Settings2 size={12} /> Edit
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteGroup(group.id);
+                      }}
+                      className="btn btn-outline-danger rounded-pill px-2 py-1 d-flex align-items-center gap-1 overview-delete-btn fs-12 flex-grow-1 justify-content-center"
+                    >
+                      <Trash2 size={12} /> Delete
+                    </button>
                   </div>
-                </div>
-                
-                <div className="d-flex justify-content-end gap-2 mb-3">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleEditGroup(group.id);
-                    }}
-                    className="btn btn-outline-info rounded-pill px-3 py-1 d-flex align-items-center gap-2 overview-action-btn"
-                  >
-                    <Settings2 size={14} /> Edit Group
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDeleteGroup(group.id);
-                    }}
-                    className="btn btn-outline-danger rounded-pill px-3 py-1 d-flex align-items-center gap-2 overview-delete-btn"
-                  >
-                    <Trash2 size={14} /> Delete
-                  </button>
-                </div>
 
-                <div className="d-flex flex-column gap-2">
-                  {group.meters.map(meter => (
-                    <div key={meter.id} className="group-meter-row" onClick={() => navigate(meter.path)}>
-                      <div>
-                        <div className="text-white fw-bold">{meter.name}</div>
-                        <small className="text-secondary">{meter.id}</small>
+                  <div className="d-flex flex-column gap-1">
+                    {group.meters.map(meter => (
+                      <div key={meter.id} className="group-meter-row p-2 py-1" onClick={() => navigate(meter.path)}>
+                        <div>
+                          <div className="text-white fw-bold fs-13">{meter.name}</div>
+                          <small className="text-secondary" style={{fontSize: '0.65rem'}}>{meter.id}</small>
+                        </div>
+                        <div className="text-end d-flex flex-column align-items-end gap-1">
+                          <div className="text-white fw-bold fs-13">{formatMetric(meter.loadKw)} kW</div>
+                          <small className={meter.isOnline ? 'text-success' : 'text-danger'} style={{fontSize: '0.65rem'}}>
+                            {meter.isOnline ? 'Online' : 'Offline'}
+                          </small>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRemoveMeterFromGroup(group.id, meter.templateId);
+                            }}
+                            className="btn btn-sm btn-outline-warning rounded-pill py-0 overview-remove-meter-btn"
+                            style={{fontSize: '0.6rem', padding: '0px 6px'}}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
-                      <div className="text-end d-flex flex-column align-items-end gap-2">
-                        <div className="text-white fw-bold">{formatMetric(meter.loadKw)} kW</div>
-                        <small className={meter.isOnline ? 'text-success' : 'text-danger'}>
-                          {meter.isOnline ? 'Online' : 'Offline'}
-                        </small>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveMeterFromGroup(group.id, meter.templateId);
-                          }}
-                          className="btn btn-sm btn-outline-warning rounded-pill px-2 py-1 overview-remove-meter-btn"
-                        >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </Col>
-          ))}
-        </Row>
+              </Col>
+            ))}
+          </Row>
+        )
       )}
 
       {/* 3. Ungrouped Sub-Meters Detailed View */}
