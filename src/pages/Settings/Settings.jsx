@@ -22,7 +22,8 @@ const createDefaultModules = () => ({
   'Service History': true,
   'Daily DPR': true,
   'Energy Metering': true,
-  'VRV': true
+  'VRV': true,
+  'AQI Sensor': true
 });
 
 const Settings = () => {
@@ -51,7 +52,8 @@ const Settings = () => {
           showServiceHistory: 'Service History',
           showDailyDPR: 'Daily DPR',
           showEnergyMetering: 'Energy Metering',
-          showVRV: 'VRV'
+          showVRV: 'VRV',
+          showAQISensor: 'AQI Sensor'
         };
 
         const sidebarModules = {};
@@ -99,7 +101,8 @@ const Settings = () => {
         'Service History': 'showServiceHistory',
         'Daily DPR': 'showDailyDPR',
         'Energy Metering': 'showEnergyMetering',
-        'VRV': 'showVRV'
+        'VRV': 'showVRV',
+        'AQI Sensor': 'showAQISensor'
       };
 
       const backendConfig = {};

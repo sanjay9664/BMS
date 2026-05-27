@@ -2028,7 +2028,8 @@ const ConfigTemplates = () => {
     'Service History': ['Records'],
     'Daily DPR': ['Data Aggregation', 'Daily Logs'],
     'Energy Metering': ['Overview', 'Main Meter', 'Sub Meters'],
-    'VRV': ['Overview', 'Control Panel', 'Schedule', 'Human Sensor', 'Temp & Humidity']
+    'VRV': ['Overview', 'Control Panel', 'Schedule', 'Human Sensor'],
+    'AQI Sensor': ['Temp & Humidity']
   };
 
   const locations = dynamicOptions.locations;
@@ -2196,9 +2197,9 @@ const ConfigTemplates = () => {
     }
   };
 
-  // Auto-fill Building, Device ID and parameter fields for VRV Mapping
+  // Auto-fill Building, Device ID and parameter fields for AQI Sensor Mapping
   useEffect(() => {
-    if (globalLocation.subZone && selectedCategory === 'VRV' && selectedModule === 'Temp & Humidity') {
+    if (globalLocation.subZone && selectedCategory === 'AQI Sensor' && selectedModule === 'Temp & Humidity') {
       let updatedVrv = { ...vrvConfig };
       let changed = false;
 
@@ -2285,7 +2286,7 @@ const ConfigTemplates = () => {
         emVoltageConfig, emCurrentConfig, emPowerConfig, emSystemConfig, emConsumptionConfig,
         emChangeConfig, emWarningConfig, emReadConfig, emLimitsConfig, energyMeteringTarget, subMeterCategory
       };
-    } else if (selectedCategory === 'VRV') {
+    } else if (selectedCategory === 'VRV' || selectedCategory === 'AQI Sensor') {
       mapping = { vrvConfig };
     } else {
       // Fallback
@@ -4464,12 +4465,12 @@ const ConfigTemplates = () => {
                     )}
                   </div>
                 </div>
-              ) : selectedCategory === 'VRV' && selectedModule === 'Temp & Humidity' ? (
+              ) : selectedCategory === 'AQI Sensor' && selectedModule === 'Temp & Humidity' ? (
                 <div className="config-form-container scale-in">
                   <div className="p-0 rounded-4 bg-dark bg-opacity-20 border border-white border-opacity-5 mb-5 overflow-hidden position-relative">
                     <div className="p-3 border-bottom border-white border-opacity-5 bg-dark bg-opacity-40 d-flex align-items-center gap-2">
                       <Wind className="text-info shadow-glow-blue" size={18} />
-                      <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">VRV Environment Mapping</h6>
+                      <h6 className="mb-0 text-white fw-black uppercase tracking-widest fs-11">AQI Sensor Environment Mapping</h6>
                     </div>
                     <div className="p-4 bg-dark bg-opacity-20">
                       <Row className="g-4">
@@ -4486,7 +4487,7 @@ const ConfigTemplates = () => {
                                   </div>
                                   <div>
                                     <h6 className="text-white fw-black uppercase tracking-widest mb-0 fs-10">{section.title}</h6>
-                                    <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>VRV Mapping</small>
+                                    <small className={`text-${section.color} opacity-50 uppercase fs-12 fw-bold tracking-widest`}>AQI Sensor Mapping</small>
                                   </div>
                                 </div>
                                 <Form.Check type="switch" className={`scada-switch ${section.color}`} checked={section.state.enabled} onChange={(e) => section.setter({ ...section.state, enabled: e.target.checked })} />
@@ -4503,7 +4504,7 @@ const ConfigTemplates = () => {
                                     </Col>
                                   ) : (
                                     <>
-                                      <Col md={4}>
+                                      <Col md={6}>
                                         <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">BUILDING / GATEWAY</Form.Label>
                                         <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.building || globalLocation.building} onChange={(e) => handleConfigChange(section.state, section.setter, 'building', e.target.value)}>
                                           <option value="">SELECT OPTION</option>
@@ -4512,25 +4513,13 @@ const ConfigTemplates = () => {
                                           ))}
                                         </Form.Select>
                                       </Col>
-                                      <Col md={4}>
+                                      <Col md={6}>
                                         <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block">DEVICE_ID</Form.Label>
                                         <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.device} onChange={(e) => handleConfigChange(section.state, section.setter, 'device', e.target.value)}>
                                           <option value="">SELECT DEVICE</option>
                                           {getFieldList('device', { ...globalLocation, ...section.state, building: section.state.building || globalLocation.building }).map(opt => (
                                             <option key={opt.id} value={opt.id}>{opt.label}</option>
                                           ))}
-                                        </Form.Select>
-                                      </Col>
-                                      <Col md={4}>
-                                        <Form.Label className="fs-11 text-secondary fw-black uppercase tracking-widest opacity-50 mb-2 d-block truncate">TARGET VRV ZONE</Form.Label>
-                                        <Form.Select className={`premium-input p-3 fs-11 fw-bold border-${section.color} border-opacity-10 shadow-inner`} style={{ height: '45px' }} value={section.state.vrvZone || ''} onChange={(e) => handleConfigChange(section.state, section.setter, 'vrvZone', e.target.value)}>
-                                          <option value="">SELECT ZONE</option>
-                                          <option value="Common">Common</option>
-                                          <option value="Lobby">Lobby</option>
-                                          <option value="Office">Office</option>
-                                          <option value="Conference">Conference</option>
-                                          <option value="Warehouse">Warehouse</option>
-                                          <option value="Laboratory">Laboratory</option>
                                         </Form.Select>
                                       </Col>
                                       <Col md={12}>

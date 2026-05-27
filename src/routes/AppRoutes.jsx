@@ -146,7 +146,7 @@ const AppRoutes = () => {
       <Route path="/VRV/control" element={<VRVControlPanel />} />
       <Route path="/VRV/schedule" element={<VRVSchedule />} />
       <Route path="/VRV/human-sensor" element={<VRVHumanSensor />} />
-      <Route path="/VRV/temp-humidity" element={<VRVTempHumidity />} />
+      <Route path="/aqi-sensor/temp-humidity" element={<VRVTempHumidity />} />
 
       {/* Catch-all */}
       <Route path="*" element={<PlaceholderPage title="Module Under Calibration" />} />

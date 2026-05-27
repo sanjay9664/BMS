@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   Droplets, Activity, Zap, Bell, Battery, ShieldAlert,
   Settings, ClipboardList, PenTool, History, LayoutDashboard,
-  ChevronRight, Gauge, Database, Lock, User, Wind
+  ChevronRight, Gauge, Database, Lock, User, Wind, Leaf
 } from 'lucide-react';
 import { Accordion } from 'react-bootstrap';
 import logo from "../assets/logo.png";
@@ -46,7 +46,8 @@ const Sidebar = ({ collapsed }) => {
             showServiceHistory: 'Service History',
             showDailyDPR: 'Daily DPR',
             showEnergyMetering: 'Energy Metering',
-            showVRV: 'VRV'
+            showVRV: 'VRV',
+            showAQISensor: 'AQI Sensor'
           };
 
           const sidebarModules = {};
@@ -252,9 +253,16 @@ const Sidebar = ({ collapsed }) => {
         { title: "Overview", path: "/VRV/overview" },
         { title: "Control Panel", path: "/VRV/control" },
         { title: "Schedule", path: "/VRV/schedule" },
-        { title: "Human Sensor", path: "/VRV/human-sensor" },
-        { title: "Temp & Humidity", path: "/VRV/temp-humidity" }
+        { title: "Human Sensor", path: "/VRV/human-sensor" }
       ].filter((subItem) => submodulesConfig.showVRV?.[subItem.title] ?? true)
+    },
+    {
+      title: "AQI Sensor",
+      icon: <Leaf size={20} />,
+      disabled: modulesConfig ? !modulesConfig["AQI Sensor"] : false,
+      subItems: [
+        { title: "Temp & Humidity", path: "/aqi-sensor/temp-humidity" }
+      ].filter((subItem) => submodulesConfig.showAQISensor?.[subItem.title] ?? true)
     }
   ];
 
