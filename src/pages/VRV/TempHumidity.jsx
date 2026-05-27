@@ -1,10 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Row, Col, Card, Badge } from 'react-bootstrap';
-import { Thermometer, Droplets, Activity, Wind, Leaf, History, Sparkles } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Thermometer, Droplets, Activity, Wind, Leaf, Sparkles } from 'lucide-react';
 import './VRVOverview.css';
-
-
 
 const metricsConfig = {
   TEMP: { label: 'Temperature', shortLabel: 'Temp', unit: 'Deg.C', color: '#fbbf24', icon: Thermometer, min: 0, max: 50 },
@@ -12,18 +9,6 @@ const metricsConfig = {
   CO2: { label: 'CO2', shortLabel: 'CO2', unit: 'PPM', color: '#ec4899', icon: Wind, min: 300, max: 2000 },
   TVOC: { label: 'TVOC', shortLabel: 'TVOC', unit: 'PPM', color: '#a855f7', icon: Activity, min: 0, max: 500 },
   AQI: { label: 'AQI', shortLabel: 'AQI', unit: 'IV', color: '#10b981', icon: Leaf, min: 0, max: 200 }
-};
-
-const generateHistory = (baseValue, variance, min, max) => {
-  const times = ['00:00', '02:00', '04:00', '06:00', '08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
-  return times.map(time => {
-    let val = baseValue + (Math.random() * variance * 2 - variance);
-    val = Math.max(min, Math.min(max, val));
-    return {
-      time,
-      value: parseFloat(val.toFixed(2))
-    };
-  });
 };
 
 const Gauge = ({ value, min, max, unit, color }) => {
@@ -38,7 +23,7 @@ const Gauge = ({ value, min, max, unit, color }) => {
   const rotation = -90 + (percent * 180);
 
   return (
-    <div className="d-flex flex-column align-items-center justify-content-center w-100" style={{ height: '160px' }}>
+    <div className="d-flex flex-column align-items-center justify-content-center w-100" style={{ height: '220px' }}>
       <svg viewBox="0 0 200 160" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
         <defs>
           <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -108,7 +93,7 @@ let globalCachedSelectedUnit = 'Common';
 const EnvDashboard = () => {
   const [selectedUnit, setSelectedUnit] = useState(globalCachedSelectedUnit);
   const [savedZones, setSavedZones] = useState(globalCachedZones || []);
-  const [isLoading, setIsLoading] = useState(!globalCachedZones);
+  const [isLoading, setIsLoading] = useState(!globalCachedZones || globalCachedZones.length === 0);
 
   React.useEffect(() => {
     if (savedZones.length > 0) {
@@ -199,7 +184,7 @@ const EnvDashboard = () => {
               template_name: t.name
             };
           });
-          const vrvTemplates = mappedData.filter(t => t.category === 'VRV' && t.module === 'Temp & Humidity');
+          const vrvTemplates = mappedData.filter(t => (t.category === 'VRV' || t.category === 'AQI Sensor') && t.module === 'Temp & Humidity');
           currentTemplates = vrvTemplates;
           
           if (vrvTemplates.length > 0) {
@@ -288,25 +273,7 @@ const EnvDashboard = () => {
   const activeZones = savedZones;
   const unitData = activeZones.find(u => u.name === selectedUnit) || activeZones[0] || null;
 
-  const getVariance = (metric) => {
-    switch (metric) {
-      case 'TEMP': return 2;
-      case 'HUMIDITY': return 5;
-      case 'CO2': return 30;
-      case 'TVOC': return 8;
-      case 'AQI': return 3;
-      default: return 5;
-    }
-  };
 
-  const histories = useMemo(() => {
-    const h = {};
-    if (!unitData) return h;
-    Object.keys(metricsConfig).forEach(key => {
-      h[key] = generateHistory(unitData[key], getVariance(key), metricsConfig[key].min, metricsConfig[key].max);
-    });
-    return h;
-  }, [unitData]);
 
   const hexToRgb = (hex) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -388,7 +355,7 @@ const EnvDashboard = () => {
                 </div>
                 <h4 className="text-white fw-bold mb-2 tracking-wide text-uppercase">No Configurations Found</h4>
                 <p className="text-secondary mb-0 text-center" style={{ maxWidth: '400px' }}>
-                  Map a VRV target device in the settings configuration module to start receiving live environment telemetry.
+                  Map an AQI Sensor target device in the settings configuration module to start receiving live environment telemetry.
                 </p>
               </div>
             ) : (
@@ -408,7 +375,11 @@ const EnvDashboard = () => {
                   {Object.entries(metricsConfig).map(([key, config]) => {
                     const IconComponent = config.icon;
                     const value = unitData[key];
-                    const history = histories[key];
+                    const percent = Math.max(0, Math.min(100, ((value - config.min) / (config.max - config.min)) * 100));
+                    const percentStr = percent.toFixed(0);
+                    const isOptimal = value >= config.min + (config.max - config.min) * 0.15 && value <= config.max - (config.max - config.min) * 0.15;
+                    const statusColor = isOptimal ? '#10b981' : '#f59e0b';
+                    const statusText = isOptimal ? 'OPTIMAL' : 'ATTENTION';
                     
                     return (
                       <Col xl={6} lg={12} key={key}>
@@ -423,21 +394,24 @@ const EnvDashboard = () => {
                           {/* Subtle background glow based on metric color */}
                           <div className="position-absolute" style={{ top: '-50px', right: '-50px', width: '150px', height: '150px', background: config.color, filter: 'blur(80px)', opacity: 0.1, borderRadius: '50%' }}></div>
                           
-                          <Card.Body className="p-4">
+                          <Card.Body className="p-4 d-flex flex-column">
                             {/* Card Header */}
                             <div className="d-flex justify-content-between align-items-center border-bottom border-secondary border-opacity-10 pb-3 mb-4">
                               <h6 className="text-white fw-bold text-uppercase fs-7 m-0 d-flex align-items-center" style={{ letterSpacing: '1px' }}>
-                                <div className="p-2 rounded-circle me-3 d-flex align-items-center justify-content-center" style={{ background: `rgba(${hexToRgb(config.color)}, 0.15)` }}>
-                                  <IconComponent size={18} style={{ color: config.color }} /> 
+                                <div className="p-2 rounded-circle me-3 d-flex align-items-center justify-content-center shadow-sm" style={{ background: `rgba(${hexToRgb(config.color)}, 0.15)`, border: `1px solid rgba(${hexToRgb(config.color)}, 0.3)` }}>
+                                  <IconComponent size={20} style={{ color: config.color }} /> 
                                 </div>
                                 {config.label}
                               </h6>
-                              <Badge bg="transparent" className="text-secondary border border-secondary border-opacity-25 rounded-pill px-3 py-1 fw-normal">Past 24h</Badge>
+                              <div className="d-flex align-items-center">
+                                <div className="spinner-grow spinner-grow-sm me-2 opacity-50" style={{ color: statusColor, width: '0.75rem', height: '0.75rem' }} role="status"></div>
+                                <span className="text-secondary opacity-75 fs-9 fw-bold uppercase tracking-widest">LIVE DATA</span>
+                              </div>
                             </div>
 
-                            <Row className="align-items-center">
-                              {/* Left: Professional Classic Gauge */}
-                              <Col xs={5} className="pe-4 border-end border-secondary border-opacity-10">
+                            <Row className="align-items-center flex-grow-1">
+                              {/* Left: Premium Centered Gauge */}
+                              <Col xs={7} className="border-end border-secondary border-opacity-10 py-2 d-flex justify-content-center">
                                 <Gauge 
                                   value={value} 
                                   min={config.min} 
@@ -447,33 +421,34 @@ const EnvDashboard = () => {
                                 />
                               </Col>
 
-                              {/* Right: Modern Area Chart */}
-                              <Col xs={7} className="ps-4" style={{ height: '160px' }}>
-                                <ResponsiveContainer width="100%" height="100%">
-                                  <AreaChart data={history} margin={{ top: 5, right: 0, left: -25, bottom: 0 }}>
-                                    <defs>
-                                      <linearGradient id={`gradient-${key}`} x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="0%" stopColor={config.color} stopOpacity={0.4}/>
-                                        <stop offset="100%" stopColor={config.color} stopOpacity={0}/>
-                                      </linearGradient>
-                                    </defs>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                                    <XAxis dataKey="time" stroke="rgba(255,255,255,0.1)" tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }} tickMargin={10} axisLine={false} tickLine={false} />
-                                    <YAxis 
-                                      domain={['dataMin', 'dataMax']} 
-                                      stroke="rgba(255,255,255,0.1)" 
-                                      tick={{ fill: 'rgba(255,255,255,0.3)', fontSize: 11 }}
-                                      axisLine={false} tickLine={false}
-                                    />
-                                    <Tooltip 
-                                      contentStyle={{ backgroundColor: 'rgba(15, 23, 42, 0.95)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', color: '#fff', fontSize: '12px', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}
-                                      itemStyle={{ color: config.color, fontWeight: 'bold' }}
-                                      formatter={(val) => [`${val} ${config.unit}`, config.shortLabel]}
-                                      labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '5px' }}
-                                    />
-                                    <Area type="monotone" dataKey="value" stroke={config.color} strokeWidth={3} fillOpacity={1} fill={`url(#gradient-${key})`} activeDot={{ r: 6, strokeWidth: 0, fill: config.color }} />
-                                  </AreaChart>
-                                </ResponsiveContainer>
+                              {/* Right: Premium Status Panel */}
+                              <Col xs={5} className="ps-4 d-flex flex-column justify-content-center">
+                                <div className="mb-4">
+                                  <span className="text-secondary opacity-75 fs-9 fw-bold uppercase tracking-widest d-block mb-2">SYSTEM STATUS</span>
+                                  <div className="d-inline-flex align-items-center px-3 py-2 rounded-pill shadow-sm" style={{ background: `rgba(${hexToRgb(statusColor)}, 0.15)`, border: `1px solid rgba(${hexToRgb(statusColor)}, 0.3)` }}>
+                                    <div className="rounded-circle me-2" style={{ width: '8px', height: '8px', background: statusColor, boxShadow: `0 0 8px ${statusColor}` }}></div>
+                                    <span className="fw-black fs-8" style={{ color: statusColor, letterSpacing: '1px' }}>{statusText}</span>
+                                  </div>
+                                </div>
+                                
+                                <div className="mb-4">
+                                  <div className="d-flex justify-content-between mb-2">
+                                    <span className="text-secondary opacity-75 fs-9 fw-bold uppercase tracking-widest">CAPACITY</span>
+                                    <span className="text-white fs-8 fw-bold">{percentStr}%</span>
+                                  </div>
+                                  <div className="progress rounded-pill shadow-sm" style={{ height: '6px', background: 'rgba(255,255,255,0.05)' }}>
+                                    <div className="progress-bar rounded-pill" role="progressbar" style={{ width: `${percentStr}%`, background: config.color, boxShadow: `0 0 10px ${config.color}`, transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)' }}></div>
+                                  </div>
+                                </div>
+
+                                <div className="p-3 rounded-4" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                  <span className="text-secondary opacity-75 fs-9 fw-bold uppercase tracking-widest d-block mb-1">OPERATING RANGE</span>
+                                  <div className="d-flex justify-content-between align-items-center">
+                                    <span className="text-white opacity-75 fs-7 font-monospace fw-bold">{config.min}</span>
+                                    <span className="text-secondary opacity-50 px-2">—</span>
+                                    <span className="text-white opacity-75 fs-7 font-monospace fw-bold">{config.max} <span className="fs-9">{config.unit}</span></span>
+                                  </div>
+                                </div>
                               </Col>
                             </Row>
                           </Card.Body>
