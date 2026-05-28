@@ -23,8 +23,8 @@ const Gauge = ({ value, min, max, unit, color }) => {
   const rotation = -90 + (percent * 180);
 
   return (
-    <div className="d-flex flex-column align-items-center justify-content-center w-100" style={{ height: '220px' }}>
-      <svg viewBox="0 0 200 160" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+    <div className="d-flex flex-column align-items-center justify-content-center w-100" style={{ height: '150px' }}>
+      <svg viewBox="0 -10 200 170" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
         <defs>
           <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -40,7 +40,7 @@ const Gauge = ({ value, min, max, unit, color }) => {
           d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
           fill="none"
           stroke="rgba(255,255,255,0.05)"
-          strokeWidth="10"
+          strokeWidth="12"
           strokeLinecap="round"
         />
         
@@ -49,18 +49,16 @@ const Gauge = ({ value, min, max, unit, color }) => {
           d={`M ${cx - radius} ${cy} A ${radius} ${radius} 0 0 1 ${cx + radius} ${cy}`}
           fill="none"
           stroke={color}
-          strokeWidth="10"
+          strokeWidth="12"
           strokeLinecap="round"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)' }}
           filter="url(#glow)"
         />
         
         {/* Central Pivot Needle */}
         <g 
           transform={`rotate(${rotation}, ${cx}, ${cy})`}
-          style={{ transition: 'transform 1s cubic-bezier(0.4, 0, 0.2, 1)' }}
         >
           {/* Needle pointer */}
           <polygon points={`${cx - 3},${cy} ${cx + 3},${cy} ${cx},${cy - radius - 2}`} fill="#ffffff" filter="url(#shadow)" />
@@ -70,14 +68,14 @@ const Gauge = ({ value, min, max, unit, color }) => {
         </g>
         
         {/* Min / Max Text Labels */}
-        <text x={cx - radius - 15} y={cy} fill="rgba(255,255,255,0.4)" fontSize="10" textAnchor="end" alignmentBaseline="middle">{min}</text>
-        <text x={cx + radius + 15} y={cy} fill="rgba(255,255,255,0.4)" fontSize="10" textAnchor="start" alignmentBaseline="middle">{max}</text>
+        <text x={cx - radius - 15} y={cy + 5} fill="rgba(255,255,255,0.4)" fontSize="10" textAnchor="end" alignmentBaseline="middle">{min}</text>
+        <text x={cx + radius + 15} y={cy + 5} fill="rgba(255,255,255,0.4)" fontSize="10" textAnchor="start" alignmentBaseline="middle">{max}</text>
 
         {/* Big Value Text (Positioned safely below the needle pivot) */}
-        <text x={cx} y={cy + 35} fill="#ffffff" fontSize="28" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
+        <text x={cx} y={cy + 40} fill="#ffffff" fontSize="32" fontWeight="bold" textAnchor="middle" fontFamily="monospace">
           {Number.isInteger(value) ? value : value.toFixed(2)}
         </text>
-        <text x={cx} y={cy + 55} fill={color} fontSize="13" fontWeight="bold" textAnchor="middle" letterSpacing="1">
+        <text x={cx} y={cy + 60} fill={color} fontSize="14" fontWeight="bold" textAnchor="middle" letterSpacing="1">
           {unit}
         </text>
       </svg>
@@ -93,7 +91,7 @@ let globalCachedSelectedUnit = 'Common';
 const EnvDashboard = () => {
   const [selectedUnit, setSelectedUnit] = useState(globalCachedSelectedUnit);
   const [savedZones, setSavedZones] = useState(globalCachedZones || []);
-  const [isLoading, setIsLoading] = useState(!globalCachedZones || globalCachedZones.length === 0);
+  const [isFetching, setIsFetching] = useState(!globalCachedZones || globalCachedZones.length === 0);
 
   React.useEffect(() => {
     if (savedZones.length > 0) {
@@ -209,6 +207,9 @@ const EnvDashboard = () => {
               return mappedZones;
             });
             
+            // Stop loading as soon as the layout is ready
+            setIsLoading(false);
+            
             // Initial stats fetch
             const modulesToPoll = new Set();
             vrvTemplates.forEach(t => {
@@ -230,12 +231,15 @@ const EnvDashboard = () => {
               const stats = await statsRes.json();
               processTelemetry(stats);
             }
+          } else {
+            setIsFetching(false);
           }
+        } else {
+          setIsFetching(false);
         }
       } catch (error) {
         console.error('Error fetching VRV templates:', error);
-      } finally {
-        setIsLoading(false);
+        setIsFetching(false);
       }
     };
     
@@ -292,21 +296,8 @@ const EnvDashboard = () => {
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="d-flex flex-column align-items-center justify-content-center flex-grow-1 bg-dark bg-opacity-20 rounded-4 border border-white border-opacity-5" style={{ minHeight: '500px' }}>
-          <div className="position-relative mb-4">
-            <div className="spinner-border text-info" role="status" style={{ width: '5rem', height: '5rem', borderWidth: '0.25em' }}></div>
-            <div className="position-absolute top-50 start-50 translate-middle shadow-lg glow-icon">
-              <Sparkles className="text-warning" size={24} />
-            </div>
-          </div>
-          <h4 className="text-white fw-bold mb-2 text-uppercase" style={{ letterSpacing: '2px' }}>Connecting to Workspace</h4>
-          <p className="text-secondary mb-0 text-center fs-7" style={{ maxWidth: '450px' }}>
-            Syncing live environmental telemetry and loading zone mappings...
-          </p>
-        </div>
-      ) : (
-        <Row className="g-4 flex-grow-1">
+      {/* Removed old blocking isLoading screen entirely as requested */}
+      <Row className="g-4 flex-grow-1">
           {/* Zone Sidebar */}
           <Col xl={3} lg={4}>
             <Card className="scada-card border-0 h-100 shadow-lg" style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px' }}>
@@ -348,7 +339,26 @@ const EnvDashboard = () => {
 
           {/* Dashboard Grid */}
           <Col xl={9} lg={8}>
-            {!unitData ? (
+            {isFetching && !unitData ? (
+              // Silent Skeleton Loader instead of error message
+              <div className="pe-2 placeholder-glow">
+                <div className="d-flex justify-content-between align-items-center mb-3">
+                   <div className="placeholder rounded" style={{ width: '200px', height: '30px', background: 'rgba(255,255,255,0.05)' }}></div>
+                   <div className="placeholder rounded-pill" style={{ width: '120px', height: '35px', background: 'rgba(255,255,255,0.05)' }}></div>
+                </div>
+                <Row className="g-4">
+                  {[1, 2, 3, 4].map(i => (
+                    <Col xl={6} lg={6} md={12} key={i}>
+                      <Card className="border-0 h-100" style={{ background: 'rgba(30, 41, 59, 0.4)', borderRadius: '16px', border: '1px solid rgba(255,255,255,0.02)', minHeight: '220px' }}>
+                         <Card.Body className="d-flex flex-column justify-content-center align-items-center">
+                            <div className="placeholder rounded-circle mb-3" style={{ width: '100px', height: '100px', background: 'rgba(255,255,255,0.03)' }}></div>
+                         </Card.Body>
+                      </Card>
+                    </Col>
+                  ))}
+                </Row>
+              </div>
+            ) : !unitData ? (
               <div className="d-flex flex-column align-items-center justify-content-center h-100 bg-dark bg-opacity-20 rounded-4 border border-white border-opacity-5 p-5" style={{ minHeight: '600px' }}>
                 <div className="p-4 rounded-circle bg-dark bg-opacity-40 border border-secondary border-opacity-25 mb-4 shadow-sm">
                   <Activity size={48} className="text-secondary opacity-50" />
@@ -370,7 +380,7 @@ const EnvDashboard = () => {
                 </Badge>
               </div>
 
-              <div className="overflow-auto scada-scrollbar pe-3" style={{ maxHeight: 'calc(100vh - 240px)' }}>
+              <div className="pe-2">
                 <Row className="g-4">
                   {Object.entries(metricsConfig).map(([key, config]) => {
                     const IconComponent = config.icon;
@@ -382,21 +392,24 @@ const EnvDashboard = () => {
                     const statusText = isOptimal ? 'OPTIMAL' : 'ATTENTION';
                     
                     return (
-                      <Col xl={6} lg={12} key={key}>
+                      <Col xl={6} lg={6} md={12} key={key}>
                         <Card 
-                          className="scada-card border-0 h-100 shadow-lg position-relative overflow-hidden" 
+                          className="scada-card border-0 h-100 position-relative overflow-hidden" 
                           style={{ 
-                            background: 'rgba(30, 41, 59, 0.4)',
+                            background: 'linear-gradient(145deg, rgba(30, 41, 59, 0.7) 0%, rgba(15, 23, 42, 0.9) 100%)',
+                            backdropFilter: 'blur(12px)',
                             borderRadius: '16px',
-                            border: '1px solid rgba(255,255,255,0.03)'
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            boxShadow: '0 8px 32px -8px rgba(0,0,0,0.7)',
+                            minHeight: '220px'
                           }}
                         >
                           {/* Subtle background glow based on metric color */}
-                          <div className="position-absolute" style={{ top: '-50px', right: '-50px', width: '150px', height: '150px', background: config.color, filter: 'blur(80px)', opacity: 0.1, borderRadius: '50%' }}></div>
+                          <div className="position-absolute" style={{ top: '-50px', right: '-50px', width: '160px', height: '160px', background: config.color, filter: 'blur(80px)', opacity: 0.15, borderRadius: '50%', pointerEvents: 'none' }}></div>
                           
-                          <Card.Body className="p-4 d-flex flex-column">
+                          <Card.Body className="p-3 d-flex flex-column justify-content-between">
                             {/* Card Header */}
-                            <div className="d-flex justify-content-between align-items-center border-bottom border-secondary border-opacity-10 pb-3 mb-4">
+                            <div className="d-flex justify-content-between align-items-center border-bottom border-secondary border-opacity-10 pb-2 mb-2">
                               <h6 className="text-white fw-bold text-uppercase fs-7 m-0 d-flex align-items-center" style={{ letterSpacing: '1px' }}>
                                 <div className="p-2 rounded-circle me-3 d-flex align-items-center justify-content-center shadow-sm" style={{ background: `rgba(${hexToRgb(config.color)}, 0.15)`, border: `1px solid rgba(${hexToRgb(config.color)}, 0.3)` }}>
                                   <IconComponent size={20} style={{ color: config.color }} /> 
@@ -411,7 +424,7 @@ const EnvDashboard = () => {
 
                             <Row className="align-items-center flex-grow-1">
                               {/* Left: Premium Centered Gauge */}
-                              <Col xs={7} className="border-end border-secondary border-opacity-10 py-2 d-flex justify-content-center">
+                              <Col xs={6} className="border-end border-secondary border-opacity-10 py-0 d-flex justify-content-center">
                                 <Gauge 
                                   value={value} 
                                   min={config.min} 
@@ -422,31 +435,31 @@ const EnvDashboard = () => {
                               </Col>
 
                               {/* Right: Premium Status Panel */}
-                              <Col xs={5} className="ps-4 d-flex flex-column justify-content-center">
-                                <div className="mb-4">
-                                  <span className="text-secondary opacity-75 fs-9 fw-bold uppercase tracking-widest d-block mb-2">SYSTEM STATUS</span>
-                                  <div className="d-inline-flex align-items-center px-3 py-2 rounded-pill shadow-sm" style={{ background: `rgba(${hexToRgb(statusColor)}, 0.15)`, border: `1px solid rgba(${hexToRgb(statusColor)}, 0.3)` }}>
-                                    <div className="rounded-circle me-2" style={{ width: '8px', height: '8px', background: statusColor, boxShadow: `0 0 8px ${statusColor}` }}></div>
-                                    <span className="fw-black fs-8" style={{ color: statusColor, letterSpacing: '1px' }}>{statusText}</span>
+                              <Col xs={6} className="ps-3 d-flex flex-column justify-content-center">
+                                <div className="mb-2">
+                                  <span className="text-secondary opacity-75 fs-10 fw-bold uppercase tracking-widest d-block mb-1 text-nowrap">STATUS</span>
+                                  <div className="d-inline-flex align-items-center px-2 py-1 rounded-pill shadow-sm" style={{ background: `rgba(${hexToRgb(statusColor)}, 0.15)`, border: `1px solid rgba(${hexToRgb(statusColor)}, 0.3)`, backdropFilter: 'blur(4px)' }}>
+                                    <div className="rounded-circle me-1" style={{ width: '6px', height: '6px', background: statusColor, boxShadow: `0 0 8px ${statusColor}` }}></div>
+                                    <span className="fw-black text-nowrap" style={{ fontSize: '0.65rem', color: statusColor, letterSpacing: '0.5px' }}>{statusText}</span>
                                   </div>
                                 </div>
                                 
-                                <div className="mb-4">
-                                  <div className="d-flex justify-content-between mb-2">
-                                    <span className="text-secondary opacity-75 fs-9 fw-bold uppercase tracking-widest">CAPACITY</span>
+                                <div className="mb-2">
+                                  <div className="d-flex justify-content-between mb-1">
+                                    <span className="text-secondary opacity-75 fs-10 fw-bold uppercase tracking-widest text-nowrap">CAPACITY</span>
                                     <span className="text-white fs-8 fw-bold">{percentStr}%</span>
                                   </div>
-                                  <div className="progress rounded-pill shadow-sm" style={{ height: '6px', background: 'rgba(255,255,255,0.05)' }}>
-                                    <div className="progress-bar rounded-pill" role="progressbar" style={{ width: `${percentStr}%`, background: config.color, boxShadow: `0 0 10px ${config.color}`, transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)' }}></div>
+                                  <div className="progress rounded-pill" style={{ height: '5px', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <div className="progress-bar rounded-pill" role="progressbar" style={{ width: `${percentStr}%`, background: `linear-gradient(90deg, transparent, ${config.color})`, boxShadow: `0 0 8px ${config.color}`, transition: 'width 1s cubic-bezier(0.4, 0, 0.2, 1)' }}></div>
                                   </div>
                                 </div>
 
-                                <div className="p-3 rounded-4" style={{ background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.03)' }}>
-                                  <span className="text-secondary opacity-75 fs-9 fw-bold uppercase tracking-widest d-block mb-1">OPERATING RANGE</span>
+                                <div className="p-2 rounded-3" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                  <span className="text-secondary opacity-75 fw-bold uppercase tracking-widest d-block mb-1 text-nowrap" style={{ fontSize: '0.55rem' }}>RANGE</span>
                                   <div className="d-flex justify-content-between align-items-center">
-                                    <span className="text-white opacity-75 fs-7 font-monospace fw-bold">{config.min}</span>
-                                    <span className="text-secondary opacity-50 px-2">—</span>
-                                    <span className="text-white opacity-75 fs-7 font-monospace fw-bold">{config.max} <span className="fs-9">{config.unit}</span></span>
+                                    <span className="text-white opacity-90 fs-7 font-monospace fw-bold">{config.min}</span>
+                                    <span className="text-secondary opacity-50 px-1">—</span>
+                                    <span className="text-white opacity-90 fs-7 font-monospace fw-bold">{config.max} <span className="fs-9 opacity-75">{config.unit}</span></span>
                                   </div>
                                 </div>
                               </Col>
@@ -462,7 +475,6 @@ const EnvDashboard = () => {
           )}
         </Col>
       </Row>
-      )}
     </div>
   );
 };

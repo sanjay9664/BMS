@@ -30,6 +30,9 @@ import VRVSchedule from '../pages/VRV/Schedule';
 import VRVHumanSensor from '../pages/VRV/HumanSensor';
 import VRVTempHumidity from '../pages/VRV/TempHumidity';
 
+// AQI Sensor
+import AQIOverview from '../pages/AQISensor/Overview';
+
 // Fallback for other routes until customized
 const PlaceholderPage = ({ title }) => (
   <div className="fade-in">
@@ -146,6 +149,9 @@ const AppRoutes = () => {
       <Route path="/VRV/control" element={<VRVControlPanel />} />
       <Route path="/VRV/schedule" element={<VRVSchedule />} />
       <Route path="/VRV/human-sensor" element={<VRVHumanSensor />} />
+      
+      {/* AQI Sensor */}
+      <Route path="/aqi-sensor/overview" element={<AQIOverview />} />
       <Route path="/aqi-sensor/temp-humidity" element={<VRVTempHumidity />} />
 
       {/* Catch-all */}
